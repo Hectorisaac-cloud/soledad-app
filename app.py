@@ -5902,12 +5902,74 @@ def render_encabezado(titulo: str, subtitulo: str) -> None:
 
 
 # ── Selector de rol ────────────────────────────────────────────────────────────
+CLAVES_POR_ROL = {
+    ROL_OPERATIVO: "OPERATIVO_PASSWORD",
+    ROL_ADMIN: "ADMIN_PASSWORD",
+}
+
+
 def aplicar_rol_pendiente() -> None:
     if "rol_pendiente" in st.session_state:
         st.session_state.rol_seleccionado = st.session_state.pop("rol_pendiente")
 
 
+def rol_esta_desbloqueado(rol: str) -> bool:
+    desbloqueados = st.session_state.get("roles_desbloqueados") or {}
+    return bool(desbloqueados.get(rol))
+
+
+def marcar_rol_desbloqueado(rol: str) -> None:
+    desbloqueados = dict(st.session_state.get("roles_desbloqueados") or {})
+    desbloqueados[rol] = True
+    st.session_state.roles_desbloqueados = desbloqueados
+
+
+def aplicar_cierre_de_rol() -> None:
+    cerrar = st.session_state.pop("cerrar_sesion_rol", False)
+    volver = st.session_state.pop("volver_inicio", False)
+    if not cerrar and not volver:
+        return
+    if cerrar:
+        st.session_state.roles_desbloqueados = {}
+    st.session_state.rol_seleccionado = None
+    st.session_state.pop("rol_pendiente", None)
+
+
+def leer_secreto(nombre: str) -> str | None:
+    try:
+        valor = str(st.secrets[nombre]).strip()
+    except Exception:
+        return None
+    return valor or None
+
+
+def render_acceso_rol(rol: str) -> None:
+    nombre_secreto = CLAVES_POR_ROL[rol]
+    render_encabezado(rol, "Ingresa la clave de este módulo para continuar.")
+    _, centro, _ = st.columns([1, 1.15, 1])
+    with centro:
+        with st.form(f"acceso_rol_{nombre_secreto}"):
+            clave = st.text_input("Contraseña", type="password")
+            entrar = st.form_submit_button("Entrar")
+        if entrar:
+            esperada = leer_secreto(nombre_secreto)
+            if esperada is None:
+                st.error(
+                    f"Falta el secreto {nombre_secreto}. "
+                    "Configúralo en Streamlit Cloud o en .streamlit/secrets.toml."
+                )
+            elif hmac.compare_digest(clave, esperada):
+                marcar_rol_desbloqueado(rol)
+                st.rerun()
+            else:
+                st.error("Contraseña incorrecta.")
+        if st.button("Volver", key=f"volver_{nombre_secreto}"):
+            st.session_state.volver_inicio = True
+            st.rerun()
+
+
 def render_selector_rol() -> str | None:
+    aplicar_cierre_de_rol()
     aplicar_rol_pendiente()
     with st.sidebar:
         st.markdown("### Bitácora PJP4")
@@ -5918,12 +5980,18 @@ def render_selector_rol() -> str | None:
             index=None,
             key="rol_seleccionado",
         )
-        if rol:
+        if rol in CLAVES_POR_ROL and not rol_esta_desbloqueado(rol):
+            st.caption(f"Pendiente de clave: **{rol}**")
+        elif rol:
             st.caption(f"Sesión: **{rol}**")
+        if any(rol_esta_desbloqueado(item) for item in CLAVES_POR_ROL):
+            if st.button("Cerrar sesión de rol", use_container_width=True):
+                st.session_state.cerrar_sesion_rol = True
+                st.rerun()
         st.markdown("---")
         render_bloque_modo_demo()
         st.markdown("---")
-        st.caption("El módulo define la interfaz. No sustituye un inicio de sesión.")
+        st.caption("Operativo y Administrativo piden su propia clave.")
     return rol
 
 
@@ -16116,7 +16184,9 @@ exigir_contrasena()
 inicializar_estado()
 rol = render_selector_rol()
 
-if rol is None:
+if rol in CLAVES_POR_ROL and not rol_esta_desbloqueado(rol):
+    render_acceso_rol(rol)
+elif rol is None:
     render_bienvenida()
 elif rol == ROL_OPERATIVO:
     render_panel_operativo()
