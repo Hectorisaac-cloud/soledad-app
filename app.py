@@ -52,6 +52,10 @@ ASIGNACIONES_FILE = "asignaciones_diarias.json"
 PROGRAMADOS_FILE = "programados_ops.json"
 PROGRAMAS_EXCEL_DIR = "programas_excel"
 PROGRAMA_OCTUBRE_DIR = "programa_mantenimientos_octubre"
+CARPETAS_PROGRAMA_MTTO = (
+    "PROGRAMAS MTTO OCTUBRE",
+    PROGRAMA_OCTUBRE_DIR,
+)
 CONTROL_PROGRAMA_OCTUBRE_FILE = "control_programa_octubre.json"
 MES_PROGRAMA_OCTUBRE = (2026, 10)
 ESPECIALIDADES_OCTUBRE = ("Eléctrico", "Instrumentación", "UBM")
@@ -4231,33 +4235,32 @@ def porcentaje_cumplimiento(filas: list[dict]) -> float:
     return round(100.0 * cumplidos / len(filas), 1)
 
 
+def _texto_programado(valor) -> str:
+    if valor is None:
+        return ""
+    texto = str(valor).strip()
+    if texto.casefold() in {"none", "nan", "<na>", "nat"}:
+        return ""
+    return texto
+
+
 def dataframe_programados(filas: list[dict]) -> pd.DataFrame:
+    columnas = ["id", "Actividad", "Ubicación", "Equipo", "Estatus", "Observación"]
     if not filas:
-        return pd.DataFrame(
-            [
-                {
-                    "id": "",
-                    "Actividad": "",
-                    "Ubicación": "",
-                    "Equipo": "",
-                    "Estatus": "No Cumplido",
-                    "Observación": "",
-                }
-            ]
-        )
+        return pd.DataFrame(columns=columnas)
     return pd.DataFrame(
         [
             {
-                "id": str(item.get("id", "")),
-                "Actividad": str(item.get("actividad", "")),
-                "Ubicación": str(item.get("ubicacion", "")),
-                "Equipo": str(item.get("equipo", "")),
+                "id": _texto_programado(item.get("id")),
+                "Actividad": _texto_programado(item.get("actividad")),
+                "Ubicación": _texto_programado(item.get("ubicacion")),
+                "Equipo": _texto_programado(item.get("equipo")),
                 "Estatus": (
                     item.get("estatus")
                     if item.get("estatus") in ESTATUS_PROGRAMADO
                     else "No Cumplido"
                 ),
-                "Observación": str(item.get("observacion", "")),
+                "Observación": _texto_programado(item.get("observacion")),
             }
             for item in filas
         ]
@@ -7332,6 +7335,152 @@ def render_control_permisos() -> None:
         st.rerun()
 
 
+ESTATUS_OPS_EXCEL = ("Cumplido", "No Cumplido")
+
+
+def estatus_guardado_actividad(guardado: dict) -> str:
+    estatus = guardado.get("estatus")
+    if estatus in ESTATUS_OPS_EXCEL:
+        return estatus
+    if guardado.get("realizado"):
+        return "Cumplido"
+    return "No Cumplido"
+
+
+def _texto_observacion_editor(valor) -> str:
+    if valor is None:
+        return ""
+    try:
+        if pd.isna(valor):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(valor).strip()
+
+
+def _registro_control_vacio(registro: dict) -> bool:
+    return (
+        registro.get("estatus", "No Cumplido") != "Cumplido"
+        and not registro.get("observaciones")
+        and not registro.get("realizado")
+    )
+
+
+def render_programados_ops_excel(anio: int, mes: int) -> None:
+    carpeta = directorio_programas_mtto()
+    etiqueta = etiqueta_mes(clave_mes(anio, mes))
+    st.caption(
+        f"Actividades de {etiqueta} leídas de los Excel en {carpeta}. "
+        "El estatus y las observaciones se guardan en este equipo."
+    )
+    if not os.path.isdir(carpeta):
+        st.info("Coloca los archivos .xlsx en la carpeta PROGRAMAS MTTO OCTUBRE.")
+        return
+    archivos = listar_archivos_programa_octubre()
+    if not archivos:
+        st.info(f"No hay archivos Excel en {carpeta}.")
+        return
+
+    actividades = cargar_actividades_octubre(firmas_programa_octubre(), anio, mes)
+    if not actividades:
+        st.info(f"No hay actividades de {etiqueta} en los Excel de {carpeta}.")
+        return
+
+    especialidades = [
+        nombre
+        for nombre in ESPECIALIDADES_OCTUBRE
+        if any(item["especialidad"] == nombre for item in actividades)
+    ]
+    extra = sorted({item["especialidad"] for item in actividades} - set(especialidades))
+    especialidades.extend(extra)
+    pestanas_nombre = ["Todos"] + especialidades
+    control = leer_control_programa_octubre()
+    pestanas = st.tabs(pestanas_nombre)
+    for pestana, nombre_pestana in zip(pestanas, pestanas_nombre):
+        with pestana:
+            filas = (
+                actividades
+                if nombre_pestana == "Todos"
+                else [item for item in actividades if item["especialidad"] == nombre_pestana]
+            )
+            origenes = sorted({item["programa"] for item in filas})
+            origen = "Todos"
+            if len(origenes) > 1:
+                origen = st.selectbox(
+                    "Archivo o especialidad",
+                    ["Todos"] + origenes,
+                    key=f"origen_ops_{anio}_{mes}_{nombre_pestana}",
+                )
+                if origen != "Todos":
+                    filas = [item for item in filas if item["programa"] == origen]
+            registros = []
+            for item in filas:
+                clave = clave_control_actividad(item)
+                guardado = control.get(clave) or {}
+                registros.append(
+                    {
+                        "_id": clave,
+                        "Estatus": estatus_guardado_actividad(guardado),
+                        "Observaciones": str(guardado.get("observaciones") or ""),
+                        "Nro": item["nro"],
+                        "Cód": item["codigo"],
+                        "Equipo": item["equipo"],
+                        "Actividad": item["actividad"],
+                        "Tipo Mantto.": item["tipo"],
+                        "Fecha Programada": datetime.fromisoformat(item["fecha"]).strftime("%d/%m/%Y"),
+                    }
+                )
+            tabla = pd.DataFrame(registros)
+            cumplidos = int((tabla["Estatus"] == "Cumplido").sum()) if not tabla.empty else 0
+            st.caption(f"{len(tabla)} actividades · {cumplidos} cumplidas · {len(tabla) - cumplidos} no cumplidas")
+            editada = st.data_editor(
+                tabla,
+                column_order=[
+                    "Estatus",
+                    "Observaciones",
+                    "Nro",
+                    "Cód",
+                    "Equipo",
+                    "Actividad",
+                    "Tipo Mantto.",
+                    "Fecha Programada",
+                ],
+                column_config={
+                    "Estatus": st.column_config.SelectboxColumn(
+                        "Estatus",
+                        options=list(ESTATUS_OPS_EXCEL),
+                        required=True,
+                    ),
+                    "Observaciones": st.column_config.TextColumn("Observaciones"),
+                    "Actividad": st.column_config.TextColumn("Actividad", width="large"),
+                },
+                disabled=["Nro", "Cód", "Equipo", "Actividad", "Tipo Mantto.", "Fecha Programada"],
+                hide_index=True,
+                width="stretch",
+                key=f"editor_ops_{anio}_{mes}_{nombre_pestana}_{origen}",
+            )
+            cambio = False
+            for _, fila in editada.iterrows():
+                clave = str(fila["_id"])
+                previo = control.get(clave) if isinstance(control.get(clave), dict) else {}
+                estatus = fila["Estatus"] if fila["Estatus"] in ESTATUS_OPS_EXCEL else "No Cumplido"
+                nuevo = dict(previo)
+                nuevo["estatus"] = estatus
+                nuevo["observaciones"] = _texto_observacion_editor(fila["Observaciones"])
+                nuevo["realizado"] = estatus == "Cumplido"
+                if control.get(clave) == nuevo:
+                    continue
+                if _registro_control_vacio(nuevo):
+                    if clave in control:
+                        control.pop(clave, None)
+                        cambio = True
+                    continue
+                control[clave] = nuevo
+                cambio = True
+            if cambio:
+                guardar_control_programa_octubre(control)
+
+
 def render_control_programados() -> None:
     st.markdown(
         '<div class="section-title">Control de programados vs no programados</div>',
@@ -7366,14 +7515,31 @@ def render_control_programados() -> None:
     df_bitacora = cargar_bitacora()
     df_imprevistos = bitacora_no_programada(df_bitacora, mes_clave)
 
-    cumplidos = sum(1 for fila in filas_mes if fila.get("estatus") == "Cumplido")
-    no_cumplidos = sum(1 for fila in filas_mes if fila.get("estatus") == "No Cumplido")
-    reprogramados = sum(1 for fila in filas_mes if fila.get("estatus") == "Reprogramado")
-    pct = porcentaje_cumplimiento(filas_mes)
+    actividades_excel = []
+    control_excel: dict = {}
+    if listar_archivos_programa_octubre():
+        actividades_excel = cargar_actividades_octubre(firmas_programa_octubre(), int(anio), int(mes))
+        control_excel = leer_control_programa_octubre()
+    if actividades_excel:
+        cumplidos = sum(
+            1
+            for item in actividades_excel
+            if estatus_guardado_actividad(control_excel.get(clave_control_actividad(item)) or {}) == "Cumplido"
+        )
+        no_cumplidos = len(actividades_excel) - cumplidos
+        reprogramados = 0
+        pct = round(100 * cumplidos / len(actividades_excel))
+        total_ops = len(actividades_excel)
+    else:
+        cumplidos = sum(1 for fila in filas_mes if fila.get("estatus") == "Cumplido")
+        no_cumplidos = sum(1 for fila in filas_mes if fila.get("estatus") == "No Cumplido")
+        reprogramados = sum(1 for fila in filas_mes if fila.get("estatus") == "Reprogramado")
+        pct = porcentaje_cumplimiento(filas_mes)
+        total_ops = len(filas_mes)
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Cumplimiento del mes", f"{pct}%")
-    m2.metric("Programados OPS", len(filas_mes))
+    m2.metric("Programados OPS", total_ops)
     m3.metric("Cumplidos", cumplidos)
     m4.metric("No programados / emergencias", len(df_imprevistos))
     st.caption(
@@ -7396,41 +7562,7 @@ def render_control_programados() -> None:
     )
 
     if sub == "ops":
-        st.caption("Registra las actividades mensuales del cliente, ubicación y estatus para facturación.")
-        if st.session_state.pop("programados_guardados", False):
-            st.success(f"Programados de {etiqueta_mes(mes_clave)} guardados en {PROGRAMADOS_FILE}.")
-        sectores = [s for s in sectores_actuales() if s != SECTOR_OTRO]
-        equipos = [e for e in equipos_actuales() if e != "Ninguno"]
-        editor = st.data_editor(
-            dataframe_programados(filas_mes),
-            num_rows="dynamic",
-            use_container_width=True,
-            hide_index=True,
-            key=f"editor_programados_{mes_clave}",
-            column_config={
-                "id": None,
-                "Actividad": st.column_config.TextColumn("Actividad", required=True),
-                "Ubicación": st.column_config.SelectboxColumn(
-                    "Ubicación",
-                    options=[""] + sectores,
-                ),
-                "Equipo": st.column_config.SelectboxColumn(
-                    "Equipo",
-                    options=[""] + equipos,
-                ),
-                "Estatus": st.column_config.SelectboxColumn(
-                    "Estatus",
-                    options=ESTATUS_PROGRAMADO,
-                    required=True,
-                ),
-                "Observación": st.column_config.TextColumn("Observación"),
-            },
-        )
-        if st.button("💾 Guardar programados OPS", type="primary", key="btn_guardar_programados"):
-            nuevos = filas_desde_editor(editor)
-            guardar_programados_mes(mes_clave, nuevos)
-            st.session_state.programados_guardados = True
-            st.rerun()
+        render_programados_ops_excel(int(anio), int(mes))
 
     elif sub == "imprevistos":
         st.caption(
@@ -7696,11 +7828,19 @@ def _mapa_encabezado_actividad(fila) -> dict[str, int] | None:
     return None
 
 
+def directorio_programas_mtto() -> str:
+    for carpeta in CARPETAS_PROGRAMA_MTTO:
+        if os.path.isdir(carpeta):
+            return carpeta
+    return CARPETAS_PROGRAMA_MTTO[0]
+
+
 def listar_archivos_programa_octubre() -> list[str]:
-    if not os.path.isdir(PROGRAMA_OCTUBRE_DIR):
+    carpeta = directorio_programas_mtto()
+    if not os.path.isdir(carpeta):
         return []
     archivos = []
-    for nombre in os.listdir(PROGRAMA_OCTUBRE_DIR):
+    for nombre in os.listdir(carpeta):
         if nombre.startswith("~$"):
             continue
         if nombre.lower().endswith(EXTENSIONES_PROGRAMA_EXCEL):
@@ -7709,19 +7849,20 @@ def listar_archivos_programa_octubre() -> list[str]:
 
 
 def listar_pdfs_programa_octubre() -> list[str]:
-    if not os.path.isdir(PROGRAMA_OCTUBRE_DIR):
+    carpeta = directorio_programas_mtto()
+    if not os.path.isdir(carpeta):
         return []
     return sorted(
         (
             nombre
-            for nombre in os.listdir(PROGRAMA_OCTUBRE_DIR)
+            for nombre in os.listdir(carpeta)
             if nombre.lower().endswith(".pdf") and not nombre.startswith("~$")
         ),
         key=str.casefold,
     )
 
 
-def _actividades_de_hoja(ruta: str, hoja: str, archivo: str) -> list[dict]:
+def _actividades_de_hoja(ruta: str, hoja: str, archivo: str, anio: int, mes: int) -> list[dict]:
     import warnings
 
     especialidad_archivo = especialidad_programa(archivo)
@@ -7744,7 +7885,6 @@ def _actividades_de_hoja(ruta: str, hoja: str, archivo: str) -> list[dict]:
         warnings.simplefilter("ignore")
         df = pd.read_excel(ruta, sheet_name=hoja, header=None, dtype=object)
     df = df.iloc[fila_encabezado + 1 :]
-    anio, mes = MES_PROGRAMA_OCTUBRE
     actividades = []
     for _, fila in df.iterrows():
         valores = fila.tolist()
@@ -7777,12 +7917,13 @@ def _actividades_de_hoja(ruta: str, hoja: str, archivo: str) -> list[dict]:
     return actividades
 
 
-@st.cache_data(show_spinner="Leyendo los programas de octubre…")
-def cargar_actividades_octubre(firmas: tuple) -> list[dict]:
+@st.cache_data(show_spinner="Leyendo los programas de mantenimiento…")
+def cargar_actividades_octubre(firmas: tuple, anio: int, mes: int) -> list[dict]:
     _ = firmas
+    carpeta = directorio_programas_mtto()
     vistos: dict[tuple, dict] = {}
     for nombre in listar_archivos_programa_octubre():
-        ruta = os.path.join(PROGRAMA_OCTUBRE_DIR, nombre)
+        ruta = os.path.join(carpeta, nombre)
         try:
             hojas = hojas_programa_excel(ruta)
         except Exception:
@@ -7791,7 +7932,7 @@ def cargar_actividades_octubre(firmas: tuple) -> list[dict]:
             if _norm_encabezado(hoja) in HOJAS_PROGRAMA_IGNORADAS:
                 continue
             try:
-                filas = _actividades_de_hoja(ruta, hoja, nombre)
+                filas = _actividades_de_hoja(ruta, hoja, nombre, anio, mes)
             except Exception:
                 continue
             for fila in filas:
@@ -7810,11 +7951,12 @@ def cargar_actividades_octubre(firmas: tuple) -> list[dict]:
 
 
 def firmas_programa_octubre() -> tuple:
+    carpeta = directorio_programas_mtto()
     firmas = []
     for nombre in listar_archivos_programa_octubre():
-        ruta = os.path.join(PROGRAMA_OCTUBRE_DIR, nombre)
+        ruta = os.path.join(carpeta, nombre)
         stat = os.stat(ruta)
-        firmas.append((nombre, stat.st_mtime, stat.st_size))
+        firmas.append((carpeta, nombre, stat.st_mtime, stat.st_size))
     return tuple(firmas)
 
 
@@ -7852,7 +7994,7 @@ def render_programa_octubre() -> None:
     if pdfs:
         columnas = st.columns(min(len(pdfs), 3))
         for indice, nombre in enumerate(pdfs):
-            ruta = os.path.join(PROGRAMA_OCTUBRE_DIR, nombre)
+            ruta = os.path.join(directorio_programas_mtto(), nombre)
             with columnas[indice % len(columnas)]:
                 with open(ruta, "rb") as archivo:
                     st.download_button(
@@ -7863,15 +8005,17 @@ def render_programa_octubre() -> None:
                         key=f"pdf_octubre_{indice}",
                         use_container_width=True,
                     )
-    if not os.path.isdir(PROGRAMA_OCTUBRE_DIR):
-        st.info("No está la carpeta programa_mantenimientos_octubre.")
+    carpeta_programa = directorio_programas_mtto()
+    if not os.path.isdir(carpeta_programa):
+        st.info("Coloca los archivos .xlsx en la carpeta PROGRAMAS MTTO OCTUBRE.")
         return
     archivos = listar_archivos_programa_octubre()
     if not archivos:
-        st.info("No hay archivos Excel en programa_mantenimientos_octubre.")
+        st.info(f"No hay archivos Excel en {carpeta_programa}.")
         return
 
-    actividades = cargar_actividades_octubre(firmas_programa_octubre())
+    anio_octubre, mes_octubre = MES_PROGRAMA_OCTUBRE
+    actividades = cargar_actividades_octubre(firmas_programa_octubre(), anio_octubre, mes_octubre)
     if not actividades:
         st.warning("No se encontraron actividades de octubre 2026 en los Excel de la carpeta.")
         return
@@ -7946,18 +8090,24 @@ def render_programa_octubre() -> None:
                         texto_obs = "" if pd.isna(observacion) else str(observacion).strip()
                     except (TypeError, ValueError):
                         texto_obs = str(observacion).strip()
-                nuevo = {
-                    "realizado": bool(fila["Realizado"]),
-                    "observaciones": texto_obs,
-                }
+                previo = control.get(clave) if isinstance(control.get(clave), dict) else {}
+                realizado = bool(fila["Realizado"])
+                nuevo = dict(previo)
+                nuevo["realizado"] = realizado
+                nuevo["observaciones"] = texto_obs
+                if realizado:
+                    nuevo["estatus"] = "Cumplido"
+                elif nuevo.get("estatus") == "Cumplido":
+                    nuevo["estatus"] = "No Cumplido"
                 if control.get(clave) == nuevo:
                     continue
-                if nuevo["realizado"] or nuevo["observaciones"]:
-                    control[clave] = nuevo
-                    cambio = True
-                elif clave in control:
-                    control.pop(clave, None)
-                    cambio = True
+                if _registro_control_vacio(nuevo):
+                    if clave in control:
+                        control.pop(clave, None)
+                        cambio = True
+                    continue
+                control[clave] = nuevo
+                cambio = True
             if cambio:
                 guardar_control_programa_octubre(control)
 
