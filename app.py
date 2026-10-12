@@ -1,6 +1,7 @@
 import base64
 import calendar
 import hashlib
+import hmac
 import html
 import io
 import json
@@ -16071,7 +16072,47 @@ def render_panel_administrativo() -> None:
         render_explorador_admin()
 
 
+def exigir_contrasena() -> None:
+    """Bloquea la aplicación hasta que la clave coincida con APP_PASSWORD."""
+    if st.session_state.get("autenticado"):
+        return
+
+    st.markdown(
+        """
+        <style>
+            section[data-testid="stSidebar"],
+            [data-testid="stSidebarCollapsedControl"] { display: none; }
+        </style>
+        <div class="panel-header">
+            <h1>Soledad</h1>
+            <p>Ingresa la contraseña para continuar.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    _, centro, _ = st.columns([1, 1.15, 1])
+    with centro:
+        with st.form("acceso_app"):
+            clave = st.text_input("Contraseña", type="password")
+            entrar = st.form_submit_button("Entrar")
+        if entrar:
+            try:
+                esperada = str(st.secrets["APP_PASSWORD"])
+            except Exception:
+                st.error(
+                    "Falta el secreto APP_PASSWORD. "
+                    "Configúralo en Streamlit Cloud o en .streamlit/secrets.toml."
+                )
+                st.stop()
+            if hmac.compare_digest(clave, esperada):
+                st.session_state.autenticado = True
+                st.rerun()
+            st.error("Contraseña incorrecta.")
+    st.stop()
+
+
 # ── Arranque ───────────────────────────────────────────────────────────────────
+exigir_contrasena()
 inicializar_estado()
 rol = render_selector_rol()
 

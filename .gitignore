@@ -3,3 +3,4 @@ __pycache__/
 app.py.txt
 .DS_Store
 Thumbs.db
+.streamlit/secrets.toml
