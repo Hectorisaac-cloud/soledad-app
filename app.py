@@ -51,6 +51,19 @@ PERMISOS_FILE = "permisos.json"
 ASIGNACIONES_FILE = "asignaciones_diarias.json"
 PROGRAMADOS_FILE = "programados_ops.json"
 PROGRAMAS_EXCEL_DIR = "programas_excel"
+PROGRAMA_OCTUBRE_DIR = "programa_mantenimientos_octubre"
+CONTROL_PROGRAMA_OCTUBRE_FILE = "control_programa_octubre.json"
+MES_PROGRAMA_OCTUBRE = (2026, 10)
+ESPECIALIDADES_OCTUBRE = ("Eléctrico", "Instrumentación", "UBM")
+HOJAS_PROGRAMA_IGNORADAS = {
+    "equipos",
+    "programa",
+    "informe",
+    "seguimiento",
+    "resumen",
+    "velocimetros",
+    "calculos semana",
+}
 EXTENSIONES_PROGRAMA_EXCEL = (".xlsx", ".xls", ".xlsm")
 ALMACEN_FILE = "almacen_insumos.json"
 UBICACIONES_FILE = "ubicaciones_equipos.json"
@@ -7611,6 +7624,342 @@ def render_consulta_programas_mensuales() -> None:
         f"(se conserva la disposición original del Excel)."
     )
     st.dataframe(df, use_container_width=True, hide_index=False)
+
+
+def _texto_actividad(valor) -> str:
+    if valor is None:
+        return ""
+    try:
+        if pd.isna(valor):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return re.sub(r"\s+", " ", str(valor)).strip()
+
+
+def _norm_encabezado(valor) -> str:
+    texto = unicodedata.normalize("NFKD", _texto_actividad(valor))
+    texto = "".join(caracter for caracter in texto if not unicodedata.combining(caracter))
+    return texto.casefold()
+
+
+def especialidad_programa(texto: str) -> str | None:
+    normal = _norm_encabezado(texto)
+    if "elect" in normal:
+        return "Eléctrico"
+    if "inst" in normal:
+        return "Instrumentación"
+    if "ubm" in normal or "mecan" in normal:
+        return "UBM"
+    return None
+
+
+def _fecha_actividad(valor) -> date | None:
+    if valor is None:
+        return None
+    try:
+        if pd.isna(valor):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    parsed = pd.to_datetime(valor, errors="coerce")
+    if pd.isna(parsed):
+        return None
+    return parsed.date()
+
+
+def _mapa_encabezado_actividad(fila) -> dict[str, int] | None:
+    alias = {
+        "nro": ("nro", "no."),
+        "codigo": ("cod", "codigo"),
+        "equipo": ("equipo",),
+        "actividad": ("actividad",),
+        "tipo": ("tipo mantto", "tipo mant", "tipo"),
+        "fecha": ("fecha programada", "fecha"),
+    }
+    mapa: dict[str, int] = {}
+    for indice, valor in enumerate(list(fila)):
+        normal = _norm_encabezado(valor)
+        if not normal:
+            continue
+        for campo, opciones in alias.items():
+            if campo in mapa:
+                continue
+            if any(normal == opcion or normal.startswith(opcion) for opcion in opciones):
+                mapa[campo] = indice
+    if "actividad" in mapa and "fecha" in mapa:
+        return mapa
+    return None
+
+
+def listar_archivos_programa_octubre() -> list[str]:
+    if not os.path.isdir(PROGRAMA_OCTUBRE_DIR):
+        return []
+    archivos = []
+    for nombre in os.listdir(PROGRAMA_OCTUBRE_DIR):
+        if nombre.startswith("~$"):
+            continue
+        if nombre.lower().endswith(EXTENSIONES_PROGRAMA_EXCEL):
+            archivos.append(nombre)
+    return sorted(archivos, key=str.casefold)
+
+
+def listar_pdfs_programa_octubre() -> list[str]:
+    if not os.path.isdir(PROGRAMA_OCTUBRE_DIR):
+        return []
+    return sorted(
+        (
+            nombre
+            for nombre in os.listdir(PROGRAMA_OCTUBRE_DIR)
+            if nombre.lower().endswith(".pdf") and not nombre.startswith("~$")
+        ),
+        key=str.casefold,
+    )
+
+
+def _actividades_de_hoja(ruta: str, hoja: str, archivo: str) -> list[dict]:
+    import warnings
+
+    especialidad_archivo = especialidad_programa(archivo)
+    especialidad_hoja = especialidad_programa(hoja)
+    especialidad = especialidad_hoja or especialidad_archivo or "General"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        muestra = pd.read_excel(ruta, sheet_name=hoja, header=None, nrows=20, dtype=object)
+    encabezado = None
+    fila_encabezado = None
+    for indice, fila in muestra.iterrows():
+        mapa = _mapa_encabezado_actividad(fila.tolist())
+        if mapa:
+            encabezado = mapa
+            fila_encabezado = int(indice)
+            break
+    if not encabezado or fila_encabezado is None:
+        return []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        df = pd.read_excel(ruta, sheet_name=hoja, header=None, dtype=object)
+    df = df.iloc[fila_encabezado + 1 :]
+    anio, mes = MES_PROGRAMA_OCTUBRE
+    actividades = []
+    for _, fila in df.iterrows():
+        valores = fila.tolist()
+        actividad = _texto_actividad(valores[encabezado["actividad"]]) if encabezado["actividad"] < len(valores) else ""
+        if not actividad:
+            continue
+        fecha = _fecha_actividad(valores[encabezado["fecha"]]) if encabezado["fecha"] < len(valores) else None
+        if fecha is None or fecha.year != anio or fecha.month != mes:
+            continue
+        def celda(campo: str) -> str:
+            indice = encabezado.get(campo)
+            if indice is None or indice >= len(valores):
+                return ""
+            return _texto_actividad(valores[indice])
+
+        actividades.append(
+            {
+                "especialidad": especialidad,
+                "programa": f"{archivo} · {hoja.strip()}",
+                "hoja": hoja.strip(),
+                "nro": celda("nro"),
+                "codigo": celda("codigo"),
+                "equipo": celda("equipo"),
+                "actividad": actividad,
+                "tipo": celda("tipo"),
+                "fecha": fecha.isoformat(),
+                "prioridad": 0 if _norm_encabezado(hoja) == "historial" else 1,
+            }
+        )
+    return actividades
+
+
+@st.cache_data(show_spinner="Leyendo los programas de octubre…")
+def cargar_actividades_octubre(firmas: tuple) -> list[dict]:
+    _ = firmas
+    vistos: dict[tuple, dict] = {}
+    for nombre in listar_archivos_programa_octubre():
+        ruta = os.path.join(PROGRAMA_OCTUBRE_DIR, nombre)
+        try:
+            hojas = hojas_programa_excel(ruta)
+        except Exception:
+            continue
+        for hoja in hojas:
+            if _norm_encabezado(hoja) in HOJAS_PROGRAMA_IGNORADAS:
+                continue
+            try:
+                filas = _actividades_de_hoja(ruta, hoja, nombre)
+            except Exception:
+                continue
+            for fila in filas:
+                clave = (
+                    fila["especialidad"],
+                    fila["codigo"],
+                    fila["fecha"],
+                    fila["actividad"][:80],
+                )
+                previa = vistos.get(clave)
+                if previa is None or fila["prioridad"] > previa["prioridad"]:
+                    vistos[clave] = fila
+    actividades = list(vistos.values())
+    actividades.sort(key=lambda item: (item["especialidad"], item["fecha"], item["codigo"], item["nro"]))
+    return actividades
+
+
+def firmas_programa_octubre() -> tuple:
+    firmas = []
+    for nombre in listar_archivos_programa_octubre():
+        ruta = os.path.join(PROGRAMA_OCTUBRE_DIR, nombre)
+        stat = os.stat(ruta)
+        firmas.append((nombre, stat.st_mtime, stat.st_size))
+    return tuple(firmas)
+
+
+def clave_control_actividad(fila: dict) -> str:
+    base = "|".join(
+        [
+            str(fila.get("especialidad") or ""),
+            str(fila.get("codigo") or ""),
+            str(fila.get("fecha") or ""),
+            str(fila.get("actividad") or "")[:80],
+        ]
+    )
+    return hashlib.sha1(base.encode("utf-8")).hexdigest()[:16]
+
+
+def leer_control_programa_octubre() -> dict:
+    datos = leer_json(CONTROL_PROGRAMA_OCTUBRE_FILE, {})
+    return datos if isinstance(datos, dict) else {}
+
+
+def guardar_control_programa_octubre(datos: dict) -> None:
+    escribir_json(CONTROL_PROGRAMA_OCTUBRE_FILE, datos)
+
+
+def render_programa_octubre() -> None:
+    st.markdown(
+        '<div class="section-title">Programa de mantenimientos — octubre 2026</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Actividades leídas de programa_mantenimientos_octubre. "
+        "Marca Realizado y anota observaciones; el control queda guardado en este equipo."
+    )
+    pdfs = listar_pdfs_programa_octubre()
+    if pdfs:
+        columnas = st.columns(min(len(pdfs), 3))
+        for indice, nombre in enumerate(pdfs):
+            ruta = os.path.join(PROGRAMA_OCTUBRE_DIR, nombre)
+            with columnas[indice % len(columnas)]:
+                with open(ruta, "rb") as archivo:
+                    st.download_button(
+                        f"Descargar PDF · {nombre}",
+                        data=archivo.read(),
+                        file_name=nombre,
+                        mime="application/pdf",
+                        key=f"pdf_octubre_{indice}",
+                        use_container_width=True,
+                    )
+    if not os.path.isdir(PROGRAMA_OCTUBRE_DIR):
+        st.info("No está la carpeta programa_mantenimientos_octubre.")
+        return
+    archivos = listar_archivos_programa_octubre()
+    if not archivos:
+        st.info("No hay archivos Excel en programa_mantenimientos_octubre.")
+        return
+
+    actividades = cargar_actividades_octubre(firmas_programa_octubre())
+    if not actividades:
+        st.warning("No se encontraron actividades de octubre 2026 en los Excel de la carpeta.")
+        return
+
+    especialidades = [nombre for nombre in ESPECIALIDADES_OCTUBRE if any(item["especialidad"] == nombre for item in actividades)]
+    extra = sorted({item["especialidad"] for item in actividades} - set(especialidades))
+    especialidades.extend(extra)
+    control = leer_control_programa_octubre()
+    pestanas = st.tabs(especialidades)
+    for pestana, especialidad in zip(pestanas, especialidades):
+        with pestana:
+            filas = [item for item in actividades if item["especialidad"] == especialidad]
+            origenes = sorted({item["programa"] for item in filas})
+            if len(origenes) > 1:
+                origen = st.selectbox(
+                    "Programa o zona",
+                    ["Todos"] + origenes,
+                    key=f"origen_octubre_{especialidad}",
+                )
+                if origen != "Todos":
+                    filas = [item for item in filas if item["programa"] == origen]
+            registros = []
+            for item in filas:
+                clave = clave_control_actividad(item)
+                guardado = control.get(clave) or {}
+                registros.append(
+                    {
+                        "_id": clave,
+                        "Fecha": datetime.fromisoformat(item["fecha"]).strftime("%d/%m/%Y"),
+                        "Código": item["codigo"],
+                        "Equipo": item["equipo"],
+                        "Actividad": item["actividad"],
+                        "Tipo": item["tipo"],
+                        "Programa": item["hoja"],
+                        "Realizado": bool(guardado.get("realizado")),
+                        "Observaciones": str(guardado.get("observaciones") or ""),
+                    }
+                )
+            tabla = pd.DataFrame(registros)
+            hechos = int(tabla["Realizado"].sum()) if not tabla.empty else 0
+            st.caption(f"{len(tabla)} actividades · {hechos} realizadas")
+            editada = st.data_editor(
+                tabla,
+                column_order=[
+                    "Realizado",
+                    "Observaciones",
+                    "Fecha",
+                    "Código",
+                    "Equipo",
+                    "Actividad",
+                    "Tipo",
+                    "Programa",
+                ],
+                column_config={
+                    "Realizado": st.column_config.CheckboxColumn("Realizado", default=False),
+                    "Observaciones": st.column_config.TextColumn("Observaciones"),
+                    "Actividad": st.column_config.TextColumn("Actividad", width="large"),
+                },
+                disabled=["Fecha", "Código", "Equipo", "Actividad", "Tipo", "Programa"],
+                hide_index=True,
+                use_container_width=True,
+                key=f"editor_octubre_{especialidad}",
+            )
+            cambio = False
+            for _, fila in editada.iterrows():
+                clave = str(fila["_id"])
+                observacion = fila["Observaciones"]
+                if observacion is None:
+                    texto_obs = ""
+                else:
+                    try:
+                        texto_obs = "" if pd.isna(observacion) else str(observacion).strip()
+                    except (TypeError, ValueError):
+                        texto_obs = str(observacion).strip()
+                nuevo = {
+                    "realizado": bool(fila["Realizado"]),
+                    "observaciones": texto_obs,
+                }
+                if control.get(clave) == nuevo:
+                    continue
+                if nuevo["realizado"] or nuevo["observaciones"]:
+                    control[clave] = nuevo
+                    cambio = True
+                elif clave in control:
+                    control.pop(clave, None)
+                    cambio = True
+            if cambio:
+                guardar_control_programa_octubre(control)
 
 
 def render_gestion_insumos_catalogo() -> None:
@@ -15563,6 +15912,12 @@ MODULOS_ADMIN = [
         "descripcion": "Abre los Excel de mantenimiento y consúltalos con su disposición original.",
     },
     {
+        "id": "programa_octubre",
+        "icono": "📅",
+        "titulo": "Programa de octubre",
+        "descripcion": "Actividades de octubre por especialidad, con control de realizado y observaciones.",
+    },
+    {
         "id": "auditoria",
         "icono": "🔒",
         "titulo": "Auditoría y Accesos",
@@ -16051,6 +16406,12 @@ def render_explorador_admin() -> None:
         with x3:
             if st.button("🧰 Soporte de refacciones", use_container_width=True, key="adm_sop"):
                 abrir_modulo_admin("soporte")
+        if st.button(
+            "📅 Programa de octubre",
+            use_container_width=True,
+            key="adm_programa_octubre",
+        ):
+            abrir_modulo_admin("programa_octubre")
 
 
 def render_barra_modulo_admin(titulo: str) -> None:
@@ -16128,6 +16489,8 @@ def render_panel_administrativo() -> None:
         render_control_programados()
     elif modulo_id == "programas":
         render_consulta_programas_mensuales()
+    elif modulo_id == "programa_octubre":
+        render_programa_octubre()
     elif modulo_id == "auditoria":
         render_auditoria_accesos()
     elif modulo_id == "cuadrillas":
