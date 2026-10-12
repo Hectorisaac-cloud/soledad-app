@@ -1,0 +1,29 @@
+[
+  {
+    "actividad": "Mantenimiento bimestral a MCI",
+    "ubicacion": "Soledad (S)",
+    "equipo": "MCI tipo Cummins",
+    "estatus": "Cumplido",
+    "observacion": "",
+    "mes": "2026-09",
+    "id": "93ee1ffed0"
+  },
+  {
+    "actividad": "Mantenimiento semestral a UBM",
+    "ubicacion": "Gallo (GA)",
+    "equipo": "UBM tipo Lufkin",
+    "estatus": "No Cumplido",
+    "observacion": "",
+    "mes": "2026-09",
+    "id": "79cbe7a28c"
+  },
+  {
+    "actividad": "Mantenimiento bimestral a MCI",
+    "ubicacion": "Coyotes (Coy)",
+    "equipo": "",
+    "estatus": "Reprogramado",
+    "observacion": "Lluvia",
+    "mes": "2026-09",
+    "id": "975956f1b2"
+  }
+]

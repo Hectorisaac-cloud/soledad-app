@@ -1,0 +1,59 @@
+{
+  "posiciones": {
+    "Electricos": {
+      "mecanico": "",
+      "ayudante": "",
+      "apoyo": "",
+      "codigo": ""
+    },
+    "Instrumentos": {
+      "mecanico": "1705 CARLOS HERNANDEZ GALLEGOS",
+      "ayudante": "2107 ISAI HERNANDEZ GONZALEZ",
+      "apoyo": "",
+      "codigo": "1705-2107"
+    },
+    "Mecanico 1": {
+      "mecanico": "2239 LUIS EMMANUEL GOMEZ MELO",
+      "ayudante": "2603 DAMIAN HERNANDEZ RODRIGUEZ",
+      "apoyo": "",
+      "codigo": "2239-2603"
+    },
+    "Mecanico 2": {
+      "mecanico": "1114 ANGEL PEREZ CASTAÑEDA",
+      "ayudante": "2268 ROBERTO JUAREZ CUERVO",
+      "apoyo": "",
+      "codigo": "1114-2268"
+    },
+    "Mecanico 3": {
+      "mecanico": "1424 SAUL LARA FLORES",
+      "ayudante": "559 JAVIER VERA GARRIDO",
+      "apoyo": "",
+      "codigo": "1424-559"
+    },
+    "Mecanico 4": {
+      "mecanico": "1498 HECTOR DANIEL ZALETA TELLEZ",
+      "ayudante": "2647 JOSE LUIS DE LA CRUZ VICENCIO",
+      "apoyo": "",
+      "codigo": "1498-2647"
+    },
+    "Montaje": {
+      "mecanico": "1360 VICTOR RUIZ R.",
+      "ayudante": "1851 PASCUAL MARTINEZ",
+      "apoyo": "631 ERNESTO ARELLANO",
+      "codigo": "1360-1851-631"
+    },
+    "Soldadura": {
+      "mecanico": "207 MIGUEL VALENCIA M.",
+      "ayudante": "813 JAVIER RIVERA M.",
+      "apoyo": "",
+      "codigo": "207-813"
+    },
+    "Retro excavadora": {
+      "mecanico": "Operador Retroexcavadora",
+      "ayudante": "",
+      "apoyo": "",
+      "codigo": ""
+    }
+  },
+  "extras": []
+}

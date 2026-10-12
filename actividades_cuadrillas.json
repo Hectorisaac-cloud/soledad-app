@@ -1,0 +1,200 @@
+{
+  "ELECTRICO": [
+    {
+      "nombre": "MANTENIMIENTO A SISTEMA DE TIERRA FISICA A SKID INHIBIDOR DE CORROSION",
+      "corto": "MTTO TIERRA FISICA SKID ICI"
+    },
+    {
+      "nombre": "MANTENIMIENTO A SISTEMA DE TIERRA FISICA A MCI",
+      "corto": "MTTO TIERRA FISICA MCI"
+    },
+    {
+      "nombre": "MANTENIMIENTO A TABLERO ELECTRICO DE MCI",
+      "corto": "MTTO TABLERO MCI"
+    },
+    {
+      "nombre": "MANTENIMIENTO A TABLERO ELECTRICO DE SKID INHIBIDOR DE CORROSION",
+      "corto": "MTTO TABLERO SKID ICI"
+    },
+    {
+      "nombre": "MANTENIMIENTO A SISTEMA DE ARRANQUE DE MCI",
+      "corto": "MTTO ARRANQUE MCI"
+    },
+    {
+      "nombre": "REVISION Y APRETADO DE CONEXIONES ELECTRICAS",
+      "corto": "REV CONEXIONES ELEC"
+    },
+    {
+      "nombre": "CAMBIO DE CABLE DE FUERZA O CONTROL",
+      "corto": "CAMBIO CABLE"
+    },
+    {
+      "nombre": "INSTALACION O REPOSICION DE TERMINALES Y CLEMAS",
+      "corto": "TERM / CLEMAS"
+    },
+    {
+      "nombre": "MEDICION DE AISLAMIENTO DE MOTORES Y CABLES",
+      "corto": "MEDICION AISLAMIENTO"
+    },
+    {
+      "nombre": "MANTENIMIENTO A ILUMINACION DE INSTALACION",
+      "corto": "MTTO ILUMINACION"
+    },
+    {
+      "nombre": "REVISION A SISTEMA DE PARO DE EMERGENCIA",
+      "corto": "REV PARO EMERGENCIA"
+    },
+    {
+      "nombre": "APOYO ELECTRICO A PUESTA EN MARCHA",
+      "corto": "APOYO PM ELECTRICO"
+    }
+  ],
+  "INSTRUMENTOS": [
+    {
+      "nombre": "MANTENIMIENTO A INSTRUMENTACION DE SKID INHIBIDOR DE CORROSION",
+      "corto": "MTTO INST SKID ICI"
+    },
+    {
+      "nombre": "MANTENIMIENTO A TABLERO DE CONTROL DE ICI GR-20",
+      "corto": "MTTO TABLERO ICI GR-20"
+    },
+    {
+      "nombre": "CALIBRACION DE TRANSMISORES DE PRESION Y TEMPERATURA",
+      "corto": "CALIB TX P/T"
+    },
+    {
+      "nombre": "REVISION DE SENSORES Y SWITCHES DE MCI",
+      "corto": "REV SENSORES MCI"
+    },
+    {
+      "nombre": "MANTENIMIENTO A SISTEMA DE CONTROL DE UBM",
+      "corto": "MTTO CONTROL UBM"
+    },
+    {
+      "nombre": "VERIFICACION DE LAZOS DE CONTROL E INSTRUMENTACION",
+      "corto": "VERIF LAZOS CONTROL"
+    },
+    {
+      "nombre": "CAMBIO O AJUSTE DE INSTRUMENTOS DE CAMPO",
+      "corto": "CAMBIO / AJUSTE INST"
+    },
+    {
+      "nombre": "REVISION A SISTEMA DE MEDICION",
+      "corto": "REV MEDICION"
+    },
+    {
+      "nombre": "APOYO A PUESTA EN MARCHA DE INSTRUMENTACION",
+      "corto": "APOYO PM INST"
+    }
+  ],
+  "MECANICOS": [
+    {
+      "nombre": "Apoyo a puesta en marcha a MCI y UBM",
+      "corto": "APOYO PM MCI/UBM"
+    },
+    {
+      "nombre": "Habilitado de MCI y UBM",
+      "corto": "HAB MCI/UBM"
+    },
+    {
+      "nombre": "Inspección y suministro",
+      "corto": "INSP Y SUMINISTRO"
+    },
+    {
+      "nombre": "Mantenimiento bimestral a MCI",
+      "corto": "MTTO BIM MCI"
+    },
+    {
+      "nombre": "Mantenimiento bimestral a UBM",
+      "corto": "MTTO BIM UBM"
+    },
+    {
+      "nombre": "Mantenimiento semestral a MCI",
+      "corto": "MTTO SEM MCI"
+    },
+    {
+      "nombre": "Mantenimiento semestral a UBM",
+      "corto": "MTTO SEM UBM"
+    },
+    {
+      "nombre": "Recuperación de componentes",
+      "corto": "RECUP COMPONENTES"
+    },
+    {
+      "nombre": "Restablecimiento a MCI",
+      "corto": "REST MCI"
+    },
+    {
+      "nombre": "Restablecimiento de ICI GR-20",
+      "corto": "REST ICI GR-20"
+    },
+    {
+      "nombre": "Revisión a ICI- GR-20",
+      "corto": "REV ICI GR-20"
+    },
+    {
+      "nombre": "Revisión a MCI",
+      "corto": "REV MCI"
+    }
+  ],
+  "MONTAJE": [
+    {
+      "nombre": "MONTAJE Y DESMONTAJE DE COMPONENTES DE MCI",
+      "corto": "MONTAJE / DESM MCI"
+    },
+    {
+      "nombre": "MONTAJE Y DESMONTAJE DE COMPONENTES DE UBM",
+      "corto": "MONTAJE / DESM UBM"
+    },
+    {
+      "nombre": "MONTAJE DE SKID O BASE DE EQUIPO",
+      "corto": "MONTAJE SKID / BASE"
+    },
+    {
+      "nombre": "ALINEACION DE EQUIPO",
+      "corto": "ALINEACION"
+    },
+    {
+      "nombre": "IZAJE Y POSICIONAMIENTO DE COMPONENTES",
+      "corto": "IZAJE / POSICION"
+    },
+    {
+      "nombre": "INSTALACION DE SOPORTERIA",
+      "corto": "SOPORTERIA"
+    },
+    {
+      "nombre": "APOYO A HABILITADO DE MCI Y UBM",
+      "corto": "APOYO HAB MCI/UBM"
+    }
+  ],
+  "SOLDADURA": [
+    {
+      "nombre": "SOLDADURA ESTRUCTURAL EN INSTALACION",
+      "corto": "SOLD ESTRUCTURAL"
+    },
+    {
+      "nombre": "SOLDADURA EN TUBERIA Y ACCESORIOS",
+      "corto": "SOLD TUBERIA"
+    },
+    {
+      "nombre": "REPARACION POR SOLDADURA DE COMPONENTES",
+      "corto": "REPARACION SOLD"
+    },
+    {
+      "nombre": "CORTE Y DESBASTE DE MATERIAL",
+      "corto": "CORTE / DESBASTE"
+    },
+    {
+      "nombre": "FABRICACION DE SOPORTES O HERRAJES",
+      "corto": "FAB SOPORTES"
+    },
+    {
+      "nombre": "SOLDADURA EN BASES DE EQUIPO",
+      "corto": "SOLD BASES EQUIPO"
+    },
+    {
+      "nombre": "CORTE Y SOLDADURA A PROTECCION DE MCI",
+      "corto": "CORTE Y SOLDADURA MCI"
+    }
+  ]
+}

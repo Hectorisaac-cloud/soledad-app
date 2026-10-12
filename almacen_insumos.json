@@ -1,0 +1,45 @@
+{
+  "catalogo": [
+    {
+      "id": "aceite-sae-50",
+      "nombre": "Aceite SAE 50",
+      "unidad": "L",
+      "columna_excel": "ACEITE (LTS)",
+      "precargado": true,
+      "activo": true
+    },
+    {
+      "id": "refrigerante",
+      "nombre": "Refrigerante",
+      "unidad": "L",
+      "columna_excel": "REFRIGERANTE (LTS)",
+      "precargado": true,
+      "activo": true
+    },
+    {
+      "id": "grasa",
+      "nombre": "Grasa",
+      "unidad": "Kg",
+      "columna_excel": "GRASA (KG)",
+      "precargado": true,
+      "activo": true
+    },
+    {
+      "id": "filtro-de-aceite",
+      "nombre": "Filtro de aceite",
+      "unidad": "Pzas",
+      "columna_excel": "FILTROS (PZAS)",
+      "precargado": true,
+      "activo": true
+    },
+    {
+      "id": "bujias",
+      "nombre": "Bujías",
+      "unidad": "Pzas",
+      "columna_excel": "BUJÍAS (PZAS)",
+      "precargado": true,
+      "activo": true
+    }
+  ],
+  "movimientos": []
+}

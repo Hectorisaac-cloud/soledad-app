@@ -1,0 +1,43 @@
+{
+  "sectores": [
+    "Almacen OPS (AOPS)",
+    "Aragon (A)",
+    "Base PJP4",
+    "Bateria de Separacion Soledad I (BSI)",
+    "Bateria de Separacion Soledad II (BSII)",
+    "Bateria de Separacion Soledad Norte (BSNI)",
+    "Bateria Palo Blanco (BPB)",
+    "Coyotes (Coy)",
+    "Estacion de Compresion Soledad Norte (ECSII)",
+    "Gallo (GA)",
+    "Palo Blanco (PB)",
+    "Soledad (S)",
+    "Soledad Norte (SN)",
+    "Otro (Especificar)"
+  ],
+  "sectores_sin_pozo": [
+    "Almacen OPS (AOPS)",
+    "Base PJP4",
+    "Bateria de Separacion Soledad I (BSI)",
+    "Bateria de Separacion Soledad II (BSII)",
+    "Bateria de Separacion Soledad Norte (BSNI)",
+    "Bateria Palo Blanco (BPB)",
+    "Estacion de Compresion Soledad Norte (ECSII)"
+  ],
+  "equipos_mci": [
+    "MCI tipo Arrow",
+    "MCI tipo Weichai",
+    "MCI tipo Vortec V6",
+    "MCI tipo Vortec V8",
+    "MCI tipo Cummins"
+  ],
+  "equipos_ub": [
+    "UBM tipo Weatherford",
+    "UBM tipo Lufkin",
+    "HLU (Unidad Hidráulica)"
+  ],
+  "equipos_otros": [
+    "ICI GR-20",
+    "Ninguno"
+  ]
+}
