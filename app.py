@@ -7366,7 +7366,292 @@ def _registro_control_vacio(registro: dict) -> bool:
     )
 
 
-def render_programados_ops_excel(anio: int, mes: int) -> None:
+_RE_CODIGO_OPS = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+){1,6}")
+EXTENSIONES_FOTO_OPS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+COLUMNAS_TEXTO_BITACORA_OPS = (
+    "CUADRILLA",
+    "SECUENCIA",
+    "UBICACIÓN",
+    "EQUIPO/UBICACIÓN",
+    "POZO",
+    "SECTOR",
+    "DESCRIPCION DE LA ACTIVIDAD",
+    "DESCRIPCIÓN DE LA ACTIVIDAD",
+    "ACTIVIDAD CORTA",
+    "TIPO DE ACTIVIDAD",
+    "COMENTARIOS",
+)
+
+
+def _compacto_busqueda(texto: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", _sin_acentos(texto).casefold())
+
+
+def agujas_evidencia_ops(codigo: str, equipo: str) -> list[str]:
+    agujas: list[str] = []
+
+    def agregar(texto: str) -> None:
+        compacto = _compacto_busqueda(texto)
+        if len(compacto) < 4 or compacto in agujas:
+            return
+        if not re.search(r"[a-z]", compacto) or not re.search(r"\d", compacto):
+            return
+        agujas.append(compacto)
+
+    agregar(codigo)
+    for texto in (codigo, equipo):
+        for coincidencia in _RE_CODIGO_OPS.findall(str(texto or "")):
+            agregar(coincidencia)
+    return agujas
+
+
+def texto_contiene_agujas(texto: str, agujas: list[str]) -> bool:
+    if not agujas:
+        return False
+    plano = re.sub(r"[^a-z0-9]+", " ", _sin_acentos(texto).casefold())
+    partes = [parte for parte in plano.split() if parte]
+    if not partes:
+        return False
+    unidos = set(partes)
+    for largo in (2, 3, 4):
+        for inicio in range(len(partes) - largo + 1):
+            unidos.add("".join(partes[inicio : inicio + largo]))
+    for aguja in agujas:
+        if aguja in unidos:
+            return True
+        if len(aguja) < 5:
+            continue
+        for parte in partes:
+            if parte == aguja or not parte.endswith(aguja):
+                continue
+            prefijo = parte[: -len(aguja)]
+            if prefijo.isalpha() and len(prefijo) <= 2:
+                return True
+    return False
+
+
+def _casilla_marcada(valor) -> bool:
+    if valor is None:
+        return False
+    try:
+        if pd.isna(valor):
+            return False
+    except (TypeError, ValueError):
+        pass
+    return bool(valor)
+
+
+def firma_evidencia_octubre() -> tuple:
+    carpeta = EVIDENCIA_OCTUBRE_DIR
+    if not os.path.isdir(carpeta):
+        return (0, 0.0)
+    total = 0
+    reciente = 0.0
+    for raiz, dirs, archivos in os.walk(carpeta):
+        dirs[:] = [nombre for nombre in dirs if not nombre.startswith(".")]
+        for nombre in archivos:
+            if nombre.startswith("~$"):
+                continue
+            total += 1
+            try:
+                reciente = max(reciente, os.path.getmtime(os.path.join(raiz, nombre)))
+            except OSError:
+                continue
+    return (total, reciente)
+
+
+@st.cache_data(show_spinner=False)
+def indice_fotos_octubre(firma: tuple) -> list[dict]:
+    _ = firma
+    fotos = []
+    carpeta = EVIDENCIA_OCTUBRE_DIR
+    if not os.path.isdir(carpeta):
+        return fotos
+    for raiz, dirs, archivos in os.walk(carpeta):
+        dirs[:] = [nombre for nombre in dirs if not nombre.startswith(".")]
+        for nombre in archivos:
+            if nombre.startswith("~$"):
+                continue
+            if os.path.splitext(nombre)[1].lower() not in EXTENSIONES_FOTO_OPS:
+                continue
+            ruta = os.path.join(raiz, nombre)
+            if not os.path.isfile(ruta):
+                continue
+            rel = os.path.relpath(ruta, carpeta).replace("\\", "/")
+            fotos.append({"ruta": ruta.replace("\\", "/"), "rel": rel, "nombre": nombre})
+    return fotos
+
+
+def _texto_fila_bitacora(fila) -> str:
+    return " ".join(str(fila.get(col) or "") for col in COLUMNAS_TEXTO_BITACORA_OPS)
+
+
+def buscar_evidencias_ops(
+    codigo: str,
+    equipo: str,
+    df_bitacora: pd.DataFrame | None,
+    anio: int,
+    mes: int,
+) -> dict:
+    agujas = agujas_evidencia_ops(codigo, equipo)
+    fotos_directas = []
+    if agujas:
+        for foto in indice_fotos_octubre(firma_evidencia_octubre()):
+            if texto_contiene_agujas(foto["rel"], agujas):
+                fotos_directas.append(foto["ruta"])
+    bitacoras = []
+    if agujas and df_bitacora is not None and not df_bitacora.empty:
+        for _, fila in df_bitacora.iterrows():
+            dia = parsear_fecha_valor(fila.get("FECHA"))
+            if dia is None or dia.year != int(anio) or dia.month != int(mes):
+                continue
+            if not texto_contiene_agujas(_texto_fila_bitacora(fila), agujas):
+                continue
+            fotos = [ruta for ruta in rutas_fotos_fila(fila) if ruta and os.path.isfile(ruta)]
+            ubicacion = str(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or fila.get("POZO") or "").strip()
+            descripcion = str(
+                fila.get("DESCRIPCION DE LA ACTIVIDAD")
+                or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD")
+                or fila.get("ACTIVIDAD CORTA")
+                or ""
+            ).strip()
+            bitacoras.append(
+                {
+                    "fecha": dia,
+                    "cuadrilla": str(fila.get("CUADRILLA") or "").strip(),
+                    "secuencia": str(fila.get("SECUENCIA") or "").strip(),
+                    "ubicacion": ubicacion,
+                    "descripcion": descripcion,
+                    "fotos": fotos,
+                }
+            )
+    bitacoras.sort(key=lambda item: (item["fecha"], item["cuadrilla"], item["secuencia"]))
+    fotos = []
+    vistos: set[str] = set()
+    for registro in bitacoras:
+        for ruta in registro["fotos"]:
+            if ruta not in vistos:
+                fotos.append(ruta)
+                vistos.add(ruta)
+    for ruta in fotos_directas:
+        if ruta not in vistos:
+            fotos.append(ruta)
+            vistos.add(ruta)
+    pdfs = []
+    if bitacoras:
+        por_fecha = {reporte["fecha"]: reporte for reporte in listar_reportes_ot_diarios()}
+        vistos_pdf: set[date] = set()
+        for registro in bitacoras:
+            dia = registro["fecha"]
+            reporte = por_fecha.get(dia)
+            if reporte and dia not in vistos_pdf:
+                pdfs.append(reporte)
+                vistos_pdf.add(dia)
+    return {"agujas": agujas, "bitacoras": bitacoras, "fotos": fotos, "pdfs": pdfs}
+
+
+def render_panel_evidencias_ops(
+    codigo: str,
+    equipo: str,
+    actividad: str,
+    fecha_programada: str,
+    df_bitacora: pd.DataFrame | None,
+    anio: int,
+    mes: int,
+) -> None:
+    etiqueta = etiqueta_mes(clave_mes(anio, mes))
+    titulo = codigo or equipo or "esta actividad"
+    st.markdown(f"##### Evidencias · {titulo}")
+    st.caption(
+        f"{equipo} · programada el {fecha_programada}. "
+        f"Se buscó el código en `{EVIDENCIA_OCTUBRE_DIR}` y en la bitácora de {etiqueta}."
+    )
+    if actividad:
+        st.caption(actividad)
+    resultado = buscar_evidencias_ops(codigo, equipo, df_bitacora, anio, mes)
+    if not resultado["agujas"]:
+        st.info("Esta fila no tiene un código o equipo con el cual buscar evidencias.")
+        return
+    if not resultado["bitacoras"] and not resultado["fotos"]:
+        st.info(
+            f"No hay bitácoras ni fotografías que coincidan con {titulo} "
+            f"en {etiqueta} ni en {EVIDENCIA_OCTUBRE_DIR}."
+        )
+        return
+    if resultado["bitacoras"]:
+        st.markdown("**Bitácora coincidente**")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "Fecha": item["fecha"].strftime("%d/%m/%Y"),
+                        "Cuadrilla": item["cuadrilla"],
+                        "Secuencia": item["secuencia"],
+                        "Ubicación": item["ubicacion"],
+                        "Descripción": item["descripcion"],
+                    }
+                    for item in resultado["bitacoras"]
+                ]
+            ),
+            hide_index=True,
+            width="stretch",
+        )
+    if resultado["pdfs"]:
+        st.markdown("**Orden de trabajo del día**")
+        columnas_pdf = st.columns(min(len(resultado["pdfs"]), 3))
+        for indice, reporte in enumerate(resultado["pdfs"]):
+            with columnas_pdf[indice % len(columnas_pdf)]:
+                with open(reporte["ruta"], "rb") as archivo:
+                    st.download_button(
+                        f"OT · {reporte['fecha'].strftime('%d/%m/%Y')}",
+                        data=archivo.read(),
+                        file_name=reporte["nombre"],
+                        mime="application/pdf",
+                        key=f"ot_ops_{anio}_{mes}_{_compacto_busqueda(titulo)}_{reporte['fecha'].isoformat()}",
+                        width="stretch",
+                    )
+    fotos = resultado["fotos"]
+    if not fotos:
+        st.caption("La bitácora coincide, y esa secuencia no tiene fotografías en la carpeta de octubre.")
+        return
+    mostradas = fotos[:18]
+    st.markdown(f"**Fotografías · {len(fotos)}**")
+    if len(fotos) > len(mostradas):
+        st.caption(f"Se muestran {len(mostradas)} de {len(fotos)}.")
+    for inicio in range(0, len(mostradas), 3):
+        columnas = st.columns(3, gap="small")
+        for columna, ruta in zip(columnas, mostradas[inicio : inicio + 3]):
+            with columna:
+                st.image(ruta, width="stretch")
+                st.caption(os.path.relpath(ruta, EVIDENCIA_OCTUBRE_DIR).replace("\\", "/"))
+
+
+def _cerrar_dialogo_evidencias_ops() -> None:
+    abierto = st.session_state.get("ops_evidencia_abierta") or {}
+    st.session_state.ops_evidencia_cerrada = abierto.get("id")
+    st.session_state.ops_evidencia_abierta = None
+
+
+@st.dialog("Evidencias de la actividad", width="large", on_dismiss=_cerrar_dialogo_evidencias_ops)
+def dialogo_evidencias_ops() -> None:
+    datos = st.session_state.get("ops_evidencia_abierta") or {}
+    if not datos:
+        return
+    bitacora = st.session_state.get("ops_df_bitacora")
+    if not isinstance(bitacora, pd.DataFrame):
+        bitacora = cargar_bitacora()
+    render_panel_evidencias_ops(
+        str(datos.get("codigo") or ""),
+        str(datos.get("equipo") or ""),
+        str(datos.get("actividad") or ""),
+        str(datos.get("fecha") or ""),
+        bitacora,
+        int(datos.get("anio") or date.today().year),
+        int(datos.get("mes") or date.today().month),
+    )
+
+
+def render_programados_ops_excel(anio: int, mes: int, df_bitacora: pd.DataFrame | None = None) -> None:
     carpeta = directorio_programas_mtto()
     etiqueta = etiqueta_mes(clave_mes(anio, mes))
     st.caption(
@@ -7395,6 +7680,7 @@ def render_programados_ops_excel(anio: int, mes: int) -> None:
     especialidades.extend(extra)
     pestanas_nombre = ["Todos"] + especialidades
     control = leer_control_programa_octubre()
+    evidencia_elegida = None
     pestanas = st.tabs(pestanas_nombre)
     for pestana, nombre_pestana in zip(pestanas, pestanas_nombre):
         with pestana:
@@ -7420,6 +7706,7 @@ def render_programados_ops_excel(anio: int, mes: int) -> None:
                 registros.append(
                     {
                         "_id": clave,
+                        "Ver Evidencias": False,
                         "Estatus": estatus_guardado_actividad(guardado),
                         "Observaciones": str(guardado.get("observaciones") or ""),
                         "Nro": item["nro"],
@@ -7432,10 +7719,14 @@ def render_programados_ops_excel(anio: int, mes: int) -> None:
                 )
             tabla = pd.DataFrame(registros)
             cumplidos = int((tabla["Estatus"] == "Cumplido").sum()) if not tabla.empty else 0
-            st.caption(f"{len(tabla)} actividades · {cumplidos} cumplidas · {len(tabla) - cumplidos} no cumplidas")
+            st.caption(
+                f"{len(tabla)} actividades · {cumplidos} cumplidas · {len(tabla) - cumplidos} no cumplidas. "
+                "Marca Ver Evidencias en una fila para abrir sus fotos y la bitácora."
+            )
             editada = st.data_editor(
                 tabla,
                 column_order=[
+                    "Ver Evidencias",
                     "Estatus",
                     "Observaciones",
                     "Nro",
@@ -7446,6 +7737,7 @@ def render_programados_ops_excel(anio: int, mes: int) -> None:
                     "Fecha Programada",
                 ],
                 column_config={
+                    "Ver Evidencias": st.column_config.CheckboxColumn("Ver Evidencias", default=False),
                     "Estatus": st.column_config.SelectboxColumn(
                         "Estatus",
                         options=list(ESTATUS_OPS_EXCEL),
@@ -7479,6 +7771,25 @@ def render_programados_ops_excel(anio: int, mes: int) -> None:
                 cambio = True
             if cambio:
                 guardar_control_programa_octubre(control)
+            marcadas = [fila for _, fila in editada.iterrows() if _casilla_marcada(fila.get("Ver Evidencias"))]
+            if marcadas:
+                fila_evidencia = marcadas[-1]
+                evidencia_elegida = {
+                    "id": str(fila_evidencia.get("_id") or ""),
+                    "codigo": str(fila_evidencia.get("Cód") or ""),
+                    "equipo": str(fila_evidencia.get("Equipo") or ""),
+                    "actividad": str(fila_evidencia.get("Actividad") or ""),
+                    "fecha": str(fila_evidencia.get("Fecha Programada") or ""),
+                    "anio": int(anio),
+                    "mes": int(mes),
+                }
+    if evidencia_elegida and st.session_state.get("ops_evidencia_cerrada") != evidencia_elegida["id"]:
+        st.session_state.ops_evidencia_abierta = evidencia_elegida
+        st.session_state.ops_df_bitacora = df_bitacora if isinstance(df_bitacora, pd.DataFrame) else cargar_bitacora()
+        dialogo_evidencias_ops()
+    elif not evidencia_elegida:
+        st.session_state.ops_evidencia_cerrada = None
+        st.session_state.ops_evidencia_abierta = None
 
 
 def render_control_programados() -> None:
@@ -7562,7 +7873,7 @@ def render_control_programados() -> None:
     )
 
     if sub == "ops":
-        render_programados_ops_excel(int(anio), int(mes))
+        render_programados_ops_excel(int(anio), int(mes), df_bitacora)
 
     elif sub == "imprevistos":
         st.caption(
