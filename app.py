@@ -7147,6 +7147,7 @@ def etiqueta_registro(df: pd.DataFrame, idx: int) -> str:
 
 
 def render_revision_bitacoras() -> None:
+    render_captura_bitacora_admin()
     st.markdown('<div class="section-title">Revisión de bitácoras</div>', unsafe_allow_html=True)
     st.caption(
         f"Fuente operativa: `{EXCEL_FILE}`. "
@@ -8255,7 +8256,7 @@ def dialogo_evidencias_ops() -> None:
     )
 
 
-def render_interruptor_edicion_ops() -> bool:
+def render_interruptor_edicion_ops(*, contexto: str = "ops") -> bool:
     with st.container(border=True):
         col_ctrl, col_ayuda = st.columns([1.25, 2.3], vertical_alignment="center")
         with col_ctrl:
@@ -8263,23 +8264,35 @@ def render_interruptor_edicion_ops() -> bool:
                 st.toggle(
                     "Modo Edición Administrador",
                     key="ops_modo_edicion_admin",
-                    help="Actívalo para registrar una actividad en la bitácora o para marcar un programado como Cumplido.",
+                    help=(
+                        "Actívalo para registrar una actividad y subir sus fotos."
+                        if contexto == "bitacora"
+                        else "Actívalo para marcar una actividad como Cumplido y vincular el reporte de campo."
+                    ),
                 )
             )
         with col_ayuda:
-            if activo:
-                st.markdown(
-                    '<p class="ops-modo-ayuda"><b>Edición activa.</b> '
-                    "Registra una actividad nueva en la bitácora, o marca <b>Vincular</b> "
-                    "y cambia el estatus a <b>Cumplido</b> para ligar la evidencia de campo.</p>",
-                    unsafe_allow_html=True,
+            if contexto == "bitacora" and activo:
+                ayuda = (
+                    "<b>Edición activa.</b> Completa el formulario de abajo para guardar "
+                    "la actividad en la bitácora y adjuntar las fotografías."
+                )
+            elif contexto == "bitacora":
+                ayuda = (
+                    "Activa el modo para abrir el formulario de registro. "
+                    "Ahí se captura la actividad del día y la evidencia fotográfica."
+                )
+            elif activo:
+                ayuda = (
+                    "<b>Edición activa.</b> Marca <b>Vincular</b> en la fila, o cambia el estatus a "
+                    "<b>Cumplido</b>, para abrir el asistente: fecha, cuadrilla y evidencia."
                 )
             else:
-                st.markdown(
-                    '<p class="ops-modo-ayuda">La tabla está en consulta. '
-                    "Activa el modo para habilitar el estatus y vincular la evidencia de campo.</p>",
-                    unsafe_allow_html=True,
+                ayuda = (
+                    "La tabla está en consulta. "
+                    "Activa el modo para habilitar el estatus y vincular la evidencia de campo."
                 )
+            st.markdown(f'<p class="ops-modo-ayuda">{ayuda}</p>', unsafe_allow_html=True)
     return activo
 
 
@@ -8506,11 +8519,12 @@ def render_registro_actividad_bitacora() -> None:
     epoch = int(st.session_state.get("bitacora_form_epoch") or 0)
     opciones = catalogo_cuadrillas_historial(bitacora_con_fechas(cargar_bitacora()))
     otra = "Otra (escribir)"
-    with st.expander("➕ Registrar Actividad en Bitácora", expanded=True):
-        st.caption(
-            "El registro se agrega a la bitácora operativa. "
-            "Si adjuntas fotos, se guardan en evidencia_fotografica_octubre, en la carpeta de la cuadrilla, la fecha y la secuencia."
-        )
+    st.markdown('<div class="section-title">➕ Registrar Actividad en Bitácora</div>', unsafe_allow_html=True)
+    st.caption(
+        "El registro se agrega a la bitácora operativa. "
+        "Si adjuntas fotos, se guardan en evidencia_fotografica_octubre, en la carpeta de la cuadrilla, la fecha y la secuencia."
+    )
+    with st.container(border=True):
         col_fecha, col_cuadrilla = st.columns(2, gap="medium")
         with col_fecha:
             fecha = st.date_input(
@@ -8601,6 +8615,14 @@ def render_registro_actividad_bitacora() -> None:
                     st.rerun()
 
 
+def render_captura_bitacora_admin() -> None:
+    activo = render_interruptor_edicion_ops(contexto="bitacora")
+    if activo:
+        render_registro_actividad_bitacora()
+    else:
+        st.info("Activa Modo Edición Administrador para registrar una actividad y subir las fotos de evidencia.")
+
+
 def render_control_programados() -> None:
     st.markdown(
         '<div class="section-title">Control de programados vs no programados</div>',
@@ -8679,8 +8701,6 @@ def render_control_programados() -> None:
     if sub == "ops":
         st.markdown(f'<div class="explorer-crumb">{ruta_programados}</div>', unsafe_allow_html=True)
         modo_edicion_ops = render_interruptor_edicion_ops()
-        if modo_edicion_ops:
-            render_registro_actividad_bitacora()
         if st.button("← Volver a Programados", key="volver_admin_sub_programados"):
             st.session_state.admin_sub_programados = None
             st.rerun()
@@ -17626,6 +17646,12 @@ def render_dashboard_ejecutivo() -> None:
 
 MODULOS_ADMIN = [
     {
+        "id": "registro_bitacora",
+        "icono": "➕",
+        "titulo": "Registrar Actividad en Bitácora",
+        "descripcion": "Captura la actividad del día, la cuadrilla, los consumibles y las fotos de evidencia.",
+    },
+    {
         "id": "dashboard",
         "icono": "📈",
         "titulo": "Dashboard Ejecutivo",
@@ -18037,6 +18063,7 @@ def render_mini_calendario_admin(jornada: date, fechas_bit: set, fechas_ot: set)
 
 def render_explorador_admin() -> None:
     st.caption("Distribución perimetral de módulos con núcleo de control temporal y métricas.")
+    render_captura_bitacora_admin()
     pendiente = st.session_state.pop("admin_jornada_pendiente", None)
     if isinstance(pendiente, date):
         st.session_state.admin_jornada = pendiente
@@ -18139,6 +18166,8 @@ def render_explorador_admin() -> None:
     with col_der:
         st.markdown("#### ✍️ Administración")
         st.caption("Entrada de datos")
+        if st.button("➕ Registrar actividad en bitácora", use_container_width=True, key="adm_registro_bitacora"):
+            abrir_modulo_admin("registro_bitacora")
         if st.button("📝 Editor de asignaciones", use_container_width=True, key="adm_asig"):
             st.session_state.fecha_asignacion_admin = jornada
             abrir_modulo_admin("asignaciones")
@@ -18231,7 +18260,9 @@ def render_panel_administrativo() -> None:
         return
 
     render_barra_modulo_admin(modulo["titulo"])
-    if modulo_id == "dashboard":
+    if modulo_id == "registro_bitacora":
+        render_captura_bitacora_admin()
+    elif modulo_id == "dashboard":
         render_dashboard_ejecutivo()
     elif modulo_id == "ot_diario":
         render_historial_diario_ot()
