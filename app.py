@@ -13,6 +13,7 @@ import tempfile
 import unicodedata
 import uuid
 from datetime import date, datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 
 import pandas as pd
 import plotly.express as px
@@ -956,6 +957,13 @@ st.markdown(
             margin-bottom: 0.85rem;
         }
         .explorer-crumb b { color: #86efac; }
+        .ops-modo-ayuda {
+            margin: 0.35rem 0 0;
+            color: #cbd5e1;
+            font-size: 0.92rem;
+            line-height: 1.35;
+        }
+        .ops-modo-ayuda b { color: #86efac; }
         .cal-wrap {
             background: #0f172a;
             border: 1px solid #334155;
@@ -7359,6 +7367,8 @@ def _texto_observacion_editor(valor) -> str:
 
 
 def _registro_control_vacio(registro: dict) -> bool:
+    if isinstance(registro.get("evidencia_campo"), dict) and registro.get("evidencia_campo"):
+        return False
     return (
         registro.get("estatus", "No Cumplido") != "Cumplido"
         and not registro.get("observaciones")
@@ -7550,6 +7560,346 @@ def buscar_evidencias_ops(
     return {"agujas": agujas, "bitacoras": bitacoras, "fotos": fotos, "pdfs": pdfs}
 
 
+def _hora_foto_exif(ruta: str) -> str:
+    try:
+        from PIL import Image
+        from PIL.ExifTags import TAGS
+    except Exception:
+        return ""
+    try:
+        with Image.open(ruta) as imagen:
+            exif = imagen.getexif()
+            if not exif:
+                return ""
+            bloques = [exif]
+            try:
+                sub = exif.get_ifd(0x8769)
+                if sub:
+                    bloques.append(sub)
+            except Exception:
+                pass
+            preferida = ""
+            respaldo = ""
+            for bloque in bloques:
+                for clave, valor in bloque.items():
+                    nombre = TAGS.get(clave, clave)
+                    if nombre not in {"DateTimeOriginal", "DateTimeDigitized", "DateTime"}:
+                        continue
+                    coincidencia = re.search(r"(?:^|\s)(\d{1,2}):(\d{2})(?::\d{2})?", str(valor or ""))
+                    if not coincidencia:
+                        continue
+                    hora = int(coincidencia.group(1))
+                    minuto = int(coincidencia.group(2))
+                    if not (0 <= hora <= 23 and 0 <= minuto <= 59):
+                        continue
+                    texto = f"{hora:02d}:{minuto:02d}"
+                    if nombre == "DateTimeOriginal":
+                        preferida = texto
+                    elif not respaldo:
+                        respaldo = texto
+            return preferida or respaldo
+    except Exception:
+        return ""
+
+
+@st.cache_data(show_spinner=False)
+def _hora_foto_exif_cache(ruta: str, mtime_ms: int) -> str:
+    _ = mtime_ms
+    return _hora_foto_exif(ruta)
+
+
+def hora_reporte_campo(fotos: list[str]) -> str:
+    for ruta in fotos[:3]:
+        if not ruta or not os.path.isfile(ruta):
+            continue
+        try:
+            marca = _hora_foto_exif_cache(ruta, int(os.path.getmtime(ruta) * 1000))
+        except OSError:
+            continue
+        if marca:
+            return marca
+    return ""
+
+
+def texto_vinculo_evidencia(evidencia) -> str:
+    if not isinstance(evidencia, dict) or not evidencia:
+        return ""
+    fecha = parsear_fecha_valor(evidencia.get("fecha"))
+    fecha_txt = fecha.strftime("%d/%m/%Y") if fecha else str(evidencia.get("fecha") or "").strip()
+    cuadrilla = etiqueta_cuadrilla_historial(str(evidencia.get("cuadrilla") or ""))
+    hora = str(evidencia.get("hora") or "").strip()
+    secuencia = str(evidencia.get("secuencia") or "").strip()
+    partes = [parte for parte in [fecha_txt, cuadrilla, hora, f"Sec. {secuencia}" if secuencia else ""] if parte and parte != "Sin cuadrilla"]
+    if cuadrilla == "Sin cuadrilla" and not any(partes):
+        return ""
+    if cuadrilla == "Sin cuadrilla":
+        partes.insert(1, cuadrilla)
+    return " · ".join(partes)
+
+
+def cuadrillas_activas_en_fecha(df: pd.DataFrame | None, dia: date) -> list[dict]:
+    if df is None or df.empty or dia is None:
+        return []
+    del_dia = bitacora_del_dia(bitacora_con_fechas(df), dia)
+    if del_dia.empty or "CUADRILLA" not in del_dia.columns:
+        return []
+    vistos: dict[str, dict] = {}
+    for _, fila in del_dia.iterrows():
+        nombre = str(fila.get("CUADRILLA") or "").strip()
+        clave = clave_hist_cuadrilla(nombre) or "__sin_cuadrilla__"
+        item = vistos.get(clave)
+        if item is None:
+            vistos[clave] = {"cuadrilla": nombre, "reportes": 1, "clave": clave}
+        else:
+            item["reportes"] += 1
+    return sorted(vistos.values(), key=lambda item: etiqueta_cuadrilla_historial(item["cuadrilla"]).casefold())
+
+
+def reportes_cuadrilla_en_fecha(df: pd.DataFrame | None, dia: date, cuadrilla: str) -> list[dict]:
+    if df is None or df.empty or dia is None or cuadrilla is None:
+        return []
+    del_dia = bitacora_del_dia(bitacora_con_fechas(df), dia)
+    bloque = bloque_historial_cuadrilla(del_dia, cuadrilla)
+    if bloque.empty:
+        return []
+    reportes = []
+    for fila in filas_secuencia_historial(bloque):
+        nombre = str(fila.get("CUADRILLA") or cuadrilla).strip() or cuadrilla
+        fotos = [
+            str(ruta).replace("\\", "/")
+            for ruta in fotos_actividad_ot(fila, dia, nombre)
+            if ruta and os.path.isfile(str(ruta))
+        ]
+        descripcion = texto_visible(
+            fila.get("DESCRIPCION DE LA ACTIVIDAD") or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD"),
+            "Sin descripción",
+        )
+        ubicacion = texto_visible(
+            fila.get("UBICACIÓN") or fila.get("POZO") or fila.get("SECTOR") or fila.get("EQUIPO/UBICACIÓN"),
+            "",
+        )
+        secuencia = texto_secuencia_limpio(fila.get("SECUENCIA"))
+        reportes.append(
+            {
+                "id_registro": id_registro_fila(fila),
+                "secuencia": secuencia,
+                "hora": hora_reporte_campo(fotos),
+                "descripcion": descripcion,
+                "ubicacion": ubicacion,
+                "cuadrilla": nombre,
+                "fotos": fotos,
+            }
+        )
+    return reportes
+
+
+def guardar_cumplimiento_con_evidencia(clave: str, evidencia: dict) -> None:
+    control = leer_control_programa_octubre()
+    previo = control.get(clave) if isinstance(control.get(clave), dict) else {}
+    nuevo = dict(previo or {})
+    nuevo["estatus"] = "Cumplido"
+    nuevo["realizado"] = True
+    nuevo["evidencia_campo"] = evidencia
+    control[clave] = nuevo
+    guardar_control_programa_octubre(control)
+
+
+def render_vinculo_evidencia_guardado(vinculo: dict | None) -> None:
+    if not isinstance(vinculo, dict) or not vinculo:
+        return
+    st.markdown("**Evidencia de campo vinculada**")
+    resumen = texto_vinculo_evidencia(vinculo)
+    if resumen:
+        st.caption(resumen)
+    descripcion = str(vinculo.get("descripcion") or "").strip()
+    if descripcion:
+        st.write(descripcion)
+    ubicacion = str(vinculo.get("ubicacion") or "").strip()
+    if ubicacion:
+        st.caption(ubicacion)
+    fotos = [str(ruta) for ruta in (vinculo.get("fotos") or []) if ruta and os.path.isfile(str(ruta))]
+    if fotos:
+        render_grid_evidencia_actividad(fotos)
+    else:
+        st.caption("Este vínculo no tiene fotografías disponibles en disco.")
+
+
+def _cerrar_dialogo_validar_ops() -> None:
+    if st.session_state.pop("ops_val_confirmado", False):
+        st.session_state.ops_validar_abierta = None
+        return
+    abierto = st.session_state.get("ops_validar_abierta") or {}
+    st.session_state.ops_validar_cancelada = abierto.get("id")
+    st.session_state.ops_editor_epoch = int(st.session_state.get("ops_editor_epoch") or 0) + 1
+    st.session_state.ops_val_paso = 1
+    st.session_state.ops_val_id = None
+    st.session_state.pop("ops_val_cuadrilla", None)
+    st.session_state.ops_validar_abierta = None
+
+
+def _bitacora_dialogo_ops() -> pd.DataFrame:
+    bitacora = st.session_state.get("ops_df_bitacora")
+    if isinstance(bitacora, pd.DataFrame):
+        return bitacora
+    return cargar_bitacora()
+
+
+def _refrescar_paso_dialogo() -> None:
+    try:
+        st.rerun(scope="fragment")
+    except Exception as exc:
+        if exc.__class__.__name__ != "StreamlitAPIException":
+            raise
+        st.rerun()
+
+
+@st.dialog("Vincular evidencia y marcar cumplido", width="large", on_dismiss=_cerrar_dialogo_validar_ops)
+def dialogo_vincular_cumplido_ops() -> None:
+    datos = st.session_state.get("ops_validar_abierta") or {}
+    if not datos:
+        return
+    if st.session_state.get("ops_val_id") != datos.get("id"):
+        st.session_state.ops_val_id = datos.get("id")
+        st.session_state.ops_val_paso = 1
+    paso = int(st.session_state.get("ops_val_paso") or 1)
+    actividad_id = str(datos.get("id") or "actividad")
+    with st.container(border=True):
+        nro = str(datos.get("nro") or "—")
+        codigo = str(datos.get("codigo") or "Sin código")
+        st.markdown(f"**Nro {html.escape(nro)} · {html.escape(codigo)}**")
+        equipo = str(datos.get("equipo") or "").strip()
+        fecha_prog = str(datos.get("fecha") or "").strip()
+        st.caption(html.escape(" · ".join(parte for parte in [equipo, f"programada el {fecha_prog}" if fecha_prog else ""] if parte)))
+        actividad = str(datos.get("actividad") or "").strip()
+        if actividad:
+            st.write(actividad)
+    st.caption("El estatus pasa a Cumplido solo al confirmar el reporte de campo.")
+
+    if paso <= 1:
+        st.markdown("**Paso 1 de 3 · Fecha de ejecución**")
+        fecha_default = parsear_fecha_valor(datos.get("fecha_iso") or datos.get("fecha")) or date.today()
+        fecha = st.date_input(
+            "Fecha en que se ejecutó el trabajo en campo",
+            value=fecha_default,
+            min_value=date(2024, 1, 1),
+            max_value=date(2035, 12, 31),
+            format="DD/MM/YYYY",
+            key=f"ops_val_fecha_input_{actividad_id}",
+        )
+        if st.button("Continuar con las cuadrillas", type="primary", key=f"ops_val_sig_fecha_{actividad_id}"):
+            elegida = fecha if isinstance(fecha, date) else fecha_default
+            st.session_state.ops_val_fecha = elegida.isoformat()
+            st.session_state.ops_val_paso = 2
+            st.session_state.pop("ops_val_cuadrilla", None)
+            _refrescar_paso_dialogo()
+        return
+
+    fecha = parsear_fecha_valor(st.session_state.get("ops_val_fecha"))
+    if fecha is None:
+        st.session_state.ops_val_paso = 1
+        _refrescar_paso_dialogo()
+
+    if paso == 2:
+        st.markdown(f"**Paso 2 de 3 · Cuadrilla del {fecha.strftime('%d/%m/%Y')}**")
+        if st.button("← Cambiar fecha", key=f"ops_val_atras_fecha_{actividad_id}"):
+            st.session_state.ops_val_paso = 1
+            st.session_state.pop("ops_val_cuadrilla", None)
+            _refrescar_paso_dialogo()
+        cuadrillas = cuadrillas_activas_en_fecha(_bitacora_dialogo_ops(), fecha)
+        if not cuadrillas:
+            st.info("Ninguna cuadrilla registró actividad en la bitácora de campo en esa fecha.")
+            return
+        conteo = {item["cuadrilla"]: item["reportes"] for item in cuadrillas}
+        cuadrilla = st.selectbox(
+            "Cuadrilla con reporte ese día",
+            list(conteo),
+            format_func=lambda nombre: (
+                f"{etiqueta_cuadrilla_historial(nombre) or 'Sin cuadrilla'} · "
+                f"{conteo[nombre]} {'reporte' if conteo[nombre] == 1 else 'reportes'}"
+            ),
+            key=f"ops_val_cuadrilla_input_{actividad_id}_{fecha.isoformat()}",
+        )
+        if st.button("Ver actividades de la cuadrilla", type="primary", key=f"ops_val_sig_cuadrilla_{actividad_id}"):
+            st.session_state.ops_val_cuadrilla = cuadrilla
+            st.session_state.ops_val_paso = 3
+            _refrescar_paso_dialogo()
+        return
+
+    if "ops_val_cuadrilla" not in st.session_state:
+        st.session_state.ops_val_paso = 2
+        _refrescar_paso_dialogo()
+    cuadrilla = str(st.session_state.get("ops_val_cuadrilla") or "").strip()
+    st.markdown(
+        f"**Paso 3 de 3 · Actividad de {html.escape(etiqueta_cuadrilla_historial(cuadrilla))}**"
+    )
+    st.caption(f"Reportes del {fecha.strftime('%d/%m/%Y')}. La hora sale de la fotografía de campo.")
+    volver_fecha, volver_cuadrilla = st.columns(2)
+    with volver_fecha:
+        if st.button("← Cambiar fecha", key=f"ops_val_atras_fecha_3_{actividad_id}", width="stretch"):
+            st.session_state.ops_val_paso = 1
+            st.session_state.pop("ops_val_cuadrilla", None)
+            _refrescar_paso_dialogo()
+    with volver_cuadrilla:
+        if st.button("← Cambiar cuadrilla", key=f"ops_val_atras_cuadrilla_{actividad_id}", width="stretch"):
+            st.session_state.ops_val_paso = 2
+            _refrescar_paso_dialogo()
+
+    reportes = reportes_cuadrilla_en_fecha(_bitacora_dialogo_ops(), fecha, cuadrilla)
+    if not reportes:
+        st.info("Esa cuadrilla no tiene actividades registradas en la fecha elegida.")
+        return
+    etiquetas = []
+    for item in reportes:
+        hora = item["hora"] or "Sin hora"
+        secuencia = item["secuencia"] or "—"
+        descripcion = item["descripcion"]
+        if len(descripcion) > 72:
+            descripcion = descripcion[:69] + "…"
+        etiquetas.append(f"{hora} · Sec. {secuencia} · {descripcion} · {len(item['fotos'])} foto(s)")
+    indice = st.selectbox(
+        "Actividad / evidencia de la bitácora",
+        list(range(len(reportes))),
+        format_func=lambda i: etiquetas[i],
+        key=f"ops_val_reporte_{actividad_id}_{fecha.isoformat()}_{clave_hist_cuadrilla(cuadrilla)}",
+    )
+    elegido = reportes[int(indice)]
+    with st.container(border=True):
+        st.markdown(
+            f"**{html.escape(elegido['hora'] or 'Sin hora registrada')}** · "
+            f"Secuencia {html.escape(elegido['secuencia'] or '—')}"
+        )
+        st.write(elegido["descripcion"])
+        if elegido.get("ubicacion"):
+            st.caption(elegido["ubicacion"])
+        if elegido["fotos"]:
+            render_grid_evidencia_actividad(elegido["fotos"])
+        else:
+            st.caption("Este reporte no tiene fotografías adjuntas.")
+    if st.button("Confirmar vínculo y marcar Cumplido", type="primary", key=f"ops_val_confirmar_{actividad_id}"):
+        evidencia = {
+            "fecha": fecha.isoformat(),
+            "cuadrilla": elegido.get("cuadrilla") or cuadrilla,
+            "id_registro": elegido.get("id_registro") or "",
+            "secuencia": elegido.get("secuencia") or "",
+            "hora": elegido.get("hora") or "",
+            "descripcion": elegido.get("descripcion") or "",
+            "ubicacion": elegido.get("ubicacion") or "",
+            "fotos": list(elegido.get("fotos") or []),
+            "vinculado_en": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        }
+        guardar_cumplimiento_con_evidencia(actividad_id, evidencia)
+        st.session_state.ops_validar_mensaje = (
+            f"{codigo} quedó en Cumplido, vinculada a "
+            f"{etiqueta_cuadrilla_historial(evidencia['cuadrilla'])} del {fecha.strftime('%d/%m/%Y')}."
+        )
+        st.session_state.ops_val_confirmado = True
+        st.session_state.ops_editor_epoch = int(st.session_state.get("ops_editor_epoch") or 0) + 1
+        st.session_state.ops_val_paso = 1
+        st.session_state.ops_val_id = None
+        st.session_state.ops_validar_abierta = None
+        st.rerun()
+
+
 def render_panel_evidencias_ops(
     codigo: str,
     equipo: str,
@@ -7558,10 +7908,14 @@ def render_panel_evidencias_ops(
     df_bitacora: pd.DataFrame | None,
     anio: int,
     mes: int,
+    vinculo: dict | None = None,
 ) -> None:
     etiqueta = etiqueta_mes(clave_mes(anio, mes))
     titulo = codigo or equipo or "esta actividad"
     st.markdown(f"##### Evidencias · {titulo}")
+    if isinstance(vinculo, dict) and vinculo:
+        render_vinculo_evidencia_guardado(vinculo)
+        st.divider()
     st.caption(
         f"{equipo} · programada el {fecha_programada}. "
         f"Se buscó el código en `{EVIDENCIA_OCTUBRE_DIR}` y en la bitácora de {etiqueta}."
@@ -7569,14 +7923,17 @@ def render_panel_evidencias_ops(
     if actividad:
         st.caption(actividad)
     resultado = buscar_evidencias_ops(codigo, equipo, df_bitacora, anio, mes)
+    tiene_vinculo = isinstance(vinculo, dict) and bool(vinculo)
     if not resultado["agujas"]:
-        st.info("Esta fila no tiene un código o equipo con el cual buscar evidencias.")
+        if not tiene_vinculo:
+            st.info("Esta fila no tiene un código o equipo con el cual buscar evidencias.")
         return
     if not resultado["bitacoras"] and not resultado["fotos"]:
-        st.info(
-            f"No hay bitácoras ni fotografías que coincidan con {titulo} "
-            f"en {etiqueta} ni en {EVIDENCIA_OCTUBRE_DIR}."
-        )
+        if not tiene_vinculo:
+            st.info(
+                f"No hay bitácoras ni fotografías que coincidan con {titulo} "
+                f"en {etiqueta} ni en {EVIDENCIA_OCTUBRE_DIR}."
+            )
         return
     if resultado["bitacoras"]:
         st.markdown("**Bitácora coincidente**")
@@ -7640,6 +7997,7 @@ def dialogo_evidencias_ops() -> None:
     bitacora = st.session_state.get("ops_df_bitacora")
     if not isinstance(bitacora, pd.DataFrame):
         bitacora = cargar_bitacora()
+    vinculo = datos.get("vinculo") if isinstance(datos.get("vinculo"), dict) else None
     render_panel_evidencias_ops(
         str(datos.get("codigo") or ""),
         str(datos.get("equipo") or ""),
@@ -7648,10 +8006,44 @@ def dialogo_evidencias_ops() -> None:
         bitacora,
         int(datos.get("anio") or date.today().year),
         int(datos.get("mes") or date.today().month),
+        vinculo=vinculo,
     )
 
 
-def render_programados_ops_excel(anio: int, mes: int, df_bitacora: pd.DataFrame | None = None) -> None:
+def render_interruptor_edicion_ops() -> bool:
+    with st.container(border=True):
+        col_ctrl, col_ayuda = st.columns([1.25, 2.3], vertical_alignment="center")
+        with col_ctrl:
+            activo = bool(
+                st.toggle(
+                    "Modo Edición Administrador",
+                    key="ops_modo_edicion_admin",
+                    help="Actívalo para marcar una actividad como Cumplido y vincular el reporte de campo.",
+                )
+            )
+        with col_ayuda:
+            if activo:
+                st.markdown(
+                    '<p class="ops-modo-ayuda"><b>Edición activa.</b> '
+                    "Marca <b>Vincular</b> en la fila, o cambia el estatus a <b>Cumplido</b>, "
+                    "para abrir el asistente: fecha, cuadrilla y evidencia.</p>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<p class="ops-modo-ayuda">La tabla está en consulta. '
+                    "Activa el modo para habilitar el estatus y vincular la evidencia de campo.</p>",
+                    unsafe_allow_html=True,
+                )
+    return activo
+
+
+def render_programados_ops_excel(
+    anio: int,
+    mes: int,
+    df_bitacora: pd.DataFrame | None = None,
+    modo_edicion: bool = False,
+) -> None:
     carpeta = directorio_programas_mtto()
     etiqueta = etiqueta_mes(clave_mes(anio, mes))
     st.caption(
@@ -7679,8 +8071,15 @@ def render_programados_ops_excel(anio: int, mes: int, df_bitacora: pd.DataFrame 
     extra = sorted({item["especialidad"] for item in actividades} - set(especialidades))
     especialidades.extend(extra)
     pestanas_nombre = ["Todos"] + especialidades
+    aviso = st.session_state.pop("ops_validar_mensaje", None)
+    if aviso:
+        st.success(aviso)
+    modo_edicion = bool(modo_edicion)
+
     control = leer_control_programa_octubre()
     evidencia_elegida = None
+    pendiente_validar = None
+    epoch = int(st.session_state.get("ops_editor_epoch") or 0)
     pestanas = st.tabs(pestanas_nombre)
     for pestana, nombre_pestana in zip(pestanas, pestanas_nombre):
         with pestana:
@@ -7703,11 +8102,19 @@ def render_programados_ops_excel(anio: int, mes: int, df_bitacora: pd.DataFrame 
             for item in filas:
                 clave = clave_control_actividad(item)
                 guardado = control.get(clave) or {}
-                registros.append(
-                    {
+                estatus_fila = estatus_guardado_actividad(guardado)
+                fila_tabla = {
                         "_id": clave,
                         "Ver Evidencias": False,
-                        "Estatus": estatus_guardado_actividad(guardado),
+                        "Estatus": estatus_fila,
+                        "Vínculo": texto_vinculo_evidencia(guardado.get("evidencia_campo"))
+                        if estatus_fila == "Cumplido"
+                        else "",
+                }
+                if modo_edicion:
+                    fila_tabla["Vincular"] = False
+                registros.append(
+                    fila_tabla | {
                         "Observaciones": str(guardado.get("observaciones") or ""),
                         "Nro": item["nro"],
                         "Cód": item["codigo"],
@@ -7719,47 +8126,89 @@ def render_programados_ops_excel(anio: int, mes: int, df_bitacora: pd.DataFrame 
                 )
             tabla = pd.DataFrame(registros)
             cumplidos = int((tabla["Estatus"] == "Cumplido").sum()) if not tabla.empty else 0
+            if modo_edicion:
+                ayuda_tabla = "Marca Vincular, o cambia Estatus a Cumplido, para abrir el asistente de evidencia."
+            else:
+                ayuda_tabla = "Marca Ver Evidencias en una fila para abrir sus fotos y la bitácora."
             st.caption(
                 f"{len(tabla)} actividades · {cumplidos} cumplidas · {len(tabla) - cumplidos} no cumplidas. "
-                "Marca Ver Evidencias en una fila para abrir sus fotos y la bitácora."
+                f"{ayuda_tabla}"
             )
+            columnas_bloqueadas = ["Vínculo", "Nro", "Cód", "Equipo", "Actividad", "Tipo Mantto.", "Fecha Programada"]
+            if not modo_edicion:
+                columnas_bloqueadas.append("Estatus")
+            orden_columnas = [
+                "Ver Evidencias",
+                "Estatus",
+                "Vínculo",
+                "Observaciones",
+                "Nro",
+                "Cód",
+                "Equipo",
+                "Actividad",
+                "Tipo Mantto.",
+                "Fecha Programada",
+            ]
+            if modo_edicion:
+                orden_columnas.insert(0, "Vincular")
+            config_columnas = {
+                "Ver Evidencias": st.column_config.CheckboxColumn("Ver Evidencias", default=False),
+                "Estatus": st.column_config.SelectboxColumn(
+                    "Estatus",
+                    options=list(ESTATUS_OPS_EXCEL),
+                    required=True,
+                    help="En modo edición, Cumplido abre el asistente de evidencia antes de guardarse.",
+                ),
+                "Vínculo": st.column_config.TextColumn(
+                    "Vínculo",
+                    help="Fecha, cuadrilla y reporte de campo ligados al cumplimiento.",
+                ),
+                "Observaciones": st.column_config.TextColumn("Observaciones"),
+                "Actividad": st.column_config.TextColumn("Actividad", width="large"),
+            }
+            if modo_edicion:
+                config_columnas["Vincular"] = st.column_config.CheckboxColumn(
+                    "Vincular",
+                    default=False,
+                    help="Abre el asistente para marcar la actividad como Cumplido y ligar la evidencia.",
+                )
             editada = st.data_editor(
                 tabla,
-                column_order=[
-                    "Ver Evidencias",
-                    "Estatus",
-                    "Observaciones",
-                    "Nro",
-                    "Cód",
-                    "Equipo",
-                    "Actividad",
-                    "Tipo Mantto.",
-                    "Fecha Programada",
-                ],
-                column_config={
-                    "Ver Evidencias": st.column_config.CheckboxColumn("Ver Evidencias", default=False),
-                    "Estatus": st.column_config.SelectboxColumn(
-                        "Estatus",
-                        options=list(ESTATUS_OPS_EXCEL),
-                        required=True,
-                    ),
-                    "Observaciones": st.column_config.TextColumn("Observaciones"),
-                    "Actividad": st.column_config.TextColumn("Actividad", width="large"),
-                },
-                disabled=["Nro", "Cód", "Equipo", "Actividad", "Tipo Mantto.", "Fecha Programada"],
+                column_order=orden_columnas,
+                column_config=config_columnas,
+                disabled=columnas_bloqueadas,
                 hide_index=True,
                 width="stretch",
-                key=f"editor_ops_{anio}_{mes}_{nombre_pestana}_{origen}",
+                key=f"editor_ops_{anio}_{mes}_{nombre_pestana}_{origen}_{int(modo_edicion)}_{epoch}",
             )
             cambio = False
             for _, fila in editada.iterrows():
                 clave = str(fila["_id"])
                 previo = control.get(clave) if isinstance(control.get(clave), dict) else {}
-                estatus = fila["Estatus"] if fila["Estatus"] in ESTATUS_OPS_EXCEL else "No Cumplido"
+                estatus_editor = fila["Estatus"] if fila["Estatus"] in ESTATUS_OPS_EXCEL else "No Cumplido"
+                estatus_previo = estatus_guardado_actividad(previo)
+                marcar_cumplido = bool(modo_edicion) and estatus_editor == "Cumplido" and estatus_previo != "Cumplido"
+                vincular_fila = bool(modo_edicion) and _casilla_marcada(fila.get("Vincular"))
+                estatus = estatus_previo if marcar_cumplido else estatus_editor
+                if (marcar_cumplido or vincular_fila) and pendiente_validar is None:
+                    fecha_prog = parsear_fecha_valor(fila.get("Fecha Programada"))
+                    pendiente_validar = {
+                        "id": clave,
+                        "codigo": str(fila.get("Cód") or ""),
+                        "equipo": str(fila.get("Equipo") or ""),
+                        "actividad": str(fila.get("Actividad") or ""),
+                        "nro": str(fila.get("Nro") or ""),
+                        "fecha": str(fila.get("Fecha Programada") or ""),
+                        "fecha_iso": fecha_prog.isoformat() if fecha_prog else "",
+                        "anio": int(anio),
+                        "mes": int(mes),
+                    }
                 nuevo = dict(previo)
                 nuevo["estatus"] = estatus
                 nuevo["observaciones"] = _texto_observacion_editor(fila["Observaciones"])
                 nuevo["realizado"] = estatus == "Cumplido"
+                if not marcar_cumplido and estatus != "Cumplido":
+                    nuevo.pop("evidencia_campo", None)
                 if control.get(clave) == nuevo:
                     continue
                 if _registro_control_vacio(nuevo):
@@ -7774,6 +8223,8 @@ def render_programados_ops_excel(anio: int, mes: int, df_bitacora: pd.DataFrame 
             marcadas = [fila for _, fila in editada.iterrows() if _casilla_marcada(fila.get("Ver Evidencias"))]
             if marcadas:
                 fila_evidencia = marcadas[-1]
+                guardado_ev = control.get(str(fila_evidencia.get("_id") or ""))
+                vinculo = guardado_ev.get("evidencia_campo") if isinstance(guardado_ev, dict) else None
                 evidencia_elegida = {
                     "id": str(fila_evidencia.get("_id") or ""),
                     "codigo": str(fila_evidencia.get("Cód") or ""),
@@ -7782,8 +8233,19 @@ def render_programados_ops_excel(anio: int, mes: int, df_bitacora: pd.DataFrame 
                     "fecha": str(fila_evidencia.get("Fecha Programada") or ""),
                     "anio": int(anio),
                     "mes": int(mes),
+                    "vinculo": vinculo if isinstance(vinculo, dict) else None,
                 }
-    if evidencia_elegida and st.session_state.get("ops_evidencia_cerrada") != evidencia_elegida["id"]:
+    cancelada = st.session_state.get("ops_validar_cancelada")
+    if pendiente_validar and cancelada == pendiente_validar["id"]:
+        pass
+    elif pendiente_validar:
+        st.session_state.ops_validar_cancelada = None
+        st.session_state.ops_validar_abierta = pendiente_validar
+        st.session_state.ops_df_bitacora = df_bitacora if isinstance(df_bitacora, pd.DataFrame) else cargar_bitacora()
+        dialogo_vincular_cumplido_ops()
+    elif cancelada:
+        st.session_state.ops_validar_cancelada = None
+    elif evidencia_elegida and st.session_state.get("ops_evidencia_cerrada") != evidencia_elegida["id"]:
         st.session_state.ops_evidencia_abierta = evidencia_elegida
         st.session_state.ops_df_bitacora = df_bitacora if isinstance(df_bitacora, pd.DataFrame) else cargar_bitacora()
         dialogo_evidencias_ops()
@@ -7866,16 +8328,22 @@ def render_control_programados() -> None:
             "Elige si vas a cargar el plan OPS o a revisar imprevistos del mes.",
         )
         return
-    render_barra_volver(
-        f'Programados / <b>{html.escape(titulo_submenu(SUBMENUS_PROGRAMADOS, sub))}</b>',
-        "admin_sub_programados",
-        "← Volver a Programados",
-    )
-
+    ruta_programados = f'Programados / <b>{html.escape(titulo_submenu(SUBMENUS_PROGRAMADOS, sub))}</b>'
     if sub == "ops":
-        render_programados_ops_excel(int(anio), int(mes), df_bitacora)
+        st.markdown(f'<div class="explorer-crumb">{ruta_programados}</div>', unsafe_allow_html=True)
+        modo_edicion_ops = render_interruptor_edicion_ops()
+        if st.button("← Volver a Programados", key="volver_admin_sub_programados"):
+            st.session_state.admin_sub_programados = None
+            st.rerun()
+        render_programados_ops_excel(int(anio), int(mes), df_bitacora, modo_edicion=modo_edicion_ops)
+    else:
+        render_barra_volver(
+            ruta_programados,
+            "admin_sub_programados",
+            "← Volver a Programados",
+        )
 
-    elif sub == "imprevistos":
+    if sub == "imprevistos":
         st.caption(
             "Registros de campo del mes que corresponden a paros imprevistos, correctivos, "
             "restablecimientos o equipos fuera de servicio."
@@ -10030,16 +10498,19 @@ def render_carga_pdf_ot(dia_sugerido: date) -> None:
         st.rerun()
 
 
-def _seleccionar_cuadrilla_ot(dia_iso: str, nombre: str) -> None:
+def _seleccionar_cuadrilla_ot(dia_iso: str, nombre: str, indice: int = 0) -> None:
     mismo = (
         st.session_state.get("ot_cuadrilla_dia") == dia_iso
         and st.session_state.get("ot_cuadrilla_nombre") == nombre
+        and int(st.session_state.get("ot_cuadrilla_indice") or -1) == int(indice)
     )
     if mismo:
         st.session_state.ot_cuadrilla_nombre = ""
+        st.session_state.ot_cuadrilla_indice = None
         return
     st.session_state.ot_cuadrilla_dia = dia_iso
     st.session_state.ot_cuadrilla_nombre = nombre
+    st.session_state.ot_cuadrilla_indice = int(indice)
 
 
 def _cerrar_cuadrilla_ot() -> None:
@@ -10063,7 +10534,7 @@ def render_grid_evidencia_actividad(fotos: list[str]) -> None:
         columnas = st.columns(3, gap="small")
         for col, ruta in zip(columnas, fotos[inicio : inicio + 3]):
             with col:
-                st.image(ruta, use_container_width=True)
+                st.image(ruta, width="stretch")
                 st.caption(os.path.basename(ruta))
 
 
@@ -10168,16 +10639,22 @@ def render_actividad_cuadrilla_ot(
         render_grid_evidencia_actividad(fotos)
 
 
-def render_desglose_cuadrilla_ot(dia: date, df_dia: pd.DataFrame, nombre: str) -> None:
+def render_desglose_cuadrilla_ot(
+    dia: date,
+    df_dia: pd.DataFrame,
+    nombre: str,
+    token: str = "",
+) -> None:
     bloque = bloque_historial_cuadrilla(df_dia, nombre)
     etiqueta = etiqueta_cuadrilla_historial(nombre)
     datos_ubicaciones = cargar_ubicaciones()
     filas = filas_secuencia_historial(bloque) if not bloque.empty else []
+    clave_btn = token or f"{dia.isoformat()}_{clave_hist_cuadrilla(nombre) or 'sin'}"
     cierra, titulo = st.columns([1, 1.6])
     with cierra:
         st.button(
             "Cerrar desglose",
-            key=f"ot_cerrar_{dia.isoformat()}_{clave_hist_cuadrilla(nombre)}",
+            key=f"ot_cerrar_{clave_btn}",
             on_click=_cerrar_cuadrilla_ot,
             use_container_width=True,
         )
@@ -10199,14 +10676,17 @@ def render_resumen_cuadrillas_ot_dia(dia: date, df_dia: pd.DataFrame | None = No
     if not grupos:
         st.caption("No hay capturas de bitácora para este día. El PDF oficial se muestra a la izquierda.")
         return
-    seleccion = ""
-    if st.session_state.get("ot_cuadrilla_dia") == dia.isoformat():
-        seleccion = str(st.session_state.get("ot_cuadrilla_nombre") or "")
+    dia_iso = dia.isoformat()
+    try:
+        indice_sel = st.session_state.get("ot_cuadrilla_indice")
+        indice_sel = int(indice_sel) if indice_sel is not None and indice_sel != "" else None
+    except (TypeError, ValueError):
+        indice_sel = None
     st.caption(
         f"{len(grupos)} cuadrilla(s) con reporte en bitácora el {dia.strftime('%d/%m/%Y')}. "
         "Elige una para ver sus actividades."
     )
-    for grupo in grupos:
+    for indice, grupo in enumerate(grupos):
         bloque = df.loc[grupo["indices"]] if grupo.get("indices") else df.iloc[0:0]
         sitios = ubicaciones_secuencia_bloque(bloque)
         if sitios:
@@ -10214,7 +10694,13 @@ def render_resumen_cuadrillas_ot_dia(dia: date, df_dia: pd.DataFrame | None = No
         else:
             detalle = "Sin ubicación registrada"
         nombre = str(grupo["cuadrilla"])
-        activa = clave_hist_cuadrilla(seleccion) == clave_hist_cuadrilla(nombre) and bool(seleccion)
+        slug = clave_hist_cuadrilla(nombre) or "sin"
+        token = f"{dia_iso}_{indice}_{slug}"
+        activa = (
+            st.session_state.get("ot_cuadrilla_dia") == dia_iso
+            and indice_sel == indice
+            and str(st.session_state.get("ot_cuadrilla_nombre") or "") == nombre
+        )
         clase = f"{grupo['marca']}{' activa' if activa else ''}"
         st.markdown(
             f"""
@@ -10230,13 +10716,13 @@ def render_resumen_cuadrillas_ot_dia(dia: date, df_dia: pd.DataFrame | None = No
         )
         st.button(
             "Ver actividades",
-            key=f"ot_ver_{dia.isoformat()}_{clave_hist_cuadrilla(nombre)}",
+            key=f"ot_ver_act_{token}",
             on_click=_seleccionar_cuadrilla_ot,
-            args=(dia.isoformat(), nombre),
+            args=(dia_iso, nombre, indice),
             use_container_width=True,
         )
         if activa:
-            render_desglose_cuadrilla_ot(dia, df, nombre)
+            render_desglose_cuadrilla_ot(dia, df, nombre, token)
 
 
 def _seleccionar_dia_ot(etiqueta: str) -> None:
@@ -12902,9 +13388,27 @@ def _num_combustible(valor) -> float:
     try:
         if valor is None or (isinstance(valor, str) and not valor.strip()):
             return 0.0
-        return float(valor)
+        numero = float(valor)
     except (TypeError, ValueError):
         return 0.0
+    if numero != numero or numero in (float("inf"), float("-inf")):
+        return 0.0
+    return numero
+
+
+def redondear_mitad_arriba(valor, decimales: int = 2) -> float:
+    """Redondeo aritmético: desde .5 en el siguiente decimal, aleja de cero."""
+    cuantia = Decimal("1").scaleb(-int(decimales))
+    if not isinstance(valor, Decimal):
+        valor = Decimal(str(_num_combustible(valor)))
+    return float(valor.quantize(cuantia, rounding=ROUND_HALF_UP))
+
+
+def costo_total_combustible(litros: float, precio: float) -> float:
+    """Litros por precio, en centavos. 44.135 × 27 = 1191.645 → 1191.65."""
+    litros_d = Decimal(str(_num_combustible(litros))).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+    precio_d = Decimal(str(_num_combustible(precio))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return float((litros_d * precio_d).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 def normalizar_tipo_combustible(valor) -> str:
@@ -12920,15 +13424,22 @@ def normalizar_tipo_combustible(valor) -> str:
 
 
 def cargar_parque_vehicular(ruta: str) -> pd.DataFrame:
+    columnas = ["No. económico", "Combustible asignado", "Modelo"]
     try:
         crudo = pd.read_excel(_copia_excel_legible(ruta), sheet_name="Listas")
     except Exception:
-        return pd.DataFrame(columns=["No. económico", "Combustible asignado"])
+        return pd.DataFrame(columns=columnas)
     if crudo.empty:
-        return pd.DataFrame(columns=["No. económico", "Combustible asignado"])
+        return pd.DataFrame(columns=columnas)
     unidad = crudo.iloc[:, 0].astype(str).str.strip()
     tipo = crudo.iloc[:, 1].map(normalizar_tipo_combustible) if crudo.shape[1] > 1 else ""
-    df = pd.DataFrame({"No. económico": unidad, "Combustible asignado": tipo})
+    if crudo.shape[1] > 3:
+        modelo = crudo.iloc[:, 3].astype(str).str.strip()
+    else:
+        modelo = pd.Series([""] * len(crudo), index=crudo.index)
+    df = pd.DataFrame({"No. económico": unidad, "Combustible asignado": tipo, "Modelo": modelo})
+    df["Modelo"] = df["Modelo"].fillna("").astype(str).str.strip()
+    df.loc[df["Modelo"].str.casefold().isin({"", "nan", "none", "modelo"}), "Modelo"] = ""
     df = df[~df["No. económico"].str.casefold().isin({"", "nan", "none", "numero_economico", "número económico"})]
     return df.drop_duplicates(subset=["No. económico"]).reset_index(drop=True)
 
@@ -12950,6 +13461,9 @@ def cargar_registro_combustible(ruta: str) -> pd.DataFrame:
         "precio por litro": "Precio $/L",
         "total pesos": "Total $",
         "rendimiento (km/l)": "Rendimiento Excel (km/l)",
+        "comentarios": "Comentarios",
+        "notas": "Comentarios",
+        "notas o comentarios": "Comentarios",
     }
     renombre = {}
     for col in crudo.columns:
@@ -12959,6 +13473,7 @@ def cargar_registro_combustible(ruta: str) -> pd.DataFrame:
     df = crudo.rename(columns=renombre)
     if "Fecha" not in df.columns or "No. económico" not in df.columns:
         return pd.DataFrame()
+    df["_fila_excel"] = df.index + 5
     df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
     df["No. económico"] = df["No. económico"].astype(str).str.strip()
     df = df[df["Fecha"].notna()]
@@ -12971,6 +13486,17 @@ def cargar_registro_combustible(ruta: str) -> pd.DataFrame:
         df["Combustible"] = df["Combustible"].map(normalizar_tipo_combustible)
     else:
         df["Combustible"] = ""
+    if "Comentarios" not in df.columns:
+        df["Comentarios"] = ""
+    else:
+        df["Comentarios"] = df["Comentarios"].fillna("").astype(str).str.strip()
+        df.loc[df["Comentarios"].str.casefold().isin({"nan", "none"}), "Comentarios"] = ""
+    con_precio = (df["Litros"] > 0) & (df["Precio $/L"] > 0)
+    if con_precio.any():
+        df.loc[con_precio, "Total $"] = [
+            costo_total_combustible(litros, precio)
+            for litros, precio in zip(df.loc[con_precio, "Litros"], df.loc[con_precio, "Precio $/L"])
+        ]
     km0 = df["Km inicial"]
     litros = df["Litros"]
     recorrido = df["Km recorrido"]
@@ -13076,7 +13602,14 @@ def gasto_registros_combustible(df: pd.DataFrame, referencia: pd.DataFrame | Non
         precio = pd.to_numeric(df["Precio $/L"], errors="coerce").fillna(0.0)
     else:
         precio = pd.Series(0.0, index=df.index)
-    monto = total.where(total > 0, litros * precio)
+    producto = pd.Series(
+        [
+            costo_total_combustible(litros.at[idx], precio.at[idx]) if litros.at[idx] > 0 and precio.at[idx] > 0 else 0.0
+            for idx in df.index
+        ],
+        index=df.index,
+    )
+    monto = total.where(total > 0, producto)
     faltante = (monto <= 0) & (litros > 0)
     if faltante.any():
         base = referencia if referencia is not None and not referencia.empty else df
@@ -13084,8 +13617,8 @@ def gasto_registros_combustible(df: pd.DataFrame, referencia: pd.DataFrame | Non
             tipo = normalizar_tipo_combustible(df.at[idx, "Combustible"]) if "Combustible" in df.columns else ""
             unitario = ultimo_precio_combustible(base, tipo) if tipo in {"Diesel", "Gasolina"} else 0.0
             if unitario > 0:
-                monto.at[idx] = float(litros.at[idx]) * unitario
-    return round(float(monto.sum()), 2)
+                monto.at[idx] = costo_total_combustible(litros.at[idx], unitario)
+    return redondear_mitad_arriba(float(monto.sum()), 2)
 
 
 def ultima_fecha_combustible(df: pd.DataFrame) -> date | None:
@@ -13161,10 +13694,14 @@ def combustible_asignado_unidad(parque: pd.DataFrame, unidad: str) -> str:
     return tipo if tipo in {"Gasolina", "Diesel"} else "Gasolina"
 
 
+def es_unidad_otros(unidad: str) -> bool:
+    return str(unidad or "").strip().casefold() == "otros"
+
+
 def calcular_carga_combustible(km_inicial: float, km_actual: float, litros: float, precio: float) -> tuple[float, float, float]:
-    recorrido = max(0.0, float(km_actual) - float(km_inicial))
-    total = round(float(litros) * float(precio), 4)
-    rendimiento = round(recorrido / float(litros), 4) if float(litros) > 0 else 0.0
+    recorrido = max(0.0, _num_combustible(km_actual) - _num_combustible(km_inicial))
+    total = costo_total_combustible(litros, precio)
+    rendimiento = round(recorrido / float(litros), 4) if _num_combustible(litros) > 0 else 0.0
     return round(recorrido, 2), total, rendimiento
 
 
@@ -13192,6 +13729,59 @@ def _copiar_estilo_fila(ws, origen: int, destino: int, columnas: int = 11) -> No
             dst.alignment = copy(src.alignment)
 
 
+def _guardar_libro_excel(wb, ruta: str) -> None:
+    tmp = os.path.join(tempfile.gettempdir(), "pjp4_combustible_write.xlsx")
+    wb.save(tmp)
+    try:
+        shutil.copy2(tmp, ruta)
+    except PermissionError:
+        alt = os.path.join(os.path.dirname(ruta), "~pjp4_combustible_write.xlsx")
+        shutil.copy2(tmp, alt)
+        os.replace(alt, ruta)
+
+
+def _escribir_comentarios_carga(ws, fila: int, comentarios: str) -> None:
+    if ws.cell(4, 12).value in (None, ""):
+        ws.cell(4, 12, "Comentarios")
+    ws.cell(fila, 12, comentarios or None)
+
+
+def _escribir_carga_en_fila(
+    ws,
+    fila: int,
+    fecha_carga: date,
+    unidad: str,
+    km_inicial: float,
+    km_actual: float,
+    tipo: str,
+    litros: float,
+    precio: float,
+    recorrido: float,
+    total: float,
+    rendimiento: float,
+    comentarios: str,
+    *,
+    escribir_item: bool,
+) -> None:
+    if escribir_item:
+        ws.cell(fila, 1, fila - 4)
+    ws.cell(fila, 2, datetime.combine(fecha_carga, datetime.min.time()))
+    ws.cell(fila, 2).number_format = "DD/MM/YYYY"
+    ws.cell(fila, 3, unidad)
+    ws.cell(fila, 4, km_inicial)
+    ws.cell(fila, 5, km_actual)
+    ws.cell(fila, 6, recorrido)
+    ws.cell(fila, 7, tipo)
+    ws.cell(fila, 8, litros)
+    ws.cell(fila, 9, precio)
+    ws.cell(fila, 10, total)
+    ws.cell(fila, 11, rendimiento)
+    if es_unidad_otros(unidad) or comentarios:
+        _escribir_comentarios_carga(ws, fila, comentarios)
+    elif ws.cell(fila, 12).value not in (None, ""):
+        ws.cell(fila, 12, None)
+
+
 def guardar_carga_combustible(
     ruta: str,
     fecha_carga: date,
@@ -13204,6 +13794,7 @@ def guardar_carga_combustible(
     recorrido: float,
     total: float,
     rendimiento: float,
+    comentarios: str = "",
 ) -> None:
     from openpyxl import load_workbook
 
@@ -13215,35 +13806,369 @@ def guardar_carga_combustible(
         ws = wb["Registro Diario"]
         fila = _primera_fila_libre_registro(ws)
         _copiar_estilo_fila(ws, max(5, fila - 1), fila)
-        ws.cell(fila, 1, fila - 4)
-        ws.cell(fila, 2, datetime.combine(fecha_carga, datetime.min.time()))
-        ws.cell(fila, 2).number_format = "DD/MM/YYYY"
-        ws.cell(fila, 3, unidad)
-        ws.cell(fila, 4, km_inicial)
-        ws.cell(fila, 5, km_actual)
-        ws.cell(fila, 6, recorrido)
-        ws.cell(fila, 7, tipo)
-        ws.cell(fila, 8, litros)
-        ws.cell(fila, 9, precio)
-        ws.cell(fila, 10, total)
-        ws.cell(fila, 11, rendimiento)
-        tmp = os.path.join(tempfile.gettempdir(), "pjp4_combustible_write.xlsx")
-        wb.save(tmp)
+        _escribir_carga_en_fila(
+            ws,
+            fila,
+            fecha_carga,
+            unidad,
+            km_inicial,
+            km_actual,
+            tipo,
+            litros,
+            precio,
+            recorrido,
+            total,
+            rendimiento,
+            comentarios,
+            escribir_item=True,
+        )
+        _guardar_libro_excel(wb, ruta)
     finally:
         wb.close()
+
+
+def actualizar_carga_combustible(
+    ruta: str,
+    fila_excel: int,
+    unidad_original: str,
+    fecha_carga: date,
+    unidad: str,
+    km_inicial: float,
+    km_actual: float,
+    tipo: str,
+    litros: float,
+    precio: float,
+    recorrido: float,
+    total: float,
+    rendimiento: float,
+    comentarios: str = "",
+) -> None:
+    from openpyxl import load_workbook
+
+    if int(fila_excel) < 5:
+        raise ValueError("El renglón a corregir no es válido.")
+    origen = _copia_excel_legible(ruta)
+    wb = load_workbook(origen)
     try:
-        shutil.copy2(tmp, ruta)
-    except PermissionError:
-        alt = os.path.join(os.path.dirname(ruta), "~pjp4_combustible_write.xlsx")
-        shutil.copy2(tmp, alt)
-        os.replace(alt, ruta)
+        if "Registro Diario" not in wb.sheetnames:
+            raise ValueError("El archivo no tiene la hoja Registro Diario.")
+        ws = wb["Registro Diario"]
+        actual = str(ws.cell(int(fila_excel), 3).value or "").strip()
+        esperado = str(unidad_original or "").strip()
+        if actual and esperado and actual != esperado:
+            raise ValueError(
+                "Ese renglón ya no coincide con el registro seleccionado. Recarga la página e inténtalo de nuevo."
+            )
+        _escribir_carga_en_fila(
+            ws,
+            int(fila_excel),
+            fecha_carga,
+            unidad,
+            km_inicial,
+            km_actual,
+            tipo,
+            litros,
+            precio,
+            recorrido,
+            total,
+            rendimiento,
+            comentarios,
+            escribir_item=False,
+        )
+        _guardar_libro_excel(wb, ruta)
+    finally:
+        wb.close()
+
+
+def _ultima_fila_catalogo(ws) -> int:
+    ultima = 1
+    for fila in range(2, (ws.max_row or 1) + 1):
+        if str(ws.cell(fila, 1).value or "").strip():
+            ultima = fila
+    return ultima
+
+
+def _extender_listas_combustible(wb, ultima_fila: int) -> None:
+    if ultima_fila < 2:
+        return
+    definiciones = getattr(wb, "defined_names", None)
+    if definiciones is not None and "Lista_Vehiculos" in definiciones:
+        definiciones["Lista_Vehiculos"].attr_text = f"Listas!$A$2:$A${ultima_fila}"
+    if "Registro Diario" not in wb.sheetnames:
+        return
+    patron = re.compile(r"Listas!\$A\$2:\$C\$\d+")
+    nuevo = f"Listas!$A$2:$C${ultima_fila}"
+    ws = wb["Registro Diario"]
+    for fila in ws.iter_rows(min_row=5, max_row=ws.max_row or 5, max_col=12):
+        for celda in fila:
+            valor = celda.value
+            if isinstance(valor, str) and patron.search(valor):
+                celda.value = patron.sub(nuevo, valor)
+
+
+def agregar_unidad_parque(ruta: str, numero: str, modelo: str, combustible: str) -> None:
+    from openpyxl import load_workbook
+
+    numero = str(numero or "").strip()
+    modelo = str(modelo or "").strip()
+    combustible = normalizar_tipo_combustible(combustible)
+    if not numero or not modelo:
+        raise ValueError("Escribe el número económico y el modelo.")
+    if combustible not in {"Gasolina", "Diesel"}:
+        raise ValueError("El tipo de combustible debe ser Gasolina o Diesel.")
+    if numero.casefold() in {"numero_economico", "número económico", "nan", "none"}:
+        raise ValueError("Ese número económico no es válido.")
+
+    origen = _copia_excel_legible(ruta)
+    wb = load_workbook(origen)
+    try:
+        if "Listas" not in wb.sheetnames:
+            raise ValueError("El archivo no tiene la hoja Listas.")
+        ws = wb["Listas"]
+        for fila in range(2, (ws.max_row or 1) + 1):
+            existente = str(ws.cell(fila, 1).value or "").strip()
+            if existente.casefold() == numero.casefold():
+                raise ValueError(f"{numero} ya está en el catálogo.")
+        destino = _ultima_fila_catalogo(ws) + 1
+        if ws.cell(1, 4).value in (None, ""):
+            ws.cell(1, 4, "Modelo")
+        ws.cell(destino, 1, numero)
+        ws.cell(destino, 2, combustible)
+        ws.cell(destino, 3, combustible)
+        ws.cell(destino, 4, modelo)
+        _extender_listas_combustible(wb, destino)
+        _guardar_libro_excel(wb, ruta)
+    finally:
+        wb.close()
+
+
+def _opciones_unidad_combustible(unidades: list[str]) -> list[str]:
+    opciones = [str(u).strip() for u in unidades if str(u).strip()]
+    if not any(es_unidad_otros(u) for u in opciones):
+        opciones.append("otros")
+    return opciones
+
+
+def _etiqueta_carga_combustible(fila) -> str:
+    fecha = fila.get("Fecha")
+    if isinstance(fecha, pd.Timestamp):
+        fecha_txt = fecha.strftime("%d/%m/%Y")
+    elif isinstance(fecha, datetime):
+        fecha_txt = fecha.strftime("%d/%m/%Y")
+    elif isinstance(fecha, date):
+        fecha_txt = fecha.strftime("%d/%m/%Y")
+    else:
+        fecha_txt = str(fecha or "Sin fecha")
+    item = fila.get("Item")
+    try:
+        item_txt = str(int(item))
+    except (TypeError, ValueError):
+        item_txt = "—"
+    unidad = str(fila.get("No. económico") or "").strip()
+    litros = _num_combustible(fila.get("Litros"))
+    total = _num_combustible(fila.get("Total $"))
+    nota = str(fila.get("Comentarios") or "").strip()
+    extra = f" · {nota}" if nota else ""
+    return f"Item {item_txt} · {fecha_txt} · {unidad} · {litros:.3f} L · ${total:,.2f}{extra}"
+
+
+def render_alta_unidad_combustible(parque: pd.DataFrame) -> None:
+    with st.expander("➕ Dar de alta unidad", expanded=False):
+        st.caption(
+            "Número económico, modelo y combustible quedan en la hoja Listas "
+            "y se agregan solos a los selectores."
+        )
+        fid = int(st.session_state.get("alta_unidad_id", 0))
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            numero = st.text_input("Número económico", key=f"alta_unidad_num_{fid}").strip()
+        with c2:
+            modelo = st.text_input("Modelo", key=f"alta_unidad_modelo_{fid}").strip()
+        with c3:
+            combustible = st.selectbox(
+                "Tipo de combustible",
+                ["Gasolina", "Diesel"],
+                key=f"alta_unidad_tipo_{fid}",
+            )
+        if parque is not None and not parque.empty and numero:
+            ya = parque["No. económico"].astype(str).str.strip().str.casefold()
+            if numero.casefold() in set(ya):
+                st.caption(f"{numero} ya está en el padrón.")
+        if st.button("Guardar unidad", type="primary", key=f"alta_unidad_ok_{fid}"):
+            try:
+                agregar_unidad_parque(COMBUSTIBLE_FILE, numero, modelo, combustible)
+            except PermissionError:
+                st.error("No se pudo escribir el Excel. Ciérralo en Excel u OneDrive e inténtalo de nuevo.")
+            except Exception as exc:
+                st.error(str(exc))
+            else:
+                cargar_control_combustible.clear()
+                st.session_state.alta_unidad_id = fid + 1
+                st.session_state.comb_just_saved = (
+                    f"Unidad {numero} dada de alta ({modelo}, {combustible}). Ya aparece en los selectores."
+                )
+                st.rerun()
+
+
+def render_correccion_carga_combustible(diario: pd.DataFrame, parque: pd.DataFrame) -> None:
+    with st.expander("✏️ Corregir registro guardado", expanded=False):
+        st.caption("Corrige una carga ya guardada si el personal capturó mal litros, kilometraje o la unidad.")
+        if diario is None or diario.empty or "_fila_excel" not in diario.columns:
+            st.info("No hay cargas para corregir.")
+            return
+        busqueda = st.text_input(
+            "Buscar registro",
+            placeholder="Unidad, fecha, item o comentario",
+            key="comb_corr_buscar",
+        ).strip().casefold()
+        orden = diario.sort_values(
+            ["Fecha", "Item"] if "Item" in diario.columns else ["Fecha"],
+            ascending=False,
+        )
+        opciones: list[tuple[int, str]] = []
+        filas: dict[int, pd.Series] = {}
+        for _, fila in orden.iterrows():
+            etiqueta = _etiqueta_carga_combustible(fila)
+            if busqueda and busqueda not in etiqueta.casefold():
+                continue
+            fila_excel = int(_num_combustible(fila.get("_fila_excel")))
+            if fila_excel < 5 or fila_excel in filas:
+                continue
+            opciones.append((fila_excel, etiqueta))
+            filas[fila_excel] = fila
+        if not opciones:
+            st.info("Ningún registro coincide con la búsqueda.")
+            return
+        etiquetas = [etiqueta for _, etiqueta in opciones]
+        indice = st.selectbox(
+            "Registro",
+            range(len(opciones)),
+            format_func=lambda i: etiquetas[i],
+            key="comb_corr_sel",
+        )
+        fila_excel, _etiqueta = opciones[int(indice)]
+        fila = filas[fila_excel]
+        fecha_base = fila.get("Fecha")
+        if isinstance(fecha_base, pd.Timestamp):
+            fecha_base = fecha_base.date()
+        elif isinstance(fecha_base, datetime):
+            fecha_base = fecha_base.date()
+        if not isinstance(fecha_base, date):
+            fecha_base = date.today()
+        unidades = _opciones_unidad_combustible(unidades_combustible(diario, parque))
+        unidad_actual = str(fila.get("No. económico") or "").strip()
+        if unidad_actual and unidad_actual not in unidades:
+            unidades = [unidad_actual] + unidades
+        rid = fila_excel
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            fecha_carga = st.date_input(
+                "Fecha",
+                value=fecha_base,
+                format="DD/MM/YYYY",
+                key=f"comb_edit_fecha_{rid}",
+            )
+            unidad = st.selectbox(
+                "Número económico",
+                unidades,
+                index=unidades.index(unidad_actual) if unidad_actual in unidades else 0,
+                key=f"comb_edit_unidad_{rid}",
+            )
+        with c2:
+            km_inicial = st.number_input(
+                "Kilometraje inicial",
+                min_value=0.0,
+                value=redondear_mitad_arriba(fila.get("Km inicial"), 1),
+                step=0.1,
+                format="%.1f",
+                key=f"comb_edit_km0_{rid}",
+            )
+            km_actual = st.number_input(
+                "Kilometraje actual",
+                min_value=0.0,
+                value=redondear_mitad_arriba(fila.get("Km actual"), 1),
+                step=0.1,
+                format="%.1f",
+                key=f"comb_edit_km_{rid}",
+            )
+        tipo_actual = normalizar_tipo_combustible(fila.get("Combustible")) or "Gasolina"
+        with c3:
+            tipo = st.selectbox(
+                "Tipo de combustible",
+                ["Gasolina", "Diesel"],
+                index=0 if tipo_actual != "Diesel" else 1,
+                key=f"comb_edit_tipo_{rid}",
+            )
+            litros = st.number_input(
+                "Litros cargados",
+                min_value=0.0,
+                value=redondear_mitad_arriba(fila.get("Litros"), 3),
+                step=0.001,
+                format="%.3f",
+                key=f"comb_edit_litros_{rid}",
+            )
+            precio = st.number_input(
+                "Precio por litro",
+                min_value=0.0,
+                value=redondear_mitad_arriba(fila.get("Precio $/L"), 2),
+                step=0.01,
+                format="%.2f",
+                key=f"comb_edit_precio_{rid}",
+            )
+        comentarios = ""
+        if es_unidad_otros(unidad):
+            comentarios = st.text_area(
+                "Notas o comentarios",
+                value=str(fila.get("Comentarios") or ""),
+                key=f"comb_edit_notas_{rid}",
+            ).strip()
+        recorrido, total, rendimiento = calcular_carga_combustible(km_inicial, km_actual, litros, precio)
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Km recorrido", f"{recorrido:,.1f}")
+        m2.metric("Total pesos", f"${total:,.2f}")
+        m3.metric("Rendimiento", f"{rendimiento:.2f} km/l")
+        if st.button("Guardar corrección", type="primary", key=f"comb_edit_ok_{rid}"):
+            if litros <= 0:
+                st.warning("Captura los litros cargados.")
+            elif precio <= 0:
+                st.warning("Captura el precio por litro.")
+            elif km_inicial > 0 and km_actual < km_inicial:
+                st.warning(
+                    f"El kilometraje actual ({km_actual:,.1f}) no puede ser menor que el inicial "
+                    f"({km_inicial:,.1f})."
+                )
+            else:
+                try:
+                    actualizar_carga_combustible(
+                        COMBUSTIBLE_FILE,
+                        fila_excel,
+                        unidad_actual,
+                        fecha_carga,
+                        unidad,
+                        km_inicial,
+                        km_actual,
+                        tipo,
+                        litros,
+                        precio,
+                        recorrido,
+                        total,
+                        rendimiento,
+                        comentarios,
+                    )
+                except PermissionError:
+                    st.error("No se pudo escribir el Excel. Ciérralo en Excel u OneDrive e inténtalo de nuevo.")
+                except Exception as exc:
+                    st.error(f"No se pudo corregir el registro: {exc}")
+                else:
+                    cargar_control_combustible.clear()
+                    st.session_state.comb_just_saved = (
+                        f"Registro de {unidad} corregido: {recorrido:,.1f} km, {litros:g} L, ${total:,.2f}."
+                    )
+                    st.rerun()
 
 
 def render_formulario_carga_combustible(diario: pd.DataFrame, parque: pd.DataFrame) -> None:
-    unidades = unidades_combustible(diario, parque)
-    if not unidades:
-        st.warning("No hay números económicos en la hoja Listas. Agrégalos ahí antes de capturar.")
-        return
+    unidades = _opciones_unidad_combustible(unidades_combustible(diario, parque))
 
     with st.expander("➕ Capturar nueva carga", expanded=st.session_state.get("comb_form_abierto", False)):
         st.caption(
@@ -13270,9 +14195,9 @@ def render_formulario_carga_combustible(diario: pd.DataFrame, parque: pd.DataFra
             km_actual = st.number_input(
                 "Kilometraje actual",
                 min_value=0.0,
-                value=float(km_inicial) if km_inicial > 0 else 0.0,
-                step=1.0,
-                format="%.0f",
+                value=redondear_mitad_arriba(km_inicial, 1) if km_inicial > 0 else 0.0,
+                step=0.1,
+                format="%.1f",
                 key=f"comb_cap_km_{fid}_{unidad}",
             )
             tipo = st.selectbox(
@@ -13299,9 +14224,17 @@ def render_formulario_carga_combustible(diario: pd.DataFrame, parque: pd.DataFra
                 key=f"comb_cap_precio_{fid}_{tipo}",
             )
 
+        comentarios = ""
+        if es_unidad_otros(unidad):
+            comentarios = st.text_area(
+                "Notas o comentarios",
+                placeholder="Describe la unidad, el equipo o el motivo de esta carga.",
+                key=f"comb_cap_notas_{fid}",
+            ).strip()
+
         recorrido, total, rendimiento = calcular_carga_combustible(km_inicial, km_actual, litros, precio)
         p1, p2, p3, p4 = st.columns(4)
-        p1.metric("Km inicial (última carga)", f"{km_inicial:,.0f}")
+        p1.metric("Km inicial (última carga)", f"{km_inicial:,.1f}")
         p2.metric("Km recorrido", f"{recorrido:,.1f}")
         p3.metric("Total pesos", f"${total:,.2f}")
         p4.metric("Rendimiento", f"{rendimiento:.2f} km/l")
@@ -13315,8 +14248,8 @@ def render_formulario_carga_combustible(diario: pd.DataFrame, parque: pd.DataFra
                 st.warning("Captura el precio por litro.")
             elif km_inicial > 0 and km_actual < km_inicial:
                 st.warning(
-                    f"El kilometraje actual ({km_actual:,.0f}) no puede ser menor que el último odómetro "
-                    f"de {unidad} ({km_inicial:,.0f})."
+                    f"El kilometraje actual ({km_actual:,.1f}) no puede ser menor que el último odómetro "
+                    f"de {unidad} ({km_inicial:,.1f})."
                 )
             else:
                 try:
@@ -13332,6 +14265,7 @@ def render_formulario_carga_combustible(diario: pd.DataFrame, parque: pd.DataFra
                         recorrido,
                         total,
                         rendimiento,
+                        comentarios,
                     )
                     cargar_control_combustible.clear()
                     st.session_state.comb_just_saved = (
@@ -13370,6 +14304,7 @@ def render_control_combustible() -> None:
     if aviso:
         st.success(aviso)
 
+    render_alta_unidad_combustible(parque)
     render_formulario_carga_combustible(diario, parque)
 
     if diario.empty:
@@ -13377,6 +14312,8 @@ def render_control_combustible() -> None:
         if not parque.empty:
             st.dataframe(parque, use_container_width=True, hide_index=True)
         return
+
+    render_correccion_carga_combustible(diario, parque)
 
     unidades = unidades_combustible(diario, parque)
     combustibles = ["Todos"] + sorted({c for c in diario["Combustible"] if c})
@@ -13457,6 +14394,7 @@ def render_control_combustible() -> None:
         "Precio $/L",
         "Total $",
         "Rendimiento (km/l)",
+        "Comentarios",
     ]
     with tab_d:
         st.caption("Cargas del Excel (Registro Diario). El rendimiento real omite altas de odómetro.")
@@ -13466,6 +14404,10 @@ def render_control_combustible() -> None:
             tabla = vista.copy()
             tabla["Fecha"] = tabla["Fecha"].dt.strftime("%d/%m/%Y")
             visibles = [c for c in cols_diario if c in tabla.columns]
+            if "Comentarios" in visibles:
+                notas = tabla["Comentarios"].fillna("").astype(str).str.strip().str.casefold()
+                if not notas.isin({"", "nan", "none"}).eq(False).any():
+                    visibles = [c for c in visibles if c != "Comentarios"]
             st.dataframe(
                 tabla[visibles],
                 use_container_width=True,
@@ -13532,6 +14474,10 @@ def render_control_combustible() -> None:
             padrones["Cargas"] = padrones["Cargas"].fillna(0).astype(int)
             padrones["Litros"] = padrones["Litros"].fillna(0).round(2)
             padrones["Gasto $"] = padrones["Gasto $"].fillna(0).round(2)
+            preferidas = [
+                c for c in ("No. económico", "Modelo", "Combustible asignado") if c in padrones.columns
+            ]
+            padrones = padrones[preferidas + [c for c in padrones.columns if c not in preferidas]]
             st.dataframe(
                 padrones,
                 use_container_width=True,
@@ -13542,7 +14488,7 @@ def render_control_combustible() -> None:
                 },
             )
 
-    recorte_xlsx = vista.copy()
+    recorte_xlsx = vista.drop(columns=["_fila_excel"], errors="ignore").copy()
     if not recorte_xlsx.empty:
         recorte_xlsx["Fecha"] = recorte_xlsx["Fecha"].dt.strftime("%Y-%m-%d")
     buf = io.BytesIO()
