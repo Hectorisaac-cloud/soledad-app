@@ -5315,6 +5315,251 @@ def guardar_en_excel(df_final: pd.DataFrame) -> None:
                 pass
 
 
+def _encabezados_hoja_bitacora(ws) -> tuple[int, list[tuple[int, str]]]:
+    limite = min(int(ws.max_row or 1), 12)
+    for fila in range(1, limite + 1):
+        celdas = []
+        for col in range(1, int(ws.max_column or 1) + 1):
+            valor = ws.cell(fila, col).value
+            if valor is None or str(valor).strip() == "":
+                continue
+            celdas.append((col, str(valor).strip()))
+        claves = {_clave_columna_bitacora(nombre) for _, nombre in celdas}
+        if "fecha" in claves and ("cuadrilla" in claves or "personal" in claves):
+            return fila, celdas
+    raise ValueError("La bitácora no tiene una fila de encabezados reconocible.")
+
+
+def _hoja_bitacora_editable(wb):
+    nombres = [nombre for nombre in HOJAS_BITACORA if nombre in wb.sheetnames] or list(wb.sheetnames)
+    for nombre in nombres:
+        try:
+            fila, encabezados = _encabezados_hoja_bitacora(wb[nombre])
+        except ValueError:
+            continue
+        return wb[nombre], fila, encabezados
+    raise ValueError("No se encontró la hoja de la bitácora operativa.")
+
+
+def _columna_encabezado(encabezados: list[tuple[int, str]], *buscados: str) -> int | None:
+    objetivos = {_clave_columna_bitacora(item) for item in buscados}
+    for col, nombre in encabezados:
+        if _alias_columna_bitacora(nombre) in buscados or _clave_columna_bitacora(nombre) in objetivos:
+            return col
+    return None
+
+
+def _siguiente_fila_bitacora(ws, fila_header: int, col_fecha: int) -> int:
+    ultima = fila_header
+    for fila in range(fila_header + 1, int(ws.max_row or fila_header) + 1):
+        valor = ws.cell(fila, col_fecha).value
+        if valor is not None and str(valor).strip() != "":
+            ultima = fila
+    return ultima + 1
+
+
+def _siguiente_secuencia_en_hoja(ws, fila_header: int, encabezados: list[tuple[int, str]], dia: date, cuadrilla: str) -> int:
+    col_fecha = _columna_encabezado(encabezados, "FECHA")
+    col_cuadrilla = _columna_encabezado(encabezados, "CUADRILLA")
+    col_secuencia = _columna_encabezado(encabezados, "SECUENCIA", "SECUENCIA DE ACTIVIDADES")
+    if not col_fecha or not col_cuadrilla:
+        return 1
+    objetivo = clave_hist_cuadrilla(cuadrilla)
+    numeros = []
+    for fila in range(fila_header + 1, int(ws.max_row or fila_header) + 1):
+        if parsear_fecha_valor(ws.cell(fila, col_fecha).value) != dia:
+            continue
+        if clave_hist_cuadrilla(str(ws.cell(fila, col_cuadrilla).value or "")) != objetivo:
+            continue
+        numero = numero_secuencia_actividad(ws.cell(fila, col_secuencia).value) if col_secuencia else None
+        if numero:
+            numeros.append(numero)
+    return max(numeros) + 1 if numeros else 1
+
+
+def _mejor_columna_consumible(token: str, encabezados: list[tuple[int, str]]) -> tuple[int, str] | None:
+    clave_token = _clave_columna_bitacora(token)
+    if not clave_token:
+        return None
+    mejor = None
+    mejor_puntaje = -1.0
+    for col, nombre in encabezados:
+        if not es_columna_insumo_excel(nombre):
+            continue
+        clave_col = _clave_columna_bitacora(nombre)
+        if not clave_col:
+            continue
+        if clave_token == clave_col:
+            puntaje = 1000 + len(clave_col)
+        elif clave_token in clave_col or clave_col in clave_token:
+            puntaje = float(min(len(clave_token), len(clave_col))) - abs(len(clave_col) - len(clave_token)) * 0.05
+        else:
+            continue
+        if puntaje > mejor_puntaje:
+            mejor = (col, nombre)
+            mejor_puntaje = puntaje
+    return mejor
+
+
+def _cantidad_consumible(token: str, columna: str) -> float:
+    numeros_columna = set(re.findall(r"\d+(?:[.,]\d+)?", columna))
+    propios = [numero for numero in re.findall(r"\d+(?:[.,]\d+)?", token) if numero not in numeros_columna]
+    if not propios:
+        return 1
+    try:
+        return float(propios[-1].replace(",", "."))
+    except ValueError:
+        return 1
+
+
+def _asignar_consumibles(texto: str, encabezados: list[tuple[int, str]]) -> tuple[dict[int, float], list[str]]:
+    partes = [parte.strip() for parte in re.split(r"[,;\n]+", str(texto or "")) if parte.strip()]
+    usados: dict[int, float] = {}
+    sueltos: list[str] = []
+    for parte in partes:
+        elegido = _mejor_columna_consumible(parte, encabezados)
+        if elegido is None:
+            sueltos.append(parte)
+            continue
+        col, nombre = elegido
+        usados[col] = _cantidad_consumible(parte, nombre)
+    return usados, sueltos
+
+
+def _nombre_foto_bitacora(indice: int, original: str) -> str:
+    base = os.path.basename(str(original or "foto.jpg"))
+    base = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("._") or "foto.jpg"
+    raiz, extension = os.path.splitext(base)
+    if extension.lower() not in {".jpg", ".jpeg", ".png"}:
+        extension = ".jpg"
+    return f"{int(indice):02d}_{raiz}{extension.lower()}"
+
+
+def guardar_fotos_bitacora_octubre(
+    cuadrilla: str,
+    dia: date,
+    secuencia,
+    archivos: list | None,
+    raiz: str | None = None,
+) -> list[str]:
+    if not archivos:
+        return []
+    carpeta = carpeta_evidencia_octubre_secuencia(cuadrilla, dia, secuencia)
+    if raiz:
+        carpeta = os.path.join(raiz, os.path.relpath(carpeta, EVIDENCIA_OCTUBRE_DIR))
+    os.makedirs(carpeta, exist_ok=True)
+    rutas = []
+    for indice, archivo in enumerate(archivos, start=1):
+        destino = os.path.join(carpeta, _nombre_foto_bitacora(indice, getattr(archivo, "name", "foto.jpg")))
+        raiz_nombre, extension = os.path.splitext(destino)
+        copia = 2
+        while os.path.exists(destino):
+            destino = f"{raiz_nombre}_{copia}{extension}"
+            copia += 1
+        contenido = archivo.getvalue() if hasattr(archivo, "getvalue") else archivo.read()
+        with open(destino, "wb") as salida:
+            salida.write(contenido)
+        rutas.append(destino.replace("\\", "/"))
+    return rutas
+
+
+def _guardar_libro_bitacora(wb, destino: str) -> None:
+    fd, tmp = tempfile.mkstemp(suffix=".xlsx")
+    os.close(fd)
+    try:
+        wb.save(tmp)
+        try:
+            shutil.copy2(tmp, destino)
+        except PermissionError:
+            alt = os.path.join(os.path.dirname(destino) or DATABASE_DIR, "~pjp4_bitacora_write.xlsx")
+            shutil.copy2(tmp, alt)
+            os.replace(alt, destino)
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        wb.close()
+
+
+def agregar_registro_bitacora_soledad(
+    fecha: date,
+    cuadrilla: str,
+    personal: str,
+    ubicacion: str,
+    descripcion: str,
+    consumibles: str = "",
+    comentarios: str = "",
+    fotos: list | None = None,
+    ruta: str | None = None,
+    raiz_fotos: str | None = None,
+) -> dict:
+    """Agrega una fila a la hoja original de la bitácora y conserva el resto del Excel."""
+    destino = ruta or EXCEL_FILE
+    if not os.path.exists(destino):
+        raise FileNotFoundError(destino)
+    from openpyxl import load_workbook
+
+    wb = load_workbook(destino)
+    ws, fila_header, encabezados = _hoja_bitacora_editable(wb)
+    col_fecha = _columna_encabezado(encabezados, "FECHA")
+    col_cuadrilla = _columna_encabezado(encabezados, "CUADRILLA")
+    col_personal = _columna_encabezado(encabezados, "PERSONAL")
+    col_secuencia = _columna_encabezado(encabezados, "SECUENCIA", "SECUENCIA DE ACTIVIDADES")
+    col_ubicacion = _columna_encabezado(encabezados, "UBICACIÓN", "UBICACION")
+    col_desc = _columna_encabezado(encabezados, "DESCRIPCION DE LA ACTIVIDAD")
+    col_coment = _columna_encabezado(encabezados, "COMENTARIOS")
+    if not col_fecha or not col_cuadrilla or not col_desc:
+        wb.close()
+        raise ValueError("La bitácora no tiene fecha, cuadrilla o descripción.")
+    secuencia = _siguiente_secuencia_en_hoja(ws, fila_header, encabezados, fecha, cuadrilla)
+    fila = _siguiente_fila_bitacora(ws, fila_header, col_fecha)
+    rutas = guardar_fotos_bitacora_octubre(cuadrilla, fecha, secuencia, fotos or [], raiz_fotos)
+    try:
+        ws.cell(fila, col_fecha).value = datetime(fecha.year, fecha.month, fecha.day)
+        ws.cell(fila, col_cuadrilla).value = cuadrilla.strip()
+        if col_personal:
+            ws.cell(fila, col_personal).value = personal.strip()
+        if col_secuencia:
+            ws.cell(fila, col_secuencia).value = int(secuencia)
+        if col_ubicacion:
+            ws.cell(fila, col_ubicacion).value = ubicacion.strip()
+        ws.cell(fila, col_desc).value = descripcion.strip()
+        cantidades, sueltos = _asignar_consumibles(consumibles, encabezados)
+        for col, cantidad in cantidades.items():
+            ws.cell(fila, col).value = int(cantidad) if float(cantidad).is_integer() else float(cantidad)
+        texto_coment = comentarios.strip()
+        if sueltos:
+            extra = "Consumibles: " + ", ".join(sueltos)
+            texto_coment = f"{texto_coment} · {extra}" if texto_coment else extra
+        if col_coment and texto_coment:
+            ws.cell(fila, col_coment).value = texto_coment
+        _guardar_libro_bitacora(wb, destino)
+    except Exception:
+        for ruta_foto in rutas:
+            try:
+                os.remove(ruta_foto)
+            except OSError:
+                pass
+        raise
+    try:
+        df_bitacora = cargar_bitacora() if destino == EXCEL_FILE else pd.DataFrame()
+    except Exception:
+        df_bitacora = pd.DataFrame()
+    return {
+        "secuencia": int(secuencia),
+        "fila": fila,
+        "fotos": rutas,
+        "carpeta": (
+            os.path.dirname(rutas[0]).replace("\\", "/")
+            if rutas
+            else carpeta_evidencia_octubre_secuencia(cuadrilla, fecha, secuencia).replace("\\", "/")
+        ),
+        "df_bitacora": df_bitacora,
+    }
+
+
 def construir_registro(
     fecha: date,
     secuencia: str,
@@ -8018,15 +8263,15 @@ def render_interruptor_edicion_ops() -> bool:
                 st.toggle(
                     "Modo Edición Administrador",
                     key="ops_modo_edicion_admin",
-                    help="Actívalo para marcar una actividad como Cumplido y vincular el reporte de campo.",
+                    help="Actívalo para registrar una actividad en la bitácora o para marcar un programado como Cumplido.",
                 )
             )
         with col_ayuda:
             if activo:
                 st.markdown(
                     '<p class="ops-modo-ayuda"><b>Edición activa.</b> '
-                    "Marca <b>Vincular</b> en la fila, o cambia el estatus a <b>Cumplido</b>, "
-                    "para abrir el asistente: fecha, cuadrilla y evidencia.</p>",
+                    "Registra una actividad nueva en la bitácora, o marca <b>Vincular</b> "
+                    "y cambia el estatus a <b>Cumplido</b> para ligar la evidencia de campo.</p>",
                     unsafe_allow_html=True,
                 )
             else:
@@ -8254,6 +8499,108 @@ def render_programados_ops_excel(
         st.session_state.ops_evidencia_abierta = None
 
 
+def render_registro_actividad_bitacora() -> None:
+    aviso = st.session_state.pop("bitacora_registro_ok", None)
+    if aviso:
+        st.success(aviso)
+    epoch = int(st.session_state.get("bitacora_form_epoch") or 0)
+    opciones = catalogo_cuadrillas_historial(bitacora_con_fechas(cargar_bitacora()))
+    otra = "Otra (escribir)"
+    with st.expander("➕ Registrar Actividad en Bitácora", expanded=True):
+        st.caption(
+            "El registro se agrega a la bitácora operativa. "
+            "Si adjuntas fotos, se guardan en evidencia_fotografica_octubre, en la carpeta de la cuadrilla, la fecha y la secuencia."
+        )
+        col_fecha, col_cuadrilla = st.columns(2, gap="medium")
+        with col_fecha:
+            fecha = st.date_input(
+                "Fecha de ejecución",
+                value=date.today(),
+                format="DD/MM/YYYY",
+                key=f"bit_reg_fecha_{epoch}",
+            )
+        with col_cuadrilla:
+            cuadrilla_sel = st.selectbox(
+                "Cuadrilla",
+                opciones + [otra],
+                format_func=lambda nombre: nombre if nombre == otra else etiqueta_cuadrilla_historial(nombre),
+                key=f"bit_reg_cuadrilla_{epoch}",
+            )
+            cuadrilla_libre = ""
+            if cuadrilla_sel == otra:
+                cuadrilla_libre = st.text_input(
+                    "Nombre de la cuadrilla",
+                    placeholder="Escribe la cuadrilla",
+                    key=f"bit_reg_cuadrilla_libre_{epoch}",
+                )
+        col_personal, col_ubicacion = st.columns(2, gap="medium")
+        with col_personal:
+            personal = st.text_input(
+                "Ficha / Personal a cargo",
+                placeholder="Ej. 1705-2107",
+                key=f"bit_reg_personal_{epoch}",
+            )
+        with col_ubicacion:
+            ubicacion = st.text_input(
+                "Ubicación / Equipo",
+                placeholder="Ej. PSN68, PSN379",
+                key=f"bit_reg_ubicacion_{epoch}",
+            )
+        descripcion = st.text_area(
+            "Descripción de la actividad realizada",
+            height=120,
+            placeholder="Describe el trabajo realizado en campo",
+            key=f"bit_reg_desc_{epoch}",
+        )
+        consumibles = st.text_input(
+            "Consumibles utilizados",
+            placeholder="Ej. ACEITE SAE 50, GRASA OPS",
+            key=f"bit_reg_consumibles_{epoch}",
+        )
+        comentarios = st.text_area(
+            "Comentarios / Observaciones",
+            height=90,
+            placeholder="Observaciones del trabajo",
+            key=f"bit_reg_comentarios_{epoch}",
+        )
+        fotos = st.file_uploader(
+            "Carga de Evidencia Fotográfica",
+            type=["jpg", "jpeg", "png"],
+            accept_multiple_files=True,
+            key=f"bit_reg_fotos_{epoch}",
+        )
+        if st.button("Guardar Registro", type="primary", key=f"bit_reg_guardar_{epoch}"):
+            cuadrilla = cuadrilla_libre.strip() if cuadrilla_sel == otra else str(cuadrilla_sel or "").strip()
+            if not cuadrilla:
+                st.error("Escribe la cuadrilla que realizó la actividad.")
+            elif not str(descripcion or "").strip():
+                st.error("Escribe la descripción de la actividad realizada.")
+            else:
+                try:
+                    resultado = agregar_registro_bitacora_soledad(
+                        fecha,
+                        cuadrilla,
+                        personal,
+                        ubicacion,
+                        descripcion,
+                        consumibles,
+                        comentarios,
+                        list(fotos or []),
+                    )
+                except PermissionError:
+                    st.error("No se pudo guardar la bitácora. Cierra el Excel si lo tienes abierto e inténtalo de nuevo.")
+                except Exception as exc:
+                    st.error(f"No se pudo guardar el registro: {exc}")
+                else:
+                    st.session_state.ops_df_bitacora = resultado.get("df_bitacora")
+                    st.session_state.bitacora_form_epoch = epoch + 1
+                    if resultado.get("fotos"):
+                        st.session_state.bitacora_registro_ok = "Registro guardado y evidencia adjuntada correctamente"
+                    else:
+                        st.session_state.bitacora_registro_ok = "Registro guardado correctamente"
+                    st.rerun()
+
+
 def render_control_programados() -> None:
     st.markdown(
         '<div class="section-title">Control de programados vs no programados</div>',
@@ -8332,6 +8679,8 @@ def render_control_programados() -> None:
     if sub == "ops":
         st.markdown(f'<div class="explorer-crumb">{ruta_programados}</div>', unsafe_allow_html=True)
         modo_edicion_ops = render_interruptor_edicion_ops()
+        if modo_edicion_ops:
+            render_registro_actividad_bitacora()
         if st.button("← Volver a Programados", key="volver_admin_sub_programados"):
             st.session_state.admin_sub_programados = None
             st.rerun()
