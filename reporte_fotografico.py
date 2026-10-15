@@ -1,0 +1,625 @@
+"""Reporte fotográfico consolidado a partir del machote oficial."""
+
+from __future__ import annotations
+
+import io
+import os
+import re
+import warnings
+import zipfile
+from datetime import date, datetime
+
+from openpyxl import load_workbook
+from openpyxl.drawing.image import Image as XLImage
+from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor, TwoCellAnchor
+from openpyxl.drawing.xdr import XDRPositiveSize2D
+from openpyxl.styles import Alignment
+from openpyxl.utils import get_column_letter
+from openpyxl.utils.units import pixels_to_EMU
+from openpyxl.workbook.workbook import Workbook
+from openpyxl.worksheet.worksheet import Worksheet
+from PIL import Image as PILImage
+from PIL import ImageOps
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.utils import ImageReader
+
+PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
+FOTOS_POR_FILA = 3
+FOTOS_POR_HOJA = 9
+RANURAS = (
+    (1, 10, 4, 23),
+    (6, 10, 9, 23),
+    (11, 10, 14, 23),
+    (1, 25, 4, 38),
+    (6, 25, 9, 38),
+    (11, 25, 14, 38),
+    (1, 40, 4, 53),
+    (6, 40, 9, 53),
+    (11, 40, 14, 53),
+)
+FIRMA_DERECHA = TwoCellAnchor(
+    _from=AnchorMarker(col=9, colOff=243840, row=62, rowOff=38100),
+    to=AnchorMarker(col=11, colOff=647700, row=66, rowOff=617220),
+)
+RECURSOS_PLANTILLA = (
+    (
+        "xl/media/image3.png",
+        TwoCellAnchor(
+            _from=AnchorMarker(col=0, colOff=243840, row=0, rowOff=114300),
+            to=AnchorMarker(col=2, colOff=388620, row=0, rowOff=944880),
+        ),
+    ),
+    (
+        "xl/media/image4.png",
+        TwoCellAnchor(
+            _from=AnchorMarker(col=12, colOff=350520, row=0, rowOff=76200),
+            to=AnchorMarker(col=13, colOff=586740, row=0, rowOff=960120),
+        ),
+    ),
+    (
+        "xl/media/image1.png",
+        TwoCellAnchor(
+            _from=AnchorMarker(col=2, colOff=883920, row=62, rowOff=76200),
+            to=AnchorMarker(col=4, colOff=38100, row=66, rowOff=609600),
+        ),
+    ),
+)
+_MARGEN_RANURA = 8
+_FUENTE_PDF = "ReporteFoto"
+_FUENTE_PDF_NEGRITA = "ReporteFoto-Bold"
+
+
+def _ancho_columna_px(ws: Worksheet, columna: int) -> float:
+    letra = get_column_letter(columna)
+    ancho = ws.column_dimensions[letra].width
+    if not ancho:
+        ancho = ws.sheet_format.defaultColWidth or 8.43
+    return ((256 * float(ancho) + int(128 / 7)) / 256) * 7
+
+
+def _alto_fila_px(ws: Worksheet, fila: int) -> float:
+    alto = ws.row_dimensions[fila].height
+    if not alto:
+        alto = 15
+    return float(alto) * 96 / 72
+
+
+def _origen_px(ws: Worksheet, columna: int, fila: int) -> tuple[float, float]:
+    x = sum(_ancho_columna_px(ws, c) for c in range(1, columna))
+    y = sum(_alto_fila_px(ws, r) for r in range(1, fila))
+    return x, y
+
+
+def _tamano_rango_px(ws: Worksheet, col_ini: int, fila_ini: int, col_fin: int, fila_fin: int) -> tuple[float, float]:
+    ancho = sum(_ancho_columna_px(ws, c) for c in range(col_ini, col_fin + 1))
+    alto = sum(_alto_fila_px(ws, r) for r in range(fila_ini, fila_fin + 1))
+    return ancho, alto
+
+
+def _ajustar_en_caja(ancho: int, alto: int, caja_ancho: float, caja_alto: float) -> tuple[int, int, int, int]:
+    """Escala la imagen dentro de la caja y la centra. Conserva la proporción."""
+    util_ancho = max(1, int(caja_ancho) - (2 * _MARGEN_RANURA))
+    util_alto = max(1, int(caja_alto) - (2 * _MARGEN_RANURA))
+    escala = min(util_ancho / max(ancho, 1), util_alto / max(alto, 1))
+    nuevo_ancho = max(1, int(round(ancho * escala)))
+    nuevo_alto = max(1, int(round(alto * escala)))
+    desplazamiento_x = max(_MARGEN_RANURA, int((caja_ancho - nuevo_ancho) / 2))
+    desplazamiento_y = max(_MARGEN_RANURA, int((caja_alto - nuevo_alto) / 2))
+    return nuevo_ancho, nuevo_alto, desplazamiento_x, desplazamiento_y
+
+
+def _preparar_imagen(ruta: str, max_ancho: int, max_alto: int) -> tuple[PILImage.Image, int, int]:
+    with PILImage.open(ruta) as origen:
+        imagen = ImageOps.exif_transpose(origen)
+        if imagen.mode not in ("RGB", "RGBA"):
+            imagen = imagen.convert("RGB")
+        else:
+            imagen = imagen.copy()
+    ancho, alto = imagen.size
+    nuevo_ancho, nuevo_alto, _, _ = _ajustar_en_caja(ancho, alto, max_ancho + (2 * _MARGEN_RANURA), max_alto + (2 * _MARGEN_RANURA))
+    if (nuevo_ancho, nuevo_alto) != (ancho, alto):
+        imagen = imagen.resize((nuevo_ancho, nuevo_alto), PILImage.Resampling.LANCZOS)
+    if imagen.mode == "RGBA":
+        fondo = PILImage.new("RGB", imagen.size, "white")
+        fondo.paste(imagen, mask=imagen.getchannel("A"))
+        imagen = fondo
+    return imagen, imagen.size[0], imagen.size[1]
+
+
+def _firma_derecha_png(ruta_plantilla: str) -> io.BytesIO | None:
+    try:
+        with zipfile.ZipFile(ruta_plantilla) as paquete:
+            emf = paquete.read("xl/media/image2.emf")
+    except (KeyError, FileNotFoundError, zipfile.BadZipFile):
+        return None
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        imagen = PILImage.open(io.BytesIO(emf))
+        imagen.load()
+    if imagen.mode != "RGB":
+        imagen = imagen.convert("RGB")
+    buffer = io.BytesIO()
+    imagen.save(buffer, format="PNG")
+    buffer.seek(0)
+    buffer.name = "firma_derecha.png"
+    return buffer
+
+
+def _anclar_foto(ws: Worksheet, imagen: PILImage.Image, ranura: tuple[int, int, int, int]) -> dict:
+    col_ini, fila_ini, col_fin, fila_fin = ranura
+    caja_ancho, caja_alto = _tamano_rango_px(ws, col_ini, fila_ini, col_fin, fila_fin)
+    ancho, alto, dx, dy = _ajustar_en_caja(imagen.size[0], imagen.size[1], caja_ancho, caja_alto)
+    if (ancho, alto) != imagen.size:
+        imagen = imagen.resize((ancho, alto), PILImage.Resampling.LANCZOS)
+    buffer = io.BytesIO()
+    imagen.save(buffer, format="JPEG", quality=85)
+    buffer.seek(0)
+    buffer.name = "evidencia.jpg"
+    dibujo = XLImage(buffer)
+    dibujo.width = ancho
+    dibujo.height = alto
+    dibujo.anchor = OneCellAnchor(
+        _from=AnchorMarker(
+            col=col_ini - 1,
+            colOff=pixels_to_EMU(dx),
+            row=fila_ini - 1,
+            rowOff=pixels_to_EMU(dy),
+        ),
+        ext=XDRPositiveSize2D(pixels_to_EMU(ancho), pixels_to_EMU(alto)),
+    )
+    ws.add_image(dibujo)
+    origen_x, origen_y = _origen_px(ws, col_ini, fila_ini)
+    return {
+        "x": origen_x + dx,
+        "y": origen_y + dy,
+        "ancho": ancho,
+        "alto": alto,
+        "ranura": (
+            origen_x,
+            origen_y,
+            caja_ancho,
+            caja_alto,
+        ),
+        "proporcion": ancho / alto,
+    }
+
+
+def _recursos_oficiales(ruta_plantilla: str) -> list[tuple[bytes, TwoCellAnchor]]:
+    recursos = []
+    try:
+        paquete = zipfile.ZipFile(ruta_plantilla)
+    except (FileNotFoundError, zipfile.BadZipFile):
+        return recursos
+    with paquete:
+        for nombre, ancla in RECURSOS_PLANTILLA:
+            try:
+                recursos.append((paquete.read(nombre), ancla))
+            except KeyError:
+                continue
+    return recursos
+
+
+def _clonar_ancla(ancla: TwoCellAnchor) -> TwoCellAnchor:
+    return TwoCellAnchor(
+        _from=AnchorMarker(
+            col=ancla._from.col,
+            colOff=ancla._from.colOff,
+            row=ancla._from.row,
+            rowOff=ancla._from.rowOff,
+        ),
+        to=AnchorMarker(
+            col=ancla.to.col,
+            colOff=ancla.to.colOff,
+            row=ancla.to.row,
+            rowOff=ancla.to.rowOff,
+        ),
+    )
+
+
+def _colocar_recurso(ws: Worksheet, datos: bytes, ancla: TwoCellAnchor, retenidas: list, nombre: str) -> None:
+    buffer = io.BytesIO(datos)
+    buffer.name = nombre
+    imagen = XLImage(buffer)
+    imagen.anchor = _clonar_ancla(ancla)
+    ws.add_image(imagen)
+    retenidas.append(buffer)
+
+
+def _agregar_firma(ws: Worksheet, firma: io.BytesIO | None, retenidas: list) -> None:
+    if firma is None:
+        return
+    firma.seek(0)
+    copia = io.BytesIO(firma.read())
+    copia.name = "firma_derecha.png"
+    imagen = XLImage(copia)
+    imagen.anchor = _clonar_ancla(FIRMA_DERECHA)
+    ws.add_image(imagen)
+    retenidas.append(copia)
+
+
+def _escribir_encabezado(ws: Worksheet, actividad: dict, continuacion: str) -> None:
+    descripcion = str(actividad.get("descripcion") or "").strip()
+    if continuacion:
+        descripcion = f"{descripcion} {continuacion}".strip()
+    ws["A4"] = str(actividad.get("ot") or "")
+    ws["C4"] = str(actividad.get("ubicacion") or "")
+    fecha = actividad.get("fecha")
+    if isinstance(fecha, datetime):
+        fecha = fecha.date()
+    ws["D4"] = fecha if isinstance(fecha, date) else str(fecha or "")
+    if isinstance(fecha, date):
+        ws["D4"].number_format = "DD/MM/YYYY"
+    ws["E3"] = descripcion
+    ws["K4"] = str(actividad.get("avance") or "")
+    ws["L4"] = str(actividad.get("cuadrilla") or "")
+    for coordenada in ("C4", "E3", "L4"):
+        ws[coordenada].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+
+def _nombre_hoja(indice: int, actividad: dict, parte: int, usados: set[str]) -> str:
+    fecha = actividad.get("fecha")
+    dia = fecha.strftime("%d%m") if isinstance(fecha, date) else ""
+    cuadrilla = re.sub(r"[:\\/?*\[\]]+", " ", str(actividad.get("cuadrilla") or "Cuadrilla"))
+    cuadrilla = re.sub(r"\s+", " ", cuadrilla).strip()
+    sufijo = f" {parte}" if parte else ""
+    base = f"{indice:02d} {cuadrilla} {dia}{sufijo}".strip()
+    base = base[:31] or f"Hoja {indice}"
+    nombre = base
+    extra = 2
+    while nombre.casefold() in usados:
+        recorte = base[: 31 - len(str(extra)) - 1]
+        nombre = f"{recorte} {extra}"
+        extra += 1
+    usados.add(nombre.casefold())
+    return nombre
+
+
+def _preparar_libro(ruta_plantilla: str) -> tuple[Workbook, Worksheet, io.BytesIO | None]:
+    if not os.path.isfile(ruta_plantilla):
+        raise FileNotFoundError(
+            f"No está la plantilla del reporte fotográfico en {ruta_plantilla}."
+        )
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="wmf image format is not supported",
+            category=UserWarning,
+        )
+        libro = load_workbook(ruta_plantilla)
+    libro._external_links = []
+    plantilla = libro.active
+    plantilla["K4"] = plantilla["K4"].value if not isinstance(plantilla["K4"].value, str) or not str(plantilla["K4"].value).startswith("=") else ""
+    if isinstance(plantilla["Q21"].value, str) and str(plantilla["Q21"].value).startswith("="):
+        plantilla["Q21"] = None
+    firma = _firma_derecha_png(ruta_plantilla)
+    return libro, plantilla, firma
+
+
+def _hoja_a_pdf(
+    pdf: canvas.Canvas,
+    ws: Worksheet,
+    fotos: list[tuple[PILImage.Image, dict]],
+    recursos: list[tuple[bytes, TwoCellAnchor]],
+) -> None:
+    ancho_hoja, alto_hoja = letter
+    margen = 18
+    ancho_contenido = sum(_ancho_columna_px(ws, c) for c in range(1, 15)) * 72 / 96
+    alto_contenido = sum((ws.row_dimensions[r].height or 15) for r in range(1, 70))
+    escala = min(
+        (ancho_hoja - 2 * margen) / max(ancho_contenido, 1),
+        (alto_hoja - 2 * margen) / max(alto_contenido, 1),
+    )
+    fuente, fuente_negrita = _fuentes_pdf()
+
+    def x_pt(columna: int, extra: float = 0) -> float:
+        return margen + (sum(_ancho_columna_px(ws, c) for c in range(1, columna)) + extra) * 72 / 96 * escala
+
+    def y_pt(fila: int, extra: float = 0) -> float:
+        acumulado = sum((ws.row_dimensions[r].height or 15) for r in range(1, fila)) + extra * 72 / 96
+        return alto_hoja - margen - acumulado * escala
+
+    def alto_pt(fila_ini: int, fila_fin: int) -> float:
+        return sum((ws.row_dimensions[r].height or 15) for r in range(fila_ini, fila_fin + 1)) * escala
+
+    def ancho_pt(col_ini: int, col_fin: int) -> float:
+        return sum(_ancho_columna_px(ws, c) for c in range(col_ini, col_fin + 1)) * 72 / 96 * escala
+
+    pdf.setFillColorRGB(0.05, 0.16, 0.12)
+    pdf.rect(0, 0, ancho_hoja, alto_hoja, stroke=0, fill=1)
+    pdf.setFillColorRGB(1, 1, 1)
+    pdf.rect(margen - 6, margen - 6, ancho_hoja - 2 * margen + 12, alto_hoja - 2 * margen + 12, stroke=0, fill=1)
+
+    for datos, ancla in recursos:
+        try:
+            lector = ImageReader(io.BytesIO(datos))
+        except Exception:
+            continue
+        x0 = x_pt(ancla._from.col + 1, ancla._from.colOff / 9525)
+        y_sup = y_pt(ancla._from.row + 1, ancla._from.rowOff / 9525)
+        x1 = x_pt(ancla.to.col + 1, ancla.to.colOff / 9525)
+        y_inf = y_pt(ancla.to.row + 1, ancla.to.rowOff / 9525)
+        _dibujar_proporcion(pdf, lector, x0, y_inf, max(1, x1 - x0), max(1, y_sup - y_inf))
+
+    pdf.setFillColorRGB(0.08, 0.12, 0.1)
+    pdf.setFont(fuente_negrita, 11)
+    pdf.drawCentredString(x_pt(4) + ancho_pt(4, 12) / 2, y_pt(1) - 28, "REPORTE DE EVIDENCIA FOTOGRAFICA")
+    pdf.setFont(fuente, 8)
+    etiquetas = ((1, "N° OT"), (3, "Ubicación"), (4, "Fecha"), (11, "% Avance"), (12, "Cuadrilla"))
+    for columna, texto in etiquetas:
+        pdf.drawCentredString(x_pt(columna) + ancho_pt(columna, columna if columna not in (1, 12) else columna + (1 if columna == 1 else 2)) / 2, y_pt(3) - 11, texto)
+    valores = (
+        (1, 2, 4, 7, _texto_celda(ws["A4"].value)),
+        (3, 3, 4, 7, _texto_celda(ws["C4"].value)),
+        (4, 4, 4, 7, _texto_celda(ws["D4"].value)),
+        (5, 10, 3, 7, _texto_celda(ws["E3"].value)),
+        (11, 11, 4, 7, _texto_celda(ws["K4"].value)),
+        (12, 14, 4, 7, _texto_celda(ws["L4"].value)),
+    )
+    for col_ini, col_fin, fila_ini, fila_fin, texto in valores:
+        _texto_en_caja(
+            pdf,
+            texto,
+            x_pt(col_ini),
+            y_pt(fila_fin + 1),
+            ancho_pt(col_ini, col_fin),
+            alto_pt(fila_ini, fila_fin),
+            fuente if col_ini != 5 else fuente_negrita,
+            7 if col_ini == 5 else 8,
+        )
+    pdf.setStrokeColorRGB(0.75, 0.78, 0.76)
+    pdf.setLineWidth(0.6)
+    for ranura in RANURAS:
+        col_ini, fila_ini, col_fin, fila_fin = ranura
+        pdf.rect(x_pt(col_ini), y_pt(fila_fin + 1), ancho_pt(col_ini, col_fin), alto_pt(fila_ini, fila_fin), stroke=1, fill=0)
+    for imagen, caja in fotos:
+        col_ini, fila_ini, col_fin, fila_fin = _ranura_de_caja(ws, caja)
+        buffer = io.BytesIO()
+        imagen.save(buffer, format="JPEG", quality=85)
+        buffer.seek(0)
+        _dibujar_proporcion(
+            pdf,
+            ImageReader(buffer),
+            x_pt(col_ini) + caja["dx"] * 72 / 96 * escala,
+            y_pt(fila_ini, caja["dy"] + caja["alto"]),
+            caja["ancho"] * 72 / 96 * escala,
+            caja["alto"] * 72 / 96 * escala,
+        )
+    pdf.setFillColorRGB(0.1, 0.14, 0.12)
+    pdf.setFont(fuente, 7)
+    pdf.drawCentredString(x_pt(1) + ancho_pt(1, 7) / 2, y_pt(62) - 10, _texto_celda(ws["A62"].value))
+    pdf.drawCentredString(x_pt(8) + ancho_pt(8, 14) / 2, y_pt(62) - 10, _texto_celda(ws["H62"].value))
+    pdf.setFont(fuente_negrita, 8)
+    pdf.drawCentredString(x_pt(1) + ancho_pt(1, 7) / 2, y_pt(68) - 14, _texto_celda(ws["A68"].value))
+    pdf.drawCentredString(x_pt(8) + ancho_pt(8, 14) / 2, y_pt(68) - 14, _texto_celda(ws["H68"].value))
+    pdf.setFont(fuente, 7)
+    pdf.drawCentredString(x_pt(1) + ancho_pt(1, 7) / 2, y_pt(69) - 12, _texto_celda(ws["A69"].value))
+    pdf.drawCentredString(x_pt(8) + ancho_pt(8, 14) / 2, y_pt(69) - 12, _texto_celda(ws["H69"].value))
+    pdf.showPage()
+
+
+def _ranura_de_caja(ws: Worksheet, caja: dict) -> tuple[int, int, int, int]:
+    return caja["ranura_idx"]
+
+
+def _dibujar_proporcion(pdf, lector, x, y, ancho, alto) -> None:
+    try:
+        imagen_ancho, imagen_alto = lector.getSize()
+    except Exception:
+        pdf.drawImage(lector, x, y, width=ancho, height=alto, preserveAspectRatio=True, mask="auto", anchor="c")
+        return
+    if not imagen_ancho or not imagen_alto:
+        return
+    escala = min(ancho / imagen_ancho, alto / imagen_alto)
+    dibujo_ancho = imagen_ancho * escala
+    dibujo_alto = imagen_alto * escala
+    pdf.drawImage(
+        lector,
+        x + (ancho - dibujo_ancho) / 2,
+        y + (alto - dibujo_alto) / 2,
+        width=dibujo_ancho,
+        height=dibujo_alto,
+        preserveAspectRatio=True,
+        mask="auto",
+    )
+
+
+def _texto_celda(valor) -> str:
+    if valor is None:
+        return ""
+    if isinstance(valor, datetime):
+        return valor.strftime("%d/%m/%Y")
+    if isinstance(valor, date):
+        return valor.strftime("%d/%m/%Y")
+    return str(valor).strip()
+
+
+def _texto_en_caja(pdf, texto, x, y, ancho, alto, fuente, tamano) -> None:
+    if not texto:
+        return
+    pdf.setFillColorRGB(0.08, 0.12, 0.1)
+    pdf.setFont(fuente, tamano)
+    palabras = texto.split()
+    lineas: list[str] = []
+    actual = ""
+    for palabra in palabras:
+        propuesta = f"{actual} {palabra}".strip()
+        if pdf.stringWidth(propuesta, fuente, tamano) <= ancho - 4:
+            actual = propuesta
+        else:
+            if actual:
+                lineas.append(actual)
+            actual = palabra
+    if actual:
+        lineas.append(actual)
+    if not lineas:
+        return
+    alto_linea = tamano + 1.5
+    bloque = min(len(lineas), max(1, int(alto / alto_linea)))
+    y_texto = y + (alto + bloque * alto_linea) / 2 - tamano
+    for linea in lineas[:bloque]:
+        pdf.drawCentredString(x + ancho / 2, y_texto, linea)
+        y_texto -= alto_linea
+
+
+def _fuentes_pdf() -> tuple[str, str]:
+    if _FUENTE_PDF in pdfmetrics.getRegisteredFontNames():
+        return _FUENTE_PDF, _FUENTE_PDF_NEGRITA
+    windir = os.environ.get("WINDIR", r"C:\Windows")
+    pares = (
+        (
+            os.path.join(windir, "Fonts", "arial.ttf"),
+            os.path.join(windir, "Fonts", "arialbd.ttf"),
+        ),
+        (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ),
+        (
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        ),
+    )
+    for regular, negrita in pares:
+        if os.path.isfile(regular) and os.path.isfile(negrita):
+            pdfmetrics.registerFont(TTFont(_FUENTE_PDF, regular))
+            pdfmetrics.registerFont(TTFont(_FUENTE_PDF_NEGRITA, negrita))
+            return _FUENTE_PDF, _FUENTE_PDF_NEGRITA
+    return "Helvetica", "Helvetica-Bold"
+
+
+def _ordenar(actividades: list[dict]) -> list[dict]:
+    def clave(item: dict):
+        fecha = item.get("fecha") or date.min
+        if isinstance(fecha, datetime):
+            fecha = fecha.date()
+        orden = item.get("orden")
+        return (fecha, 99 if orden is None else int(orden), int(item.get("secuencia") or 0))
+
+    return sorted(actividades, key=clave)
+
+
+def generar_reporte_fotografico(
+    actividades: list[dict],
+    ruta_plantilla: str = PLANTILLA_XLSX,
+) -> tuple[bytes, bytes, dict]:
+    """Devuelve el Excel, el PDF y un resumen de hojas, fotos y omisiones."""
+    if not actividades:
+        raise ValueError("No hay actividades en el periodo seleccionado.")
+    libro, plantilla, firma = _preparar_libro(ruta_plantilla)
+    recursos = _recursos_oficiales(ruta_plantilla)
+    retenidas: list = []
+    if firma is not None:
+        retenidas.append(firma)
+    usados: set[str] = set()
+    paginas_pdf: list[tuple[Worksheet, list]] = []
+    fotos_insertadas = 0
+    fotos_omitidas = 0
+    hojas = 0
+    for indice, actividad in enumerate(_ordenar(actividades), start=1):
+        rutas = [str(ruta) for ruta in (actividad.get("fotos") or []) if str(ruta).strip()]
+        bloques = [rutas[i : i + FOTOS_POR_HOJA] for i in range(0, len(rutas), FOTOS_POR_HOJA)] or [[]]
+        for parte, bloque in enumerate(bloques):
+            hoja = libro.copy_worksheet(plantilla)
+            hoja.title = _nombre_hoja(indice, actividad, parte + 1 if len(bloques) > 1 else 0, usados)
+            _escribir_encabezado(
+                hoja,
+                actividad,
+                "(continuación)" if parte else "",
+            )
+            hoja.page_setup.orientation = "portrait"
+            hoja.page_setup.fitToWidth = 1
+            hoja.page_setup.fitToHeight = 1
+            hoja.page_setup.paperSize = hoja.PAPERSIZE_LETTER
+            hoja.sheet_properties.pageSetUpPr.fitToPage = True
+            hoja.print_area = "A1:N69"
+            for indice_recurso, (datos, ancla) in enumerate(recursos):
+                _colocar_recurso(hoja, datos, ancla, retenidas, f"recurso_{indice_recurso}.png")
+            _agregar_firma(hoja, firma, retenidas)
+            fotos_hoja = []
+            for posicion, ruta in enumerate(bloque[:FOTOS_POR_FILA * 3]):
+                if not os.path.isfile(ruta):
+                    fotos_omitidas += 1
+                    continue
+                ranura = RANURAS[posicion]
+                caja_ancho, caja_alto = _tamano_rango_px(hoja, *ranura)
+                try:
+                    imagen, _, _ = _preparar_imagen(
+                        ruta,
+                        max(1, int(caja_ancho) - 2 * _MARGEN_RANURA),
+                        max(1, int(caja_alto) - 2 * _MARGEN_RANURA),
+                    )
+                except Exception:
+                    fotos_omitidas += 1
+                    continue
+                caja = _anclar_foto(hoja, imagen, ranura)
+                caja["dx"] = caja["x"] - caja["ranura"][0]
+                caja["dy"] = caja["y"] - caja["ranura"][1]
+                caja["ranura_idx"] = ranura
+                caja["origen"] = (imagen.size[0], imagen.size[1])
+                fotos_hoja.append((imagen, caja))
+                fotos_insertadas += 1
+            paginas_pdf.append((hoja, fotos_hoja))
+            hojas += 1
+    libro.remove(plantilla)
+    recursos_pdf = list(recursos)
+    if firma is not None:
+        firma.seek(0)
+        recursos_pdf.append((firma.read(), FIRMA_DERECHA))
+    pdf_buffer = io.BytesIO()
+    pdf = canvas.Canvas(pdf_buffer, pagesize=letter)
+    for hoja, fotos_hoja in paginas_pdf:
+        _hoja_a_pdf(pdf, hoja, fotos_hoja, recursos_pdf)
+    pdf.save()
+    excel_buffer = io.BytesIO()
+    libro.save(excel_buffer)
+    resumen = {
+        "hojas": hojas,
+        "actividades": len(actividades),
+        "fotos": fotos_insertadas,
+        "omitidas": fotos_omitidas,
+    }
+    return excel_buffer.getvalue(), pdf_buffer.getvalue(), resumen
+
+
+def cajas_desde_libro(contenido: bytes) -> list[dict]:
+    """Lee las fotos de evidencia ancladas en la cuadrícula 3xN."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning)
+        libro = load_workbook(io.BytesIO(contenido))
+    cajas = []
+    for hoja in libro.worksheets:
+        for dibujo in hoja._images:
+            ancla = dibujo.anchor
+            if not isinstance(ancla, OneCellAnchor):
+                continue
+            fila = ancla._from.row + 1
+            if fila < 10 or fila > 53:
+                continue
+            columna = ancla._from.col + 1
+            dx = ancla._from.colOff / 9525
+            dy = ancla._from.rowOff / 9525
+            ancho = ancla.ext.cx / 9525
+            alto = ancla.ext.cy / 9525
+            origen_x, origen_y = _origen_px(hoja, columna, fila)
+            ranura = next(
+                item
+                for item in RANURAS
+                if item[0] == columna and item[1] == fila
+            )
+            caja_x, caja_y = _origen_px(hoja, ranura[0], ranura[1])
+            caja_ancho, caja_alto = _tamano_rango_px(hoja, *ranura)
+            cajas.append(
+                {
+                    "hoja": hoja.title,
+                    "x": origen_x + dx,
+                    "y": origen_y + dy,
+                    "ancho": ancho,
+                    "alto": alto,
+                    "ranura": (caja_x, caja_y, caja_ancho, caja_alto),
+                    "pixeles": (dibujo.width, dibujo.height),
+                }
+            )
+    return cajas

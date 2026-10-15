@@ -17,6 +17,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 import pandas as pd
 import persistencia
+import reporte_fotografico
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
@@ -11381,6 +11382,7 @@ def render_historial_diario_ot() -> None:
         """,
         unsafe_allow_html=True,
     )
+    render_generador_reporte_fotografico(key_prefix="ot_foto")
     reportes = listar_reportes_ot_diarios()
     if not reportes:
         st.warning(
@@ -13328,6 +13330,149 @@ def render_subida_evidencia_cuadrilla(*, cuadrilla_fija: str = "", key_prefix: s
             st.rerun()
 
 
+def actividades_reporte_fotografico(inicio: date, fin: date) -> list[dict]:
+    if fin < inicio:
+        inicio, fin = fin, inicio
+    df = bitacora_con_fechas(cargar_bitacora())
+    if df is None or df.empty or "_fecha" not in df.columns:
+        return []
+    actividades = []
+    for _, fila in df.iterrows():
+        dia = fila.get("_fecha")
+        if not isinstance(dia, date) or dia < inicio or dia > fin:
+            continue
+        cuadrilla_bruta = str(fila.get("CUADRILLA") or "").strip()
+        cuadrilla = etiqueta_cuadrilla_historial(cuadrilla_bruta)
+        secuencia = numero_secuencia_actividad(fila.get("SECUENCIA")) or 0
+        ubicacion = texto_visible(
+            fila.get("UBICACIÓN")
+            or fila.get("EQUIPO/UBICACIÓN")
+            or fila.get("POZO")
+            or fila.get("SECTOR"),
+            "",
+        )
+        descripcion = texto_visible(
+            fila.get("DESCRIPCION DE LA ACTIVIDAD")
+            or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD")
+            or fila.get("ACTIVIDAD CORTA")
+            or fila.get("TIPO DE ACTIVIDAD"),
+            "",
+        )
+        if "AVANCE %" in fila.index:
+            avance = avance_texto(fila.get("AVANCE %"))
+        else:
+            avance = avance_texto(fila.get("AVANCE"))
+        fotos = [ruta for ruta in rutas_fotos_fila(fila) if ruta and os.path.isfile(ruta)]
+        actividades.append(
+            {
+                "fecha": dia,
+                "orden": orden_cuadrilla_oficial(cuadrilla)[0],
+                "secuencia": secuencia,
+                "ot": etiqueta_secuencia_consecutiva(secuencia) if secuencia else "",
+                "ubicacion": ubicacion,
+                "descripcion": descripcion,
+                "avance": avance,
+                "cuadrilla": cuadrilla,
+                "fotos": fotos,
+            }
+        )
+    return actividades
+
+
+def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> None:
+    st.markdown(
+        '<div class="section-title">Reporte fotográfico</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Genera el machote oficial con las actividades del periodo, "
+        "ordenadas por cuadrilla: Eléctricos, Instrumentos, Mecánico 1 a 4, "
+        "Montaje, Soldadura y Retro Excavadora. Las fotos quedan en filas de 3."
+    )
+    modo = st.radio(
+        "Periodo",
+        ["Un día", "Rango de fechas"],
+        horizontal=True,
+        key=f"{key_prefix}_modo",
+    )
+    if modo == "Un día":
+        dia = st.date_input(
+            "Día",
+            value=date.today(),
+            format="DD/MM/YYYY",
+            key=f"{key_prefix}_dia",
+        )
+        inicio = fin = dia
+    else:
+        col_desde, col_hasta = st.columns(2)
+        with col_desde:
+            inicio = st.date_input(
+                "Desde",
+                value=date.today(),
+                format="DD/MM/YYYY",
+                key=f"{key_prefix}_desde",
+            )
+        with col_hasta:
+            fin = st.date_input(
+                "Hasta",
+                value=date.today(),
+                format="DD/MM/YYYY",
+                key=f"{key_prefix}_hasta",
+            )
+    if st.button("Generar reporte fotográfico", type="primary", key=f"{key_prefix}_generar"):
+        actividades = actividades_reporte_fotografico(inicio, fin)
+        if not actividades:
+            st.session_state.pop(f"{key_prefix}_paquete", None)
+            st.warning("No hay actividades de bitácora en el periodo seleccionado.")
+        else:
+            with st.spinner("Armando el Excel y el PDF…"):
+                try:
+                    xlsx, pdf, resumen = reporte_fotografico.generar_reporte_fotografico(actividades)
+                except Exception as exc:
+                    st.session_state.pop(f"{key_prefix}_paquete", None)
+                    st.error(f"No se pudo generar el reporte: {exc}")
+                else:
+                    st.session_state[f"{key_prefix}_paquete"] = {
+                        "xlsx": xlsx,
+                        "pdf": pdf,
+                        "resumen": resumen,
+                        "inicio": min(inicio, fin),
+                        "fin": max(inicio, fin),
+                    }
+    paquete = st.session_state.get(f"{key_prefix}_paquete")
+    if not paquete:
+        return
+    resumen = paquete["resumen"]
+    st.success(
+        f"{resumen['actividades']} actividad(es) · {resumen['hojas']} hoja(s) · "
+        f"{resumen['fotos']} fotografía(s)."
+    )
+    if resumen.get("omitidas"):
+        st.caption(f"{resumen['omitidas']} fotografía(s) no se pudieron insertar.")
+    marca = paquete["inicio"].strftime("%Y%m%d")
+    if paquete["fin"] != paquete["inicio"]:
+        marca += "_" + paquete["fin"].strftime("%Y%m%d")
+    col_xlsx, col_pdf = st.columns(2)
+    with col_xlsx:
+        st.download_button(
+            "Descargar Excel (.xlsx)",
+            data=paquete["xlsx"],
+            file_name=f"reporte_fotografico_{marca}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key=f"{key_prefix}_xlsx",
+        )
+    with col_pdf:
+        st.download_button(
+            "Descargar PDF",
+            data=paquete["pdf"],
+            file_name=f"reporte_fotografico_{marca}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            key=f"{key_prefix}_pdf",
+        )
+
+
 def render_historial_cuadrillas(*, encabezado: bool = True) -> None:
     if encabezado:
         render_encabezado(
@@ -13341,6 +13486,7 @@ def render_historial_cuadrillas(*, encabezado: bool = True) -> None:
         )
         st.divider()
 
+    render_generador_reporte_fotografico(key_prefix="hc_foto")
     df = bitacora_con_fechas(cargar_bitacora())
     cuadrilla = str(st.session_state.get("hc_cuadrilla") or "").strip()
     dia_sel = parsear_fecha_valor(st.session_state.get("hc_dia"))
