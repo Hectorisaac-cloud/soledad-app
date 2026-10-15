@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 import pandas as pd
+import persistencia
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
@@ -4971,6 +4972,7 @@ def guardar_evidencias(fecha: date, secuencia: str, archivos: list) -> list[str]
         with open(destino, "wb") as salida:
             salida.write(archivo.getvalue())
         rutas[i] = os.path.join(EVIDENCIAS_DIR, carpeta_nombre, nombre).replace("\\", "/")
+    persistencia.marcar_evidencia_nueva([ruta for ruta in rutas if ruta])
     return rutas
 
 
@@ -5280,7 +5282,7 @@ def asegurar_archivo_bitacora_soledad() -> str:
         except Exception:
             continue
     vacio = pd.DataFrame(columns=COLUMNAS_EXCEL)
-    guardar_en_excel(vacio)
+    guardar_en_excel(vacio, sincronizar=False)
     return EXCEL_FILE
 
 
@@ -5344,7 +5346,7 @@ def cargar_bitacora() -> pd.DataFrame:
         return pd.DataFrame(columns=COLUMNAS_EXCEL)
 
 
-def guardar_en_excel(df_final: pd.DataFrame) -> None:
+def guardar_en_excel(df_final: pd.DataFrame, *, sincronizar: bool = True) -> None:
     os.makedirs(os.path.dirname(EXCEL_FILE) or DATABASE_DIR, exist_ok=True)
     df_final = df_final.drop(columns=["_fecha"], errors="ignore")
     df_final = normalizar_dataframe(df_final)
@@ -5353,6 +5355,9 @@ def guardar_en_excel(df_final: pd.DataFrame) -> None:
         if col in df_final.columns and col not in columnas_salida:
             columnas_salida.append(col)
     salida = df_final[columnas_salida].copy()
+    actuales = persistencia.contar_filas_bitacora(EXCEL_FILE) if os.path.exists(EXCEL_FILE) else 0
+    if persistencia.debe_bloquear_vaciado(actuales, len(salida)):
+        return
     fd, tmp = tempfile.mkstemp(suffix=".xlsx")
     os.close(fd)
     try:
@@ -5370,6 +5375,8 @@ def guardar_en_excel(df_final: pd.DataFrame) -> None:
                 os.remove(tmp)
             except OSError:
                 pass
+    if sincronizar and len(salida) > 0:
+        persistencia.respaldar_cambios("Actualización de bitácora")
 
 
 def _encabezados_hoja_bitacora(ws) -> tuple[int, list[tuple[int, str]]]:
@@ -5517,6 +5524,7 @@ def guardar_fotos_bitacora_octubre(
         with open(destino, "wb") as salida:
             salida.write(contenido)
         rutas.append(destino.replace("\\", "/"))
+    persistencia.marcar_evidencia_nueva(rutas)
     return rutas
 
 
@@ -5608,6 +5616,8 @@ def agregar_registro_bitacora_soledad(
         df_bitacora = cargar_bitacora() if destino == EXCEL_FILE else pd.DataFrame()
     except Exception:
         df_bitacora = pd.DataFrame()
+    if destino == EXCEL_FILE:
+        persistencia.respaldar_cambios("Registro de actividad en bitácora")
     return {
         "secuencia": int(secuencia),
         "fila": fila,
@@ -8775,6 +8785,7 @@ def render_registro_actividad_bitacora() -> None:
 
 
 def render_captura_bitacora_admin() -> None:
+    render_respaldo_base_datos("bitacora")
     activo = render_interruptor_edicion_ops(contexto="bitacora")
     if activo:
         render_registro_actividad_bitacora()
@@ -12297,6 +12308,10 @@ def depositar_en_baul(
             "carpeta": carpeta.replace("\\", "/"),
         }
     guardar_baul(datos)
+    persistencia.marcar_evidencia_nueva(
+        [str(item.get("ruta") or "") for item in datos["imagenes"][-agregadas:]]
+    )
+    persistencia.respaldar_cambios("Evidencias del baúl de la cuadrilla")
     return {
         "ok": True,
         "agregadas": agregadas,
@@ -18220,6 +18235,62 @@ def render_mini_calendario_admin(jornada: date, fechas_bit: set, fechas_ot: set)
     st.caption("Verde: bitácora · Azul: PDF de OT · Marco: jornada seleccionada.")
 
 
+def render_respaldo_base_datos(clave: str = "respaldo") -> None:
+    st.markdown('<div class="section-title">Respaldo de la base de datos</div>', unsafe_allow_html=True)
+    st.caption(
+        "En cada despliegue, Streamlit Cloud vuelve a bajar main y borra lo capturado en el disco. "
+        "Con el secreto GITHUB_TOKEN la bitácora y las fotos nuevas se copian a la rama datos, "
+        "sin redesplegar el sitio. Al arrancar se conserva la copia que tenga más registros."
+    )
+    ruta_xlsx = persistencia.resolver_ruta(persistencia.ARCHIVO_BITACORA)
+    filas = persistencia.contar_filas_bitacora(ruta_xlsx)
+    estado = persistencia.leer_estado()
+    detalle = str(estado.get("mensaje") or "Todavía no hay un respaldo en esta ejecución.")
+    st.caption(f"Registros en la bitácora de este servidor: {filas}. {detalle}")
+    if not persistencia.credenciales_github():
+        st.warning(
+            "Falta GITHUB_TOKEN en los secretos de Streamlit. "
+            "Créalo con permiso de escritura sobre el repositorio y guárdalo junto con la app. "
+            "Puedes indicar GITHUB_REPO y GITHUB_RAMA_DATOS; si no, se usa la rama datos. "
+            "Hasta configurarlo, descarga esta copia antes de cada git push a main."
+        )
+    firma = "vacio"
+    if os.path.exists(ruta_xlsx):
+        firma = f"{os.path.getmtime(ruta_xlsx)}:{os.path.getsize(ruta_xlsx)}"
+    if st.session_state.get(f"{clave}_firma") != firma or f"{clave}_zip" not in st.session_state:
+        datos, nombre = persistencia.construir_copia_seguridad()
+        st.session_state[f"{clave}_firma"] = firma
+        st.session_state[f"{clave}_zip"] = datos
+        st.session_state[f"{clave}_nombre"] = nombre
+    st.download_button(
+        "📥 Descargar Copia de Seguridad de la Base de Datos",
+        data=st.session_state[f"{clave}_zip"],
+        file_name=st.session_state[f"{clave}_nombre"],
+        mime="application/zip",
+        key=f"{clave}_descarga",
+        use_container_width=True,
+    )
+    col_subir, col_bajar = st.columns(2)
+    with col_subir:
+        if st.button("Respaldar ahora en GitHub", key=f"{clave}_subir", use_container_width=True):
+            resultado = persistencia.respaldar_cambios("Respaldo manual desde administración")
+            if resultado.get("ok"):
+                st.success(resultado.get("mensaje") or "Respaldo enviado.")
+            else:
+                st.warning(resultado.get("mensaje") or "No se pudo respaldar.")
+    with col_bajar:
+        if st.button("Recuperar respaldo de GitHub", key=f"{clave}_bajar", use_container_width=True):
+            resultado = persistencia.restaurar_desde_github()
+            for llave in ("catalogos", "catalogo_actividades", "permisos"):
+                st.session_state.pop(llave, None)
+            st.session_state.pop(f"{clave}_zip", None)
+            if resultado.get("ok"):
+                st.success(resultado.get("mensaje") or "Respaldo recuperado.")
+            else:
+                st.warning(resultado.get("mensaje") or "No se pudo recuperar.")
+            st.rerun()
+
+
 def render_explorador_admin() -> None:
     st.caption("Distribución perimetral de módulos con núcleo de control temporal y métricas.")
     render_captura_bitacora_admin()
@@ -18490,6 +18561,7 @@ def exigir_contrasena() -> None:
 
 # ── Arranque ───────────────────────────────────────────────────────────────────
 exigir_contrasena()
+persistencia.restaurar_al_arrancar()
 inicializar_estado()
 rol = render_selector_rol()
 

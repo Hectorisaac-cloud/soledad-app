@@ -5,3 +5,5 @@ app.py.txt
 Thumbs.db
 ~$*.xlsx
 .streamlit/secrets.toml
+database/persistencia_estado.json
+database/evidencias_pendientes.txt
