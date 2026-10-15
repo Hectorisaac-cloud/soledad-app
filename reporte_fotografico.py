@@ -51,6 +51,7 @@ RECURSOS_PLANTILLA = (
             _from=AnchorMarker(col=0, colOff=243840, row=0, rowOff=114300),
             to=AnchorMarker(col=2, colOff=388620, row=0, rowOff=944880),
         ),
+        ("logo_ops.png", "logo_izquierdo.png", "logo_soledad.png"),
     ),
     (
         "xl/media/image4.png",
@@ -58,6 +59,7 @@ RECURSOS_PLANTILLA = (
             _from=AnchorMarker(col=12, colOff=350520, row=0, rowOff=76200),
             to=AnchorMarker(col=13, colOff=586740, row=0, rowOff=960120),
         ),
+        ("logo_pjp4.png", "logo_derecho.png"),
     ),
     (
         "xl/media/image1.png",
@@ -65,8 +67,10 @@ RECURSOS_PLANTILLA = (
             _from=AnchorMarker(col=2, colOff=883920, row=62, rowOff=76200),
             to=AnchorMarker(col=4, colOff=38100, row=66, rowOff=609600),
         ),
+        ("firma_izquierda.png", "firma_luis.png"),
     ),
 )
+FIRMAS_ESTATICAS = ("firma_derecha.png", "firma_gerardo.png", "firma_ops.png")
 _MARGEN_RANURA = 8
 _FUENTE_PDF = "ReporteFoto"
 _FUENTE_PDF_NEGRITA = "ReporteFoto-Bold"
@@ -129,23 +133,104 @@ def _preparar_imagen(ruta: str, max_ancho: int, max_alto: int) -> tuple[PILImage
     return imagen, imagen.size[0], imagen.size[1]
 
 
+def _es_metaarchivo(datos: bytes, nombre: str = "") -> bool:
+    """WMF y EMF no tienen cargador en el Pillow de Linux."""
+    extension = os.path.splitext(str(nombre or ""))[1].lower()
+    if extension in {".wmf", ".emf"}:
+        return True
+    if len(datos) >= 4 and datos[:4] == b"\xd7\xcd\xc6\x9a":
+        return True
+    if len(datos) >= 44 and datos[40:44] == b" EMF":
+        return True
+    if len(datos) >= 4 and datos[:4] in {b"\x01\x00\x09\x00", b"\x02\x00\x09\x00"}:
+        return True
+    return False
+
+
+def _bytes_raster(datos: bytes, nombre: str = "") -> bytes | None:
+    """Devuelve PNG o JPEG. Si Pillow no puede leer el WMF/EMF, regresa None."""
+    if not datos:
+        return None
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with PILImage.open(io.BytesIO(datos)) as imagen:
+                imagen.load()
+                formato = str(imagen.format or "").upper()
+                if formato in {"PNG", "JPEG", "JPG", "GIF"} and not _es_metaarchivo(datos, nombre):
+                    return datos
+                buffer = io.BytesIO()
+                imagen.convert("RGB").save(buffer, format="PNG")
+                return buffer.getvalue()
+    except Exception:
+        return None
+
+
+def _archivo_estatico(*nombres: str) -> bytes | None:
+    carpetas = (
+        os.path.dirname(PLANTILLA_XLSX) or "database",
+        os.path.join("database", "logos"),
+        "static",
+        os.path.join("static", "logos"),
+    )
+    for carpeta in carpetas:
+        for nombre in nombres:
+            ruta = os.path.join(carpeta, nombre)
+            if not os.path.isfile(ruta):
+                continue
+            try:
+                with open(ruta, "rb") as archivo:
+                    datos = archivo.read()
+            except OSError:
+                continue
+            raster = _bytes_raster(datos, ruta)
+            if raster:
+                return raster
+    return None
+
+
+def _png_minimo() -> bytes:
+    buffer = io.BytesIO()
+    PILImage.new("RGBA", (1, 1), (0, 0, 0, 0)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _plantilla_sin_vectores(ruta: str) -> io.BytesIO:
+    """Sustituye WMF/EMF por un PNG vacío para que openpyxl pueda abrir el libro."""
+    reemplazo = _png_minimo()
+    salida = io.BytesIO()
+    with zipfile.ZipFile(ruta) as origen, zipfile.ZipFile(salida, "w") as destino:
+        for info in origen.infolist():
+            datos = origen.read(info.filename)
+            if _es_metaarchivo(datos, info.filename):
+                datos = reemplazo
+            destino.writestr(info.filename, datos)
+    salida.seek(0)
+    return salida
+
+
+def _buffer_png(datos: bytes, nombre: str) -> io.BytesIO:
+    buffer = io.BytesIO(datos)
+    buffer.name = nombre
+    return buffer
+
+
 def _firma_derecha_png(ruta_plantilla: str) -> io.BytesIO | None:
+    datos = b""
     try:
         with zipfile.ZipFile(ruta_plantilla) as paquete:
-            emf = paquete.read("xl/media/image2.emf")
-    except (KeyError, FileNotFoundError, zipfile.BadZipFile):
+            for nombre in paquete.namelist():
+                if os.path.splitext(nombre)[1].lower() in {".emf", ".wmf"}:
+                    datos = paquete.read(nombre)
+                    break
+    except (FileNotFoundError, zipfile.BadZipFile, KeyError):
+        datos = b""
+    raster = _bytes_raster(datos, "firma.emf") if datos else None
+    if raster is None:
+        raster = _archivo_estatico(*FIRMAS_ESTATICAS)
+    if not raster:
         return None
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        imagen = PILImage.open(io.BytesIO(emf))
-        imagen.load()
-    if imagen.mode != "RGB":
-        imagen = imagen.convert("RGB")
-    buffer = io.BytesIO()
-    imagen.save(buffer, format="PNG")
-    buffer.seek(0)
-    buffer.name = "firma_derecha.png"
-    return buffer
+    return _buffer_png(raster, "firma_derecha.png")
 
 
 def _anclar_foto(ws: Worksheet, imagen: PILImage.Image, ranura: tuple[int, int, int, int]) -> dict:
@@ -187,18 +272,36 @@ def _anclar_foto(ws: Worksheet, imagen: PILImage.Image, ranura: tuple[int, int, 
     }
 
 
+def _quitar_metaarchivos(hoja: Worksheet) -> None:
+    conservadas = []
+    for imagen in list(getattr(hoja, "_images", []) or []):
+        formato = str(getattr(imagen, "format", "") or "").lower()
+        ruta = str(getattr(imagen, "path", "") or "")
+        if formato in {"wmf", "emf"} or _es_metaarchivo(b"", ruta):
+            continue
+        conservadas.append(imagen)
+    hoja._images = conservadas
+
+
 def _recursos_oficiales(ruta_plantilla: str) -> list[tuple[bytes, TwoCellAnchor]]:
     recursos = []
     try:
         paquete = zipfile.ZipFile(ruta_plantilla)
     except (FileNotFoundError, zipfile.BadZipFile):
-        return recursos
-    with paquete:
-        for nombre, ancla in RECURSOS_PLANTILLA:
+        paquete = None
+    for nombre, ancla, respaldos in RECURSOS_PLANTILLA:
+        raster = None
+        if paquete is not None:
             try:
-                recursos.append((paquete.read(nombre), ancla))
+                raster = _bytes_raster(paquete.read(nombre), nombre)
             except KeyError:
-                continue
+                raster = None
+        if raster is None:
+            raster = _archivo_estatico(*respaldos)
+        if raster:
+            recursos.append((raster, ancla))
+    if paquete is not None:
+        paquete.close()
     return recursos
 
 
@@ -220,24 +323,32 @@ def _clonar_ancla(ancla: TwoCellAnchor) -> TwoCellAnchor:
 
 
 def _colocar_recurso(ws: Worksheet, datos: bytes, ancla: TwoCellAnchor, retenidas: list, nombre: str) -> None:
-    buffer = io.BytesIO(datos)
-    buffer.name = nombre
-    imagen = XLImage(buffer)
-    imagen.anchor = _clonar_ancla(ancla)
-    ws.add_image(imagen)
-    retenidas.append(buffer)
+    raster = _bytes_raster(datos, nombre)
+    if not raster:
+        return
+    try:
+        buffer = _buffer_png(raster, nombre if nombre.lower().endswith((".png", ".jpg", ".jpeg")) else "recurso.png")
+        imagen = XLImage(buffer)
+        imagen.anchor = _clonar_ancla(ancla)
+        ws.add_image(imagen)
+        retenidas.append(buffer)
+    except Exception:
+        return
 
 
 def _agregar_firma(ws: Worksheet, firma: io.BytesIO | None, retenidas: list) -> None:
     if firma is None:
         return
-    firma.seek(0)
-    copia = io.BytesIO(firma.read())
-    copia.name = "firma_derecha.png"
-    imagen = XLImage(copia)
-    imagen.anchor = _clonar_ancla(FIRMA_DERECHA)
-    ws.add_image(imagen)
-    retenidas.append(copia)
+    try:
+        firma.seek(0)
+        copia = io.BytesIO(firma.read())
+        copia.name = "firma_derecha.png"
+        imagen = XLImage(copia)
+        imagen.anchor = _clonar_ancla(FIRMA_DERECHA)
+        ws.add_image(imagen)
+        retenidas.append(copia)
+    except Exception:
+        return
 
 
 def _escribir_encabezado(ws: Worksheet, actividad: dict, continuacion: str) -> None:
@@ -288,8 +399,24 @@ def _preparar_libro(ruta_plantilla: str) -> tuple[Workbook, Worksheet, io.BytesI
             message="wmf image format is not supported",
             category=UserWarning,
         )
-        libro = load_workbook(ruta_plantilla)
+        warnings.filterwarnings(
+            "ignore",
+            message="will be removed because it cannot be read",
+            category=UserWarning,
+        )
+        try:
+            libro = load_workbook(ruta_plantilla)
+        except Exception:
+            libro = load_workbook(_plantilla_sin_vectores(ruta_plantilla))
+            for hoja in libro.worksheets:
+                hoja._images = [
+                    imagen
+                    for imagen in list(getattr(hoja, "_images", []) or [])
+                    if not (getattr(imagen, "width", None) == 1 and getattr(imagen, "height", None) == 1)
+                ]
     libro._external_links = []
+    for hoja in libro.worksheets:
+        _quitar_metaarchivos(hoja)
     plantilla = libro.active
     plantilla["K4"] = plantilla["K4"].value if not isinstance(plantilla["K4"].value, str) or not str(plantilla["K4"].value).startswith("=") else ""
     if isinstance(plantilla["Q21"].value, str) and str(plantilla["Q21"].value).startswith("="):
@@ -523,6 +650,7 @@ def generar_reporte_fotografico(
         bloques = [rutas[i : i + FOTOS_POR_HOJA] for i in range(0, len(rutas), FOTOS_POR_HOJA)] or [[]]
         for parte, bloque in enumerate(bloques):
             hoja = libro.copy_worksheet(plantilla)
+            _quitar_metaarchivos(hoja)
             hoja.title = _nombre_hoja(indice, actividad, parte + 1 if len(bloques) > 1 else 0, usados)
             _escribir_encabezado(
                 hoja,
@@ -573,6 +701,8 @@ def generar_reporte_fotografico(
     for hoja, fotos_hoja in paginas_pdf:
         _hoja_a_pdf(pdf, hoja, fotos_hoja, recursos_pdf)
     pdf.save()
+    for hoja in libro.worksheets:
+        _quitar_metaarchivos(hoja)
     excel_buffer = io.BytesIO()
     libro.save(excel_buffer)
     resumen = {
