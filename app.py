@@ -317,13 +317,42 @@ CUADRILLAS = [
     "Soldadura",
     "Retro excavadora",
 ]
-CUADRILLAS_ASIGNACION = [
-    "Mecánico 1",
-    "Mecánico 4",
+ORDEN_CUADRILLAS_OFICIAL = [
+    "Eléctricos",
     "Instrumentos",
-    "Eléctrico",
-    "Soldadura",
+    "Mecánico 1",
+    "Mecánico 2",
+    "Mecánico 3",
+    "Mecánico 4",
     "Montaje",
+    "Soldadura",
+    "Retro Excavadora",
+]
+UBICACIONES_ESTANDAR = [
+    "BSI",
+    "BSII",
+    "BSNI",
+    "MODI",
+    "BPB",
+    "ECSII",
+    "AOPS",
+    "Base PJP4",
+    "Soledad (S)",
+    "Soledad Norte (SN)",
+    "Aragon (A)",
+    "Gallo (GA)",
+    "Palo Blanco (PB)",
+    "Coyotes (Coy)",
+]
+CUADRILLAS_ASIGNACION = [
+    "Eléctrico",
+    "Instrumentos",
+    "Mecánico 1",
+    "Mecánico 2",
+    "Mecánico 3",
+    "Mecánico 4",
+    "Montaje",
+    "Soldadura",
     "Retroexcavadora",
 ]
 ESTATUS_SALE_CAMPO = "Sale a campo"
@@ -1798,6 +1827,10 @@ def _agregar_opcion_unica(destino: list[str], vistos: set[str], valor) -> None:
     destino.append(texto)
 
 
+def opciones_ubicacion_estandar() -> list[str]:
+    return list(UBICACIONES_ESTANDAR) + [OPCION_UBICACION_NUEVA]
+
+
 def opciones_ubicacion_equipo(df: pd.DataFrame | None = None) -> list[str]:
     """Ubicaciones y equipos únicos del catálogo, las fichas y la bitácora."""
     opciones: list[str] = []
@@ -3086,24 +3119,37 @@ def etiqueta_semaforo(marca: str) -> str:
 def resumen_cuadrillas_dia(df_dia: pd.DataFrame) -> list[dict]:
     if df_dia is None or df_dia.empty:
         return []
-    grupos = []
-    for nombre, bloque in df_dia.groupby(df_dia["CUADRILLA"].astype(str), sort=False):
-        cuadrilla = str(nombre or "").strip() or "Sin cuadrilla"
-        marca = clasificar_bloque_cuadrilla(bloque)
-        pozos = sorted({str(v).strip() for v in bloque["POZO"] if str(v).strip()})
-        sectores = sorted({str(v).strip() for v in bloque["SECTOR"] if str(v).strip()})
-        grupos.append(
-            {
-                "cuadrilla": cuadrilla,
-                "marca": marca,
-                "reportes": int(len(bloque)),
-                "pozos": pozos,
-                "sectores": sectores,
-                "indices": list(bloque.index),
+    acumulado: dict[str, dict] = {}
+    for idx, fila in df_dia.iterrows():
+        bruto = str(fila.get("CUADRILLA") or "").strip() or "Sin cuadrilla"
+        clave = clave_cuadrilla_oficial(bruto) or "__sin_cuadrilla__"
+        grupo = acumulado.get(clave)
+        if grupo is None:
+            grupo = {
+                "cuadrilla": etiqueta_cuadrilla_historial(bruto),
+                "marca": "ok",
+                "reportes": 0,
+                "pozos": set(),
+                "sectores": set(),
+                "indices": [],
             }
-        )
-    orden = {"paro": 0, "mixto": 1, "ok": 2}
-    return sorted(grupos, key=lambda g: (orden.get(g["marca"], 9), g["cuadrilla"]))
+            acumulado[clave] = grupo
+        grupo["indices"].append(idx)
+        grupo["reportes"] += 1
+        pozo = str(fila.get("POZO") or "").strip()
+        sector = str(fila.get("SECTOR") or "").strip()
+        if pozo and pozo.lower() not in {"nan", "none"}:
+            grupo["pozos"].add(pozo)
+        if sector and sector.lower() not in {"nan", "none"}:
+            grupo["sectores"].add(sector)
+    grupos = []
+    for grupo in acumulado.values():
+        bloque = df_dia.loc[grupo["indices"]]
+        grupo["marca"] = clasificar_bloque_cuadrilla(bloque)
+        grupo["pozos"] = sorted(grupo["pozos"])
+        grupo["sectores"] = sorted(grupo["sectores"])
+        grupos.append(grupo)
+    return sorted(grupos, key=lambda g: orden_cuadrilla_oficial(g["cuadrilla"]))
 
 
 def mapa_dias_cuadrillas(df: pd.DataFrame, anio: int, mes: int) -> dict[date, str]:
@@ -3604,11 +3650,11 @@ def guardar_personal_cuadrillas(datos: dict) -> None:
 def posicion_personal_cuadrilla(cuadrilla: str) -> dict:
     datos = cargar_personal_cuadrillas()
     posiciones = datos.get("posiciones") or {}
-    objetivo = clave_hist_cuadrilla(cuadrilla)
+    objetivo = clave_cuadrilla_oficial(cuadrilla)
     if cuadrilla in posiciones and isinstance(posiciones[cuadrilla], dict):
         return _item_personal_limpio(posiciones[cuadrilla])
     for nombre, item in posiciones.items():
-        if clave_hist_cuadrilla(nombre) == objetivo:
+        if clave_cuadrilla_oficial(nombre) == objetivo:
             return _item_personal_limpio(item)
     return _item_personal_limpio({})
 
@@ -4539,23 +4585,43 @@ def formatear_secuencia(numero: int) -> str:
     return f"Act. {int(numero)}"
 
 
+def etiqueta_secuencia_consecutiva(numero: int) -> str:
+    return f"#{int(numero):02d}"
+
+
+def _siguiente_numero_secuencia(bloque: pd.DataFrame) -> int:
+    if bloque is None or bloque.empty:
+        return 1
+    numeros = []
+    if "SECUENCIA" in bloque.columns:
+        for valor in bloque["SECUENCIA"].astype(str):
+            encontrado = re.search(r"(\d+)", valor)
+            if encontrado:
+                numeros.append(int(encontrado.group(1)))
+    if numeros:
+        return max(numeros) + 1
+    return len(bloque) + 1
+
+
 def siguiente_secuencia_del_dia(fecha: date) -> int:
     df = cargar_bitacora()
     if df is None or df.empty or "FECHA" not in df.columns:
         return 1
-    del_dia = bitacora_del_dia(bitacora_con_fechas(df), fecha)
-    if del_dia.empty:
-        return 1
+    return _siguiente_numero_secuencia(bitacora_del_dia(bitacora_con_fechas(df), fecha))
 
-    if "SECUENCIA" in del_dia.columns:
-        numeros = []
-        for valor in del_dia["SECUENCIA"].astype(str):
-            encontrado = re.search(r"(\d+)", valor)
-            if encontrado:
-                numeros.append(int(encontrado.group(1)))
-        if numeros:
-            return max(numeros) + 1
-    return len(del_dia) + 1
+
+def siguiente_secuencia_turno(fecha: date, cuadrilla: str = "") -> int:
+    df = cargar_bitacora()
+    if df is None or df.empty or "FECHA" not in df.columns:
+        return 1
+    del_dia = bitacora_del_dia(bitacora_con_fechas(df), fecha)
+    if cuadrilla and not del_dia.empty and "CUADRILLA" in del_dia.columns:
+        objetivo = clave_cuadrilla_oficial(cuadrilla)
+        if objetivo:
+            del_dia = del_dia.loc[
+                del_dia["CUADRILLA"].astype(str).map(clave_cuadrilla_oficial) == objetivo
+            ]
+    return _siguiente_numero_secuencia(del_dia)
 
 
 def insumos_vacios() -> dict[str, float | int | str]:
@@ -5428,12 +5494,12 @@ def _siguiente_secuencia_en_hoja(ws, fila_header: int, encabezados: list[tuple[i
     col_secuencia = _columna_encabezado(encabezados, "SECUENCIA", "SECUENCIA DE ACTIVIDADES")
     if not col_fecha or not col_cuadrilla:
         return 1
-    objetivo = clave_hist_cuadrilla(cuadrilla)
+    objetivo = clave_cuadrilla_oficial(cuadrilla)
     numeros = []
     for fila in range(fila_header + 1, int(ws.max_row or fila_header) + 1):
         if parsear_fecha_valor(ws.cell(fila, col_fecha).value) != dia:
             continue
-        if clave_hist_cuadrilla(str(ws.cell(fila, col_cuadrilla).value or "")) != objetivo:
+        if clave_cuadrilla_oficial(str(ws.cell(fila, col_cuadrilla).value or "")) != objetivo:
             continue
         numero = numero_secuencia_actividad(ws.cell(fila, col_secuencia).value) if col_secuencia else None
         if numero:
@@ -6508,16 +6574,17 @@ def render_editor_asignaciones_diarias() -> None:
                 str((actual.get("salida") or {}).get(cuadrilla, "") or ""),
             )
         destino = col_izq if i < mitad else col_der
+        etiqueta_asig = etiqueta_cuadrilla_historial(cuadrilla)
         with destino:
-            st.markdown(f"**{cuadrilla}**")
+            st.markdown(f"**{etiqueta_asig}**")
             salidas[cuadrilla] = st.radio(
-                f"Estatus de salida — {cuadrilla}",
+                f"Estatus de salida — {etiqueta_asig}",
                 ESTATUS_SALIDA_CUADRILLA,
                 horizontal=True,
                 key=key_salida,
             )
             pendientes[cuadrilla] = st.text_area(
-                f"Pendientes — {cuadrilla}",
+                f"Pendientes — {etiqueta_asig}",
                 height=120,
                 placeholder="Escribe las actividades asignadas a esta cuadrilla…",
                 key=key,
@@ -6928,15 +6995,6 @@ def render_captura_actividades_campo() -> None:
                 format="DD/MM/YYYY",
                 key=f"fecha_{form_id}",
             )
-            siguiente = siguiente_secuencia_del_dia(fecha)
-            secuencia_n = st.number_input(
-                "Secuencia del día",
-                min_value=1,
-                step=1,
-                value=siguiente,
-                key=f"secuencia_{form_id}_{fecha}",
-            )
-            st.caption(f"Se guardará como **{formatear_secuencia(secuencia_n)}**.")
             sector_sel = st.selectbox("Sector / Zona", sectores, key=f"sector_{form_id}")
             sector_otro = ""
             if sector_sel == SECTOR_OTRO:
@@ -6960,8 +7018,21 @@ def render_captura_actividades_campo() -> None:
             cuadrilla = st.selectbox(
                 "Cuadrilla / posición oficial",
                 CUADRILLAS,
+                format_func=etiqueta_cuadrilla_historial,
                 key=f"cuadrilla_{form_id}",
                 help="Etiqueta que audita OPS (Mecánico 1, 2, 3, 4…). No cambia aunque haya cobertura.",
+            )
+            siguiente = siguiente_secuencia_turno(fecha, cuadrilla)
+            secuencia_n = st.number_input(
+                "Secuencia del día",
+                min_value=1,
+                step=1,
+                value=int(siguiente),
+                key=f"secuencia_{form_id}_{fecha.isoformat()}_{clave_cuadrilla_oficial(cuadrilla)}",
+            )
+            st.caption(
+                f"Siguiente consecutivo de {etiqueta_cuadrilla_historial(cuadrilla)} "
+                f"en esta fecha: **{etiqueta_secuencia_consecutiva(secuencia_n)}**."
             )
             cobertura = render_bloque_cobertura(form_id, cuadrilla)
             equipo_sel = st.selectbox(
@@ -7245,7 +7316,10 @@ def render_revision_bitacoras() -> None:
             if str(v).strip() and str(v).strip().lower() not in {"nan", "none"}
         }
     )
-    cuadrillas = sorted({str(v) for v in base["CUADRILLA"] if str(v).strip()})
+    cuadrillas = sorted(
+        {etiqueta_cuadrilla_historial(str(v)) for v in base["CUADRILLA"] if str(v).strip()},
+        key=orden_cuadrilla_oficial,
+    )
     with col_f1:
         filtro_fecha = st.selectbox("Fecha", ["Todas"] + fechas)
     with col_f2:
@@ -7269,7 +7343,8 @@ def render_revision_bitacoras() -> None:
         col_ubi = "UBICACIÓN" if "UBICACIÓN" in filtrado.columns else "EQUIPO/UBICACIÓN"
         filtrado = filtrado[filtrado[col_ubi].astype(str).str.strip() == filtro_ubi]
     if filtro_cuadrilla != "Todas":
-        filtrado = filtrado[filtrado["CUADRILLA"].astype(str) == filtro_cuadrilla]
+        objetivo = clave_cuadrilla_oficial(filtro_cuadrilla)
+        filtrado = filtrado[filtrado["CUADRILLA"].astype(str).map(clave_cuadrilla_oficial) == objetivo]
     if filtro_revision != "Todas" and "REVISIÓN" in filtrado.columns:
         filtrado = filtrado[filtrado["REVISIÓN"].astype(str) == filtro_revision]
     if filtro_evidencia != "Todas":
@@ -7852,7 +7927,9 @@ def buscar_evidencias_ops(
                     "fotos": fotos,
                 }
             )
-    bitacoras.sort(key=lambda item: (item["fecha"], item["cuadrilla"], item["secuencia"]))
+    bitacoras.sort(
+        key=lambda item: (item["fecha"], orden_cuadrilla_oficial(item["cuadrilla"]), item["secuencia"])
+    )
     fotos = []
     vistos: set[str] = set()
     for registro in bitacoras:
@@ -7963,13 +8040,17 @@ def cuadrillas_activas_en_fecha(df: pd.DataFrame | None, dia: date) -> list[dict
     vistos: dict[str, dict] = {}
     for _, fila in del_dia.iterrows():
         nombre = str(fila.get("CUADRILLA") or "").strip()
-        clave = clave_hist_cuadrilla(nombre) or "__sin_cuadrilla__"
+        clave = clave_cuadrilla_oficial(nombre) or "__sin_cuadrilla__"
         item = vistos.get(clave)
         if item is None:
-            vistos[clave] = {"cuadrilla": nombre, "reportes": 1, "clave": clave}
+            vistos[clave] = {
+                "cuadrilla": etiqueta_cuadrilla_historial(nombre),
+                "reportes": 1,
+                "clave": clave,
+            }
         else:
             item["reportes"] += 1
-    return sorted(vistos.values(), key=lambda item: etiqueta_cuadrilla_historial(item["cuadrilla"]).casefold())
+    return sorted(vistos.values(), key=lambda item: orden_cuadrilla_oficial(item["cuadrilla"]))
 
 
 def reportes_cuadrilla_en_fecha(df: pd.DataFrame | None, dia: date, cuadrilla: str) -> list[dict]:
@@ -8623,7 +8704,7 @@ def render_registro_actividad_bitacora() -> None:
     epoch = int(st.session_state.get("bitacora_form_epoch") or 0)
     df_bitacora = bitacora_con_fechas(cargar_bitacora())
     opciones = catalogo_cuadrillas_historial(df_bitacora)
-    opciones_ubi = opciones_ubicacion_equipo(df_bitacora)
+    opciones_ubi = opciones_ubicacion_estandar()
     otra = "Otra (escribir)"
     st.markdown('<div class="section-title">➕ Registrar Actividad en Bitácora</div>', unsafe_allow_html=True)
     st.caption(
@@ -8633,104 +8714,112 @@ def render_registro_actividad_bitacora() -> None:
 
     col_u, col_o = st.columns(2, gap="medium")
     with col_u:
-        st.markdown('<div class="section-title">📍 Ubicación</div>', unsafe_allow_html=True)
-        fecha = st.date_input(
-            "Fecha",
-            value=date.today(),
-            format="DD/MM/YYYY",
-            key=f"bit_reg_fecha_{epoch}",
-        )
-        siguiente = siguiente_secuencia_del_dia(fecha)
-        secuencia_n = st.number_input(
-            "Secuencia del día",
-            min_value=1,
-            step=1,
-            value=int(siguiente),
-            key=f"bit_reg_secuencia_{epoch}_{fecha.isoformat()}",
-        )
-        st.caption(f"Se guardará como **{formatear_secuencia(int(secuencia_n))}**.")
-        ubicacion_sel = st.selectbox(
-            "Ubicación / Equipo",
-            opciones_ubi,
-            index=None,
-            placeholder="Seleccionar...",
-            key=f"bit_reg_equipo_{epoch}",
-            help="Lista única de ubicaciones y equipos que ya están en el catálogo o en la bitácora.",
-        )
-        ubicacion_nueva = ""
-        if ubicacion_sel == OPCION_UBICACION_NUEVA:
-            ubicacion_nueva = st.text_input(
-                "Nueva ubicación / equipo",
-                placeholder="Escribe la ubicación o el equipo",
-                key=f"bit_reg_ubicacion_nueva_{epoch}",
+        with st.container(border=True):
+            st.markdown('<div class="section-title">📍 Ubicación</div>', unsafe_allow_html=True)
+            fecha = st.date_input(
+                "Fecha",
+                value=date.today(),
+                format="DD/MM/YYYY",
+                key=f"bit_reg_fecha_{epoch}",
             )
+            ubicacion_sel = st.selectbox(
+                "Ubicación / Equipo",
+                opciones_ubi,
+                index=None,
+                placeholder="Seleccionar...",
+                key=f"bit_reg_equipo_{epoch}",
+                help="Ubicaciones estándar del campo. Elige Otra / Nuevo equipo para escribir una distinta.",
+            )
+            ubicacion_nueva = ""
+            if ubicacion_sel == OPCION_UBICACION_NUEVA:
+                ubicacion_nueva = st.text_input(
+                    "Nueva ubicación / equipo",
+                    placeholder="Escribe la ubicación o el equipo",
+                    key=f"bit_reg_ubicacion_nueva_{epoch}",
+                )
 
     with col_o:
-        st.markdown('<div class="section-title">🔧 Operación</div>', unsafe_allow_html=True)
-        cuadrilla_sel = st.selectbox(
-            "Cuadrilla",
-            opciones + [otra],
-            format_func=lambda nombre: nombre if nombre == otra else etiqueta_cuadrilla_historial(nombre),
-            key=f"bit_reg_cuadrilla_{epoch}",
-        )
-        cuadrilla_libre = ""
-        if cuadrilla_sel == otra:
-            cuadrilla_libre = st.text_input(
-                "Nombre de la cuadrilla",
-                placeholder="Escribe la cuadrilla",
-                key=f"bit_reg_cuadrilla_libre_{epoch}",
+        with st.container(border=True):
+            st.markdown('<div class="section-title">🔧 Operación</div>', unsafe_allow_html=True)
+            cuadrilla_sel = st.selectbox(
+                "Cuadrilla",
+                opciones + [otra],
+                format_func=lambda nombre: nombre if nombre == otra else etiqueta_cuadrilla_historial(nombre),
+                key=f"bit_reg_cuadrilla_{epoch}",
             )
-        personal = st.text_input(
-            "Ficha / Personal a cargo",
-            placeholder="Ej. 1705-2107",
-            key=f"bit_reg_personal_{epoch}",
-        )
-        descripcion = st.text_area(
-            "Descripción de la actividad realizada",
-            height=120,
-            placeholder="Describe el trabajo realizado en campo",
-            key=f"bit_reg_desc_{epoch}",
-        )
-        comentarios = st.text_area(
-            "Comentarios / Observaciones",
-            height=90,
-            placeholder="Observaciones del trabajo",
-            key=f"bit_reg_comentarios_{epoch}",
-        )
+            cuadrilla_libre = ""
+            if cuadrilla_sel == otra:
+                cuadrilla_libre = st.text_input(
+                    "Nombre de la cuadrilla",
+                    placeholder="Escribe la cuadrilla",
+                    key=f"bit_reg_cuadrilla_libre_{epoch}",
+                )
+            cuadrilla = cuadrilla_libre.strip() if cuadrilla_sel == otra else str(cuadrilla_sel or "").strip()
+            siguiente = siguiente_secuencia_turno(fecha, cuadrilla) if cuadrilla else 1
+            secuencia_n = st.number_input(
+                "Secuencia del día",
+                min_value=1,
+                step=1,
+                value=int(siguiente),
+                key=(
+                    f"bit_reg_secuencia_{epoch}_{fecha.isoformat()}_"
+                    f"{clave_cuadrilla_oficial(cuadrilla) or 'sin'}"
+                ),
+            )
+            st.caption(
+                f"Siguiente consecutivo de esta cuadrilla en la fecha: "
+                f"**{etiqueta_secuencia_consecutiva(int(secuencia_n))}**."
+            )
+            personal = st.text_input(
+                "Ficha / Personal a cargo",
+                placeholder="Ej. 1705-2107",
+                key=f"bit_reg_personal_{epoch}",
+            )
+            descripcion = st.text_area(
+                "Descripción de la actividad realizada",
+                height=120,
+                placeholder="Describe el trabajo realizado en campo",
+                key=f"bit_reg_desc_{epoch}",
+            )
+            comentarios = st.text_area(
+                "Comentarios / Observaciones",
+                height=90,
+                placeholder="Observaciones del trabajo",
+                key=f"bit_reg_comentarios_{epoch}",
+            )
 
-    st.markdown("")
-    st.markdown('<div class="section-title">🧪 Insumos utilizados</div>', unsafe_allow_html=True)
-    consumibles = render_insumos_registro_bitacora(epoch)
+    with st.container(border=True):
+        st.markdown('<div class="section-title">🧪 Insumos utilizados</div>', unsafe_allow_html=True)
+        consumibles = render_insumos_registro_bitacora(epoch)
 
-    cuadrilla = cuadrilla_libre.strip() if cuadrilla_sel == otra else str(cuadrilla_sel or "").strip()
     secuencia_txt = formatear_secuencia(int(secuencia_n))
-    st.markdown("---")
-    st.markdown(
-        '<div class="section-title">📷 Evidencia fotográfica (Baúl de la Cuadrilla)</div>',
-        unsafe_allow_html=True,
-    )
-    if cuadrilla:
-        render_baul_actividad(
-            cuadrilla=cuadrilla,
-            dia=fecha,
-            secuencia=secuencia_txt,
-            actividad=str(descripcion or "").strip(),
-            turno=str(personal or "").strip(),
-            key_prefix=f"baul_admin_{epoch}_{clave_baul_actividad(cuadrilla, fecha, secuencia_txt)}",
+    with st.container(border=True):
+        st.markdown(
+            '<div class="section-title">📷 Evidencia fotográfica (Baúl de la Cuadrilla)</div>',
+            unsafe_allow_html=True,
         )
-    else:
-        st.info("Escribe la cuadrilla para abrir el baúl de esta actividad.")
-    st.markdown("##### Fotos directas de esta actividad")
-    st.caption("Opcional. Hasta 9 imágenes que se guardan en el registro al pulsar Guardar.")
-    fotos = st.file_uploader(
-        "Cargar fotografías",
-        type=["jpg", "jpeg", "png"],
-        accept_multiple_files=True,
-        key=f"bit_reg_fotos_{epoch}",
-    )
-    if fotos and len(fotos) > MAX_FOTOS:
-        st.warning("Solo se usarán las primeras 9 imágenes.")
-    renderizar_galeria(fotos)
+        if cuadrilla:
+            render_baul_actividad(
+                cuadrilla=cuadrilla,
+                dia=fecha,
+                secuencia=secuencia_txt,
+                actividad=str(descripcion or "").strip(),
+                turno=str(personal or "").strip(),
+                key_prefix=f"baul_admin_{epoch}_{clave_baul_actividad(cuadrilla, fecha, secuencia_txt)}",
+            )
+        else:
+            st.info("Escribe la cuadrilla para abrir el baúl de esta actividad.")
+        st.markdown("##### Fotos directas de esta actividad")
+        st.caption("Opcional. Hasta 9 imágenes que se guardan en el registro al pulsar Guardar.")
+        fotos = st.file_uploader(
+            "Cargar fotografías",
+            type=["jpg", "jpeg", "png"],
+            accept_multiple_files=True,
+            key=f"bit_reg_fotos_{epoch}",
+        )
+        if fotos and len(fotos) > MAX_FOTOS:
+            st.warning("Solo se usarán las primeras 9 imágenes.")
+        renderizar_galeria(fotos)
 
     st.markdown("")
     _, col_btn, _ = st.columns([1, 2, 1])
@@ -8892,7 +8981,10 @@ def render_control_programados() -> None:
         else:
             col_a, col_b, col_c = st.columns(3)
             sectores_imp = sorted({str(v) for v in df_imprevistos["SECTOR"] if str(v).strip()})
-            cuadrillas_imp = sorted({str(v) for v in df_imprevistos["CUADRILLA"] if str(v).strip()})
+            cuadrillas_imp = sorted(
+                {etiqueta_cuadrilla_historial(str(v)) for v in df_imprevistos["CUADRILLA"] if str(v).strip()},
+                key=orden_cuadrilla_oficial,
+            )
             with col_a:
                 filtro_sector = st.selectbox(
                     "Ubicación",
@@ -8916,7 +9008,8 @@ def render_control_programados() -> None:
             if filtro_sector != "Todas":
                 vista = vista[vista["SECTOR"].astype(str) == filtro_sector]
             if filtro_cuadrilla != "Todas":
-                vista = vista[vista["CUADRILLA"].astype(str) == filtro_cuadrilla]
+                objetivo = clave_cuadrilla_oficial(filtro_cuadrilla)
+                vista = vista[vista["CUADRILLA"].astype(str).map(clave_cuadrilla_oficial) == objetivo]
             if filtro_criterio == "Fuera de servicio":
                 vista = vista[vista["EVALUACIÓN DEL ESTATUS"].astype(str) == "Fuera de servicio"]
             elif filtro_criterio == "Restablecimientos / correctivos":
@@ -11931,6 +12024,21 @@ def clave_hist_cuadrilla(nombre: str) -> str:
     return re.sub(r"\s+", " ", _sin_acentos(nombre).casefold()).strip()
 
 
+def clave_cuadrilla_oficial(nombre: str) -> str:
+    clave = clave_hist_cuadrilla(nombre)
+    if clave in {"electrico", "electricos"}:
+        return "electricos"
+    if clave in {"retroexcavadora", "retro excavadora"}:
+        return "retro excavadora"
+    return clave
+
+
+def orden_cuadrilla_oficial(nombre: str) -> tuple[int, str]:
+    clave = clave_cuadrilla_oficial(nombre)
+    rango = {clave_cuadrilla_oficial(item): indice for indice, item in enumerate(ORDEN_CUADRILLAS_OFICIAL)}
+    return (rango.get(clave, 99), etiqueta_cuadrilla_historial(nombre).casefold())
+
+
 def etiqueta_cuadrilla_historial(nombre: str) -> str:
     mapa = {
         "electricos": "Eléctricos",
@@ -11942,17 +12050,17 @@ def etiqueta_cuadrilla_historial(nombre: str) -> str:
         "mecanico 4": "Mecánico 4",
         "montaje": "Montaje",
         "soldadura": "Soldadura",
-        "retro excavadora": "Retroexcavadora",
-        "retroexcavadora": "Retroexcavadora",
+        "retro excavadora": "Retro Excavadora",
+        "retroexcavadora": "Retro Excavadora",
     }
-    return mapa.get(clave_hist_cuadrilla(nombre), str(nombre or "").strip() or "Sin cuadrilla")
+    return mapa.get(clave_cuadrilla_oficial(nombre), str(nombre or "").strip() or "Sin cuadrilla")
 
 
 def bloque_historial_cuadrilla(df: pd.DataFrame, cuadrilla: str) -> pd.DataFrame:
     if df is None or df.empty or "CUADRILLA" not in df.columns:
         return pd.DataFrame()
-    objetivo = clave_hist_cuadrilla(cuadrilla)
-    return df.loc[df["CUADRILLA"].astype(str).map(lambda v: clave_hist_cuadrilla(v) == objetivo)].copy()
+    objetivo = clave_cuadrilla_oficial(cuadrilla)
+    return df.loc[df["CUADRILLA"].astype(str).map(lambda v: clave_cuadrilla_oficial(v) == objetivo)].copy()
 
 
 def fechas_historial_cuadrilla(df: pd.DataFrame, cuadrilla: str) -> list[date]:
@@ -11964,15 +12072,14 @@ def fechas_historial_cuadrilla(df: pd.DataFrame, cuadrilla: str) -> list[date]:
 
 
 def catalogo_cuadrillas_historial(df: pd.DataFrame) -> list[str]:
-    vistos = {clave_hist_cuadrilla(n): n for n in CUADRILLAS}
+    vistos = {clave_cuadrilla_oficial(n): etiqueta_cuadrilla_historial(n) for n in CUADRILLAS}
     if df is not None and not df.empty and "CUADRILLA" in df.columns:
         for nombre in df["CUADRILLA"].astype(str):
             texto = str(nombre or "").strip()
-            clave = clave_hist_cuadrilla(texto)
+            clave = clave_cuadrilla_oficial(texto)
             if texto and clave not in vistos:
-                vistos[clave] = texto
-    orden = {clave_hist_cuadrilla(n): i for i, n in enumerate(CUADRILLAS)}
-    return sorted(vistos.values(), key=lambda n: (orden.get(clave_hist_cuadrilla(n), 99), n))
+                vistos[clave] = etiqueta_cuadrilla_historial(texto)
+    return sorted(vistos.values(), key=orden_cuadrilla_oficial)
 
 
 def nombre_carpeta_cuadrilla(cuadrilla: str) -> str:
@@ -17485,13 +17592,15 @@ def cumplimiento_dashboard(inicio: date, fin: date) -> tuple[float, int, int]:
 def figura_barras_cuadrilla(campo: pd.DataFrame, flota: pd.DataFrame):
     bloques = []
     if campo is not None and not campo.empty:
-        bloques.append(campo.groupby("CUADRILLA", dropna=False).size().reset_index(name="OT"))
+        copia = campo.copy()
+        copia["CUADRILLA"] = copia["CUADRILLA"].map(lambda valor: etiqueta_cuadrilla_historial(str(valor or "")))
+        bloques.append(copia.groupby("CUADRILLA", dropna=False).size().reset_index(name="OT"))
     if flota is not None and not flota.empty:
         bloques.append(pd.DataFrame([{"CUADRILLA": "Parque vehicular", "OT": int(len(flota))}]))
     if not bloques:
         return None
     tabla = pd.concat(bloques, ignore_index=True).groupby("CUADRILLA", as_index=False)["OT"].sum()
-    tabla = tabla.sort_values("OT", ascending=True)
+    nombres = sorted(tabla["CUADRILLA"].astype(str), key=orden_cuadrilla_oficial)
     fig = px.bar(
         tabla,
         x="OT",
@@ -17503,6 +17612,7 @@ def figura_barras_cuadrilla(campo: pd.DataFrame, flota: pd.DataFrame):
     )
     fig.update_traces(textposition="outside", hovertemplate="%{y}<br>%{x} OT<extra></extra>", marker_line_width=0)
     fig.update_layout(coloraxis_showscale=False, xaxis_title="Órdenes de trabajo", yaxis_title="")
+    fig.update_yaxes(categoryorder="array", categoryarray=list(reversed(nombres)))
     estilo_figura_dash(fig, "Distribución de servicios por cuadrilla")
     return fig
 
