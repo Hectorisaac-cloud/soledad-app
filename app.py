@@ -270,6 +270,16 @@ PATRON_NO_PROGRAMADO = re.compile(
 )
 
 SECTOR_OTRO = "Otro (Especificar)"
+OPCION_UBICACION_NUEVA = "Otra / Nuevo equipo"
+INSUMOS_REGISTRO_COMUNES = [
+    "Aceite SAE 50",
+    "Refrigerante",
+    "Grasa",
+    "Filtro de aceite",
+    "Bujías",
+    "Bandas",
+    "Alternador",
+]
 SECTORES_DEFAULT = [
     "Almacen OPS (AOPS)",
     "Aragon (A)",
@@ -1763,6 +1773,53 @@ def equipos_actuales() -> list[str]:
     if "Ninguno" in unicos:
         unicos = [e for e in unicos if e != "Ninguno"] + ["Ninguno"]
     return unicos
+
+
+_UBICACIONES_IGNORADAS = {
+    "",
+    "nan",
+    "none",
+    "—",
+    "-",
+    "seleccionar...",
+    "ninguno",
+    SECTOR_OTRO.casefold(),
+    OPCION_UBICACION_NUEVA.casefold(),
+}
+
+
+def _agregar_opcion_unica(destino: list[str], vistos: set[str], valor) -> None:
+    texto = str(valor or "").strip()
+    clave = texto.casefold()
+    if clave in _UBICACIONES_IGNORADAS or clave in vistos:
+        return
+    vistos.add(clave)
+    destino.append(texto)
+
+
+def opciones_ubicacion_equipo(df: pd.DataFrame | None = None) -> list[str]:
+    """Ubicaciones y equipos únicos del catálogo, las fichas y la bitácora."""
+    opciones: list[str] = []
+    vistos: set[str] = set()
+    for equipo in equipos_actuales():
+        _agregar_opcion_unica(opciones, vistos, equipo)
+    for ficha in (cargar_ubicaciones().get("fichas") or {}).values():
+        if not isinstance(ficha, dict):
+            continue
+        _agregar_opcion_unica(opciones, vistos, ficha.get("nombre"))
+        _agregar_opcion_unica(opciones, vistos, ficha.get("equipo_mci"))
+        _agregar_opcion_unica(opciones, vistos, ficha.get("equipo_ub"))
+    if df is None:
+        df = cargar_bitacora()
+    if df is not None and not df.empty:
+        for col in ("UBICACIÓN", "EQUIPO/UBICACIÓN", "POZO"):
+            if col not in df.columns:
+                continue
+            for valor in df[col].tolist():
+                _agregar_opcion_unica(opciones, vistos, valor)
+    opciones.sort(key=orden_natural_pozo)
+    opciones.append(OPCION_UBICACION_NUEVA)
+    return opciones
 
 
 def opciones_equipos_ub() -> list[str]:
@@ -5494,6 +5551,7 @@ def agregar_registro_bitacora_soledad(
     fotos: list | None = None,
     ruta: str | None = None,
     raiz_fotos: str | None = None,
+    secuencia: int | None = None,
 ) -> dict:
     """Agrega una fila a la hoja original de la bitácora y conserva el resto del Excel."""
     destino = ruta or EXCEL_FILE
@@ -5513,7 +5571,10 @@ def agregar_registro_bitacora_soledad(
     if not col_fecha or not col_cuadrilla or not col_desc:
         wb.close()
         raise ValueError("La bitácora no tiene fecha, cuadrilla o descripción.")
-    secuencia = _siguiente_secuencia_en_hoja(ws, fila_header, encabezados, fecha, cuadrilla)
+    if secuencia is None:
+        secuencia = _siguiente_secuencia_en_hoja(ws, fila_header, encabezados, fecha, cuadrilla)
+    else:
+        secuencia = max(1, int(secuencia))
     fila = _siguiente_fila_bitacora(ws, fila_header, col_fecha)
     rutas = guardar_fotos_bitacora_octubre(cuadrilla, fecha, secuencia, fotos or [], raiz_fotos)
     try:
@@ -8512,64 +8573,113 @@ def render_programados_ops_excel(
         st.session_state.ops_evidencia_abierta = None
 
 
+def nombres_insumos_registro() -> list[str]:
+    nombres = list(INSUMOS_REGISTRO_COMUNES)
+    vistos = {nombre.casefold() for nombre in nombres}
+    for item in catalogo_insumos_activos():
+        nombre = str(item.get("nombre") or "").strip()
+        if nombre and nombre.casefold() not in vistos:
+            nombres.append(nombre)
+            vistos.add(nombre.casefold())
+    return nombres
+
+
+def render_insumos_registro_bitacora(epoch: int) -> str:
+    st.caption("Marca solo los insumos que se utilizaron. Los marcados se guardan juntos en el registro.")
+    nombres = nombres_insumos_registro()
+    columnas = st.columns(3, gap="medium")
+    marcados: list[str] = []
+    for indice, nombre in enumerate(nombres):
+        with columnas[indice % 3]:
+            if st.checkbox(nombre, key=f"bit_reg_insumo_{slug_insumo(nombre)}_{epoch}"):
+                marcados.append(nombre)
+    usa_otros = st.checkbox("Otros insumos", key=f"bit_reg_insumo_otros_{epoch}")
+    if usa_otros:
+        detalle = st.text_input(
+            "Detalle de otros insumos",
+            placeholder="Escribe cualquier otro insumo utilizado",
+            key=f"bit_reg_insumo_otros_txt_{epoch}",
+        ).strip()
+        marcados.append(detalle or "Otros insumos")
+    if marcados:
+        st.caption("Se guardará: **" + ", ".join(marcados) + "**")
+    return ", ".join(marcados)
+
+
 def render_registro_actividad_bitacora() -> None:
     aviso = st.session_state.pop("bitacora_registro_ok", None)
     if aviso:
         st.success(aviso)
     epoch = int(st.session_state.get("bitacora_form_epoch") or 0)
-    opciones = catalogo_cuadrillas_historial(bitacora_con_fechas(cargar_bitacora()))
+    df_bitacora = bitacora_con_fechas(cargar_bitacora())
+    opciones = catalogo_cuadrillas_historial(df_bitacora)
+    opciones_ubi = opciones_ubicacion_equipo(df_bitacora)
     otra = "Otra (escribir)"
     st.markdown('<div class="section-title">➕ Registrar Actividad en Bitácora</div>', unsafe_allow_html=True)
     st.caption(
         "El registro se agrega a la bitácora operativa. "
-        "Si adjuntas fotos, se guardan en evidencia_fotografica_octubre, en la carpeta de la cuadrilla, la fecha y la secuencia."
+        "Las fotos del baúl y las fotos directas quedan en la carpeta de la cuadrilla, la fecha y la secuencia."
     )
-    with st.container(border=True):
-        col_fecha, col_cuadrilla = st.columns(2, gap="medium")
-        with col_fecha:
-            fecha = st.date_input(
-                "Fecha de ejecución",
-                value=date.today(),
-                format="DD/MM/YYYY",
-                key=f"bit_reg_fecha_{epoch}",
+
+    col_u, col_o = st.columns(2, gap="medium")
+    with col_u:
+        st.markdown('<div class="section-title">📍 Ubicación</div>', unsafe_allow_html=True)
+        fecha = st.date_input(
+            "Fecha",
+            value=date.today(),
+            format="DD/MM/YYYY",
+            key=f"bit_reg_fecha_{epoch}",
+        )
+        siguiente = siguiente_secuencia_del_dia(fecha)
+        secuencia_n = st.number_input(
+            "Secuencia del día",
+            min_value=1,
+            step=1,
+            value=int(siguiente),
+            key=f"bit_reg_secuencia_{epoch}_{fecha.isoformat()}",
+        )
+        st.caption(f"Se guardará como **{formatear_secuencia(int(secuencia_n))}**.")
+        ubicacion_sel = st.selectbox(
+            "Ubicación / Equipo",
+            opciones_ubi,
+            index=None,
+            placeholder="Seleccionar...",
+            key=f"bit_reg_equipo_{epoch}",
+            help="Lista única de ubicaciones y equipos que ya están en el catálogo o en la bitácora.",
+        )
+        ubicacion_nueva = ""
+        if ubicacion_sel == OPCION_UBICACION_NUEVA:
+            ubicacion_nueva = st.text_input(
+                "Nueva ubicación / equipo",
+                placeholder="Escribe la ubicación o el equipo",
+                key=f"bit_reg_ubicacion_nueva_{epoch}",
             )
-        with col_cuadrilla:
-            cuadrilla_sel = st.selectbox(
-                "Cuadrilla",
-                opciones + [otra],
-                format_func=lambda nombre: nombre if nombre == otra else etiqueta_cuadrilla_historial(nombre),
-                key=f"bit_reg_cuadrilla_{epoch}",
+
+    with col_o:
+        st.markdown('<div class="section-title">🔧 Operación</div>', unsafe_allow_html=True)
+        cuadrilla_sel = st.selectbox(
+            "Cuadrilla",
+            opciones + [otra],
+            format_func=lambda nombre: nombre if nombre == otra else etiqueta_cuadrilla_historial(nombre),
+            key=f"bit_reg_cuadrilla_{epoch}",
+        )
+        cuadrilla_libre = ""
+        if cuadrilla_sel == otra:
+            cuadrilla_libre = st.text_input(
+                "Nombre de la cuadrilla",
+                placeholder="Escribe la cuadrilla",
+                key=f"bit_reg_cuadrilla_libre_{epoch}",
             )
-            cuadrilla_libre = ""
-            if cuadrilla_sel == otra:
-                cuadrilla_libre = st.text_input(
-                    "Nombre de la cuadrilla",
-                    placeholder="Escribe la cuadrilla",
-                    key=f"bit_reg_cuadrilla_libre_{epoch}",
-                )
-        col_personal, col_ubicacion = st.columns(2, gap="medium")
-        with col_personal:
-            personal = st.text_input(
-                "Ficha / Personal a cargo",
-                placeholder="Ej. 1705-2107",
-                key=f"bit_reg_personal_{epoch}",
-            )
-        with col_ubicacion:
-            ubicacion = st.text_input(
-                "Ubicación / Equipo",
-                placeholder="Ej. PSN68, PSN379",
-                key=f"bit_reg_ubicacion_{epoch}",
-            )
+        personal = st.text_input(
+            "Ficha / Personal a cargo",
+            placeholder="Ej. 1705-2107",
+            key=f"bit_reg_personal_{epoch}",
+        )
         descripcion = st.text_area(
             "Descripción de la actividad realizada",
             height=120,
             placeholder="Describe el trabajo realizado en campo",
             key=f"bit_reg_desc_{epoch}",
-        )
-        consumibles = st.text_input(
-            "Consumibles utilizados",
-            placeholder="Ej. ACEITE SAE 50, GRASA OPS",
-            key=f"bit_reg_consumibles_{epoch}",
         )
         comentarios = st.text_area(
             "Comentarios / Observaciones",
@@ -8577,42 +8687,91 @@ def render_registro_actividad_bitacora() -> None:
             placeholder="Observaciones del trabajo",
             key=f"bit_reg_comentarios_{epoch}",
         )
-        fotos = st.file_uploader(
-            "Carga de Evidencia Fotográfica",
-            type=["jpg", "jpeg", "png"],
-            accept_multiple_files=True,
-            key=f"bit_reg_fotos_{epoch}",
+
+    st.markdown("")
+    st.markdown('<div class="section-title">🧪 Insumos utilizados</div>', unsafe_allow_html=True)
+    consumibles = render_insumos_registro_bitacora(epoch)
+
+    cuadrilla = cuadrilla_libre.strip() if cuadrilla_sel == otra else str(cuadrilla_sel or "").strip()
+    secuencia_txt = formatear_secuencia(int(secuencia_n))
+    st.markdown("---")
+    st.markdown(
+        '<div class="section-title">📷 Evidencia fotográfica (Baúl de la Cuadrilla)</div>',
+        unsafe_allow_html=True,
+    )
+    if cuadrilla:
+        render_baul_actividad(
+            cuadrilla=cuadrilla,
+            dia=fecha,
+            secuencia=secuencia_txt,
+            actividad=str(descripcion or "").strip(),
+            turno=str(personal or "").strip(),
+            key_prefix=f"baul_admin_{epoch}_{clave_baul_actividad(cuadrilla, fecha, secuencia_txt)}",
         )
-        if st.button("Guardar Registro", type="primary", key=f"bit_reg_guardar_{epoch}"):
-            cuadrilla = cuadrilla_libre.strip() if cuadrilla_sel == otra else str(cuadrilla_sel or "").strip()
-            if not cuadrilla:
-                st.error("Escribe la cuadrilla que realizó la actividad.")
-            elif not str(descripcion or "").strip():
-                st.error("Escribe la descripción de la actividad realizada.")
+    else:
+        st.info("Escribe la cuadrilla para abrir el baúl de esta actividad.")
+    st.markdown("##### Fotos directas de esta actividad")
+    st.caption("Opcional. Hasta 9 imágenes que se guardan en el registro al pulsar Guardar.")
+    fotos = st.file_uploader(
+        "Cargar fotografías",
+        type=["jpg", "jpeg", "png"],
+        accept_multiple_files=True,
+        key=f"bit_reg_fotos_{epoch}",
+    )
+    if fotos and len(fotos) > MAX_FOTOS:
+        st.warning("Solo se usarán las primeras 9 imágenes.")
+    renderizar_galeria(fotos)
+
+    st.markdown("")
+    _, col_btn, _ = st.columns([1, 2, 1])
+    with col_btn:
+        guardar = st.button(
+            "💾 Guardar Registro",
+            type="primary",
+            use_container_width=True,
+            key=f"bit_reg_guardar_{epoch}",
+        )
+    if not guardar:
+        return
+
+    if ubicacion_sel == OPCION_UBICACION_NUEVA:
+        ubicacion = ubicacion_nueva.strip()
+    else:
+        ubicacion = str(ubicacion_sel or "").strip()
+    if not cuadrilla:
+        st.error("Escribe la cuadrilla que realizó la actividad.")
+    elif not ubicacion:
+        if ubicacion_sel == OPCION_UBICACION_NUEVA:
+            st.error("Escribe la nueva ubicación o el equipo.")
+        else:
+            st.error("Selecciona la ubicación o el equipo.")
+    elif not str(descripcion or "").strip():
+        st.error("Escribe la descripción de la actividad realizada.")
+    else:
+        try:
+            resultado = agregar_registro_bitacora_soledad(
+                fecha,
+                cuadrilla,
+                personal,
+                ubicacion,
+                descripcion,
+                consumibles,
+                comentarios,
+                limitar_fotos(list(fotos or [])),
+                secuencia=int(secuencia_n),
+            )
+        except PermissionError:
+            st.error("No se pudo guardar la bitácora. Cierra el Excel si lo tienes abierto e inténtalo de nuevo.")
+        except Exception as exc:
+            st.error(f"No se pudo guardar el registro: {exc}")
+        else:
+            st.session_state.ops_df_bitacora = resultado.get("df_bitacora")
+            st.session_state.bitacora_form_epoch = epoch + 1
+            if resultado.get("fotos"):
+                st.session_state.bitacora_registro_ok = "Registro guardado y evidencia adjuntada correctamente"
             else:
-                try:
-                    resultado = agregar_registro_bitacora_soledad(
-                        fecha,
-                        cuadrilla,
-                        personal,
-                        ubicacion,
-                        descripcion,
-                        consumibles,
-                        comentarios,
-                        list(fotos or []),
-                    )
-                except PermissionError:
-                    st.error("No se pudo guardar la bitácora. Cierra el Excel si lo tienes abierto e inténtalo de nuevo.")
-                except Exception as exc:
-                    st.error(f"No se pudo guardar el registro: {exc}")
-                else:
-                    st.session_state.ops_df_bitacora = resultado.get("df_bitacora")
-                    st.session_state.bitacora_form_epoch = epoch + 1
-                    if resultado.get("fotos"):
-                        st.session_state.bitacora_registro_ok = "Registro guardado y evidencia adjuntada correctamente"
-                    else:
-                        st.session_state.bitacora_registro_ok = "Registro guardado correctamente"
-                    st.rerun()
+                st.session_state.bitacora_registro_ok = "Registro guardado correctamente"
+            st.rerun()
 
 
 def render_captura_bitacora_admin() -> None:
