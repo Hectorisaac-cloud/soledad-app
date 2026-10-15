@@ -13419,11 +13419,30 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
                 format="DD/MM/YYYY",
                 key=f"{key_prefix}_hasta",
             )
+    opcion_todas = "Todas las cuadrillas (Reporte General)"
+    cuadrilla_filtro = st.selectbox(
+        "Cuadrilla",
+        [opcion_todas, *ORDEN_CUADRILLAS_OFICIAL],
+        key=f"{key_prefix}_cuadrilla",
+        help="El reporte general incluye todas las cuadrillas de la jornada, en el orden oficial.",
+    )
     if st.button("Generar reporte fotográfico", type="primary", key=f"{key_prefix}_generar"):
         actividades = actividades_reporte_fotografico(inicio, fin)
+        if cuadrilla_filtro != opcion_todas:
+            objetivo = clave_cuadrilla_oficial(cuadrilla_filtro)
+            actividades = [
+                item
+                for item in actividades
+                if clave_cuadrilla_oficial(item.get("cuadrilla") or "") == objetivo
+            ]
         if not actividades:
             st.session_state.pop(f"{key_prefix}_paquete", None)
-            st.warning("No hay actividades de bitácora en el periodo seleccionado.")
+            if cuadrilla_filtro == opcion_todas:
+                st.warning("No hay actividades de bitácora en el periodo seleccionado.")
+            else:
+                st.warning(
+                    f"No hay actividades de {cuadrilla_filtro} en el periodo seleccionado."
+                )
         else:
             with st.spinner("Armando el Excel y el PDF…"):
                 try:
@@ -13438,6 +13457,7 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
                         "resumen": resumen,
                         "inicio": min(inicio, fin),
                         "fin": max(inicio, fin),
+                        "cuadrilla": "" if cuadrilla_filtro == opcion_todas else cuadrilla_filtro,
                     }
     paquete = st.session_state.get(f"{key_prefix}_paquete")
     if not paquete:
@@ -13452,6 +13472,9 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
     marca = paquete["inicio"].strftime("%Y%m%d")
     if paquete["fin"] != paquete["inicio"]:
         marca += "_" + paquete["fin"].strftime("%Y%m%d")
+    if paquete.get("cuadrilla"):
+        marca += "_" + clave_cuadrilla_oficial(paquete["cuadrilla"]).replace(" ", "_")
+        st.caption(f"Cuadrilla: {paquete['cuadrilla']}.")
     col_xlsx, col_pdf = st.columns(2)
     with col_xlsx:
         st.download_button(
