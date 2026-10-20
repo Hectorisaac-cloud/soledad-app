@@ -221,6 +221,21 @@
       "origen_registro": "campo",
       "id": "554627f5ad",
       "registrado": "2026-10-20 21:07"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-15",
+      "secuencia": "Act. 3",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Soledad Norte (SN)",
+      "insumo_id": "grasa",
+      "insumo": "Grasa",
+      "cantidad": 2.0,
+      "unidad": "Kg",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "id": "0ba2bb7202",
+      "registrado": "2026-10-20 22:02"
     }
   ]
 }
