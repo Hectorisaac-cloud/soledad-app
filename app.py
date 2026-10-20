@@ -3596,6 +3596,38 @@ def leer_calendario_asistencia() -> dict:
     )
 
 
+@st.cache_data(show_spinner=False)
+def _jornadas_bitacora_cache(ruta: str, mtime: float) -> dict:
+    _ = ruta, mtime
+    return jornadas_bitacora_por_cuadrilla()
+
+
+def jornadas_bitacora_vigentes() -> dict[tuple[str, date], str]:
+    return _jornadas_bitacora_cache(EXCEL_FILE, _mtime_archivo(EXCEL_FILE))
+
+
+def _dias_con_ficha_de_bitacora(nombre: str, dias: list[dict]) -> list[dict]:
+    """La ficha capturada en la bitácora manda sobre el código fijo del calendario."""
+    try:
+        jornadas = jornadas_bitacora_vigentes()
+    except Exception:
+        return dias
+    clave = clave_cuadrilla_oficial(nombre)
+    salida = []
+    for dia in dias:
+        copia = dict(dia)
+        try:
+            fecha = date.fromisoformat(str(copia.get("fecha") or ""))
+        except ValueError:
+            fecha = None
+        if fecha is not None and (clave, fecha) in jornadas:
+            copia["codigo"] = jornadas[(clave, fecha)] or "En campo"
+            copia["laboral"] = True
+            copia["desde_bitacora"] = True
+        salida.append(copia)
+    return salida
+
+
 def resumen_jornadas_cuadrilla(cuadrilla: str) -> dict | None:
     cal = leer_calendario_asistencia()
     if not cal.get("disponible"):
@@ -3604,6 +3636,10 @@ def resumen_jornadas_cuadrilla(cuadrilla: str) -> dict | None:
     if not item:
         return None
     salida = dict(item)
+    salida["dias"] = _dias_con_ficha_de_bitacora(item.get("nombre") or cuadrilla, item.get("dias") or [])
+    salida["realizadas"] = sum(1 for dia in salida["dias"] if dia.get("laboral"))
+    if salida.get("total"):
+        salida["avance"] = salida["realizadas"] / salida["total"]
     salida["anio"] = cal.get("anio")
     salida["mes"] = cal.get("mes")
     salida["periodo"] = cal.get("periodo") or ""
@@ -3769,10 +3805,12 @@ def render_nota_asistencia(cuadrilla: str, dia: date | None = None, codigo_bitac
         texto_dia = f"El calendario marca franco (F/O) el {dia.strftime('%d/%m/%Y')}."
     else:
         texto_dia = f"El calendario no tiene código de personal el {dia.strftime('%d/%m/%Y')}."
-    if codigo_reg and codigo_dia and _codigo_asistencia_normalizado(codigo_reg) != _codigo_asistencia_normalizado(codigo_dia):
+    fichas_dia = {_codigo_asistencia_normalizado(parte) for parte in codigo_dia.split("/")}
+    coincide = _codigo_asistencia_normalizado(codigo_reg) in fichas_dia
+    if codigo_reg and codigo_dia and not coincide:
         st.warning(f"{texto_dia} La bitácora registra {codigo_reg}.")
         return
-    if codigo_reg and detalle.get("laboral") and _codigo_asistencia_normalizado(codigo_reg) == _codigo_asistencia_normalizado(codigo_dia):
+    if codigo_reg and detalle.get("laboral") and coincide:
         st.caption(f"{texto_dia} Coincide con la bitácora.")
         return
     st.caption(texto_dia)
@@ -4243,6 +4281,10 @@ def aplicar_salida_calendario(fecha: date, salida: dict[str, str]) -> dict:
                 "(fin de semana o día fuera del plan). El estatus sí quedó publicado para campo."
             ),
         }
+    try:
+        jornadas = jornadas_bitacora_vigentes()
+    except Exception:
+        jornadas = {}
     actualizadas = []
     omitidas = []
     for nombre in CUADRILLAS_ASIGNACION:
@@ -4252,7 +4294,10 @@ def aplicar_salida_calendario(fecha: date, salida: dict[str, str]) -> dict:
             omitidas.append(nombre)
             continue
         celda = ws.cell(fila, columna)
-        if estatus == ESTATUS_EN_BASE:
+        clave_bit = (clave_cuadrilla_oficial(_cuadrilla_canonica_asistencia(nombre) or nombre), fecha)
+        if clave_bit in jornadas:
+            celda.value = jornadas[clave_bit] or "En campo"
+        elif estatus == ESTATUS_EN_BASE:
             celda.value = "F/O"
         else:
             actual = _texto_celda_asistencia(celda.value)
@@ -7944,9 +7989,12 @@ def render_revision_bitacoras() -> None:
 
     indices = list(filtrado.index)
     render_aviso_revision()
-    # Tras editar o borrar cambian las etiquetas; un key nuevo evita que el navegador conserve el texto viejo.
-    clave_registro = f"rev_registro_{int(st.session_state.get('_rev_ver', 0))}"
+    # Al editar, borrar o filtrar cambian las opciones; un key nuevo evita que el navegador conserve el texto viejo.
+    firma_opciones = hashlib.md5(",".join(map(str, indices)).encode()).hexdigest()[:8]
+    clave_registro = f"rev_registro_{int(st.session_state.get('_rev_ver', 0))}_{firma_opciones}"
     pendiente = st.session_state.pop("_rev_seleccion", None)
+    if pendiente not in indices and clave_registro not in st.session_state:
+        pendiente = st.session_state.get("_rev_ultimo")
     if pendiente in indices:
         st.session_state[clave_registro] = pendiente
     elif st.session_state.get(clave_registro) not in indices:
@@ -7957,6 +8005,7 @@ def render_revision_bitacoras() -> None:
         format_func=lambda i: etiqueta_registro(df, i),
         key=clave_registro,
     )
+    st.session_state["_rev_ultimo"] = seleccionado
     fila = df.loc[seleccionado]
     gente = personal_de_registro(fila)
     st.caption(
