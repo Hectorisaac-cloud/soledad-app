@@ -18194,6 +18194,12 @@ MODULOS_ADMIN = [
         "descripcion": "Actividades de octubre por especialidad, con control de realizado y observaciones.",
     },
     {
+        "id": "calendario_asistencia",
+        "icono": "📅",
+        "titulo": "Calendario de asistencia",
+        "descripcion": "Salidas a campo y descansos F/O por cuadrilla, semana y día del mes.",
+    },
+    {
         "id": "auditoria",
         "icono": "🔒",
         "titulo": "Auditoría y Accesos",
@@ -18710,6 +18716,293 @@ def render_respaldo_base_datos(clave: str = "respaldo") -> None:
             st.rerun()
 
 
+_COLUMNAS_RESUMEN_ASISTENCIA = {"realizadas", "total", "avance"}
+
+
+def ruta_calendario_asistencia() -> str:
+    if os.path.exists(CALENDARIO_ASISTENCIA_FILE):
+        return CALENDARIO_ASISTENCIA_FILE
+    if not os.path.isdir(DATABASE_DIR):
+        return CALENDARIO_ASISTENCIA_FILE
+    for nombre in sorted(os.listdir(DATABASE_DIR)):
+        clave = nombre.casefold()
+        if nombre.startswith("~$") or "calendario" not in clave:
+            continue
+        if clave.endswith((".xlsx", ".xlsm")):
+            return os.path.join(DATABASE_DIR, nombre)
+    return CALENDARIO_ASISTENCIA_FILE
+
+
+def _texto_celda_calendario(valor) -> str:
+    if valor is None:
+        return ""
+    if isinstance(valor, float) and valor == int(valor):
+        return str(int(valor))
+    if isinstance(valor, datetime):
+        return valor.date().isoformat()
+    texto = str(valor).strip()
+    if texto.startswith("=") or texto.lower() in {"nan", "none", "<na>"}:
+        return ""
+    return texto
+
+
+def _valores_hoja_calendario(ws) -> dict[tuple[int, int], str]:
+    """Copia el valor de cada celda combinada a todo su rango."""
+    merges = list(ws.merged_cells.ranges)
+    valores: dict[tuple[int, int], str] = {}
+    for fila in range(1, (ws.max_row or 1) + 1):
+        for col in range(1, (ws.max_column or 1) + 1):
+            bruto = ws.cell(fila, col).value
+            if bruto is None:
+                for rango in merges:
+                    if rango.min_row <= fila <= rango.max_row and rango.min_col <= col <= rango.max_col:
+                        bruto = ws.cell(rango.min_row, rango.min_col).value
+                        break
+            texto = _texto_celda_calendario(bruto)
+            if texto:
+                valores[(fila, col)] = texto
+    return valores
+
+
+def _mes_anio_calendario(titulo: str) -> tuple[int, int]:
+    texto = _sin_acentos(titulo).casefold()
+    mes = next((i + 1 for i, nombre in enumerate(NOMBRES_MES) if _sin_acentos(nombre).casefold() in texto), 0)
+    anio_m = re.search(r"(20\d{2})", titulo)
+    anio = int(anio_m.group(1)) if anio_m else date.today().year
+    return mes or date.today().month, anio
+
+
+def _es_descanso_fo(valor: str) -> bool:
+    clave = _sin_acentos(valor).casefold().replace(" ", "").replace(".", "")
+    return clave in {"f/o", "fo", "descanso"}
+
+
+def _numero_dia_calendario(valor: str) -> int:
+    digitos = re.sub(r"\D", "", str(valor or ""))
+    if not digitos:
+        return 0
+    try:
+        dia = int(digitos)
+    except ValueError:
+        return 0
+    return dia if 1 <= dia <= 31 else 0
+
+
+def _leer_hoja_calendario(ws) -> dict | None:
+    valores = _valores_hoja_calendario(ws)
+    ancla = next(
+        (
+            (fila, col)
+            for (fila, col), texto in valores.items()
+            if _sin_acentos(texto).casefold().startswith("cuadrilla")
+        ),
+        None,
+    )
+    if ancla is None:
+        return None
+    fila_nombres, col_cuadrilla = ancla
+    fila_dias = fila_nombres - 1
+    fila_semanas = fila_nombres - 2
+    titulo = next(
+        (texto for texto in valores.values() if "calendario" in _sin_acentos(texto).casefold()),
+        str(ws.title or "Calendario de asistencia"),
+    )
+    mes, anio = _mes_anio_calendario(f"{titulo} {ws.title}")
+    dias = []
+    for col in range(col_cuadrilla + 1, (ws.max_column or col_cuadrilla) + 1):
+        encabezado = _sin_acentos(valores.get((fila_nombres, col), "")).casefold()
+        if encabezado in _COLUMNAS_RESUMEN_ASISTENCIA:
+            continue
+        numero = _numero_dia_calendario(valores.get((fila_dias, col), ""))
+        if not numero:
+            continue
+        try:
+            fecha = date(anio, mes, numero)
+        except ValueError:
+            continue
+        dias.append(
+            {
+                "fecha": fecha,
+                "dia": numero,
+                "nombre": NOMBRES_DIA[fecha.weekday()],
+                "semana": valores.get((fila_semanas, col), "") or "Sin semana",
+                "col": col,
+            }
+        )
+    if not dias:
+        return None
+    filas = []
+    vacios = 0
+    for fila in range(fila_nombres + 1, (ws.max_row or fila_nombres) + 1):
+        nombre = valores.get((fila, col_cuadrilla), "")
+        if not nombre:
+            vacios += 1
+            if vacios >= 2:
+                break
+            continue
+        vacios = 0
+        if _sin_acentos(nombre).casefold().startswith("cuadrilla"):
+            continue
+        celdas = {dia["fecha"]: valores.get((fila, dia["col"]), "") for dia in dias}
+        total_txt = ""
+        for col in range(col_cuadrilla + 1, (ws.max_column or col_cuadrilla) + 1):
+            if _sin_acentos(valores.get((fila_nombres, col), "")).casefold() == "total":
+                total_txt = valores.get((fila, col), "")
+                break
+        try:
+            total = int(float(total_txt)) if total_txt else 0
+        except ValueError:
+            total = 0
+        filas.append(
+            {
+                "cuadrilla": etiqueta_cuadrilla_historial(nombre),
+                "celdas": celdas,
+                "total": total,
+            }
+        )
+    filas.sort(key=lambda fila: orden_cuadrilla_oficial(fila["cuadrilla"]))
+    semanas = []
+    for dia in dias:
+        if dia["semana"] not in semanas:
+            semanas.append(dia["semana"])
+    return {
+        "titulo": titulo,
+        "etiqueta": f"{NOMBRES_MES[mes - 1]} {anio}",
+        "anio": anio,
+        "mes": mes,
+        "semanas": semanas,
+        "dias": dias,
+        "filas": filas,
+    }
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def leer_calendarios_asistencia(ruta: str, mtime: float) -> list[dict]:
+    _ = mtime
+    from openpyxl import load_workbook
+
+    wb = load_workbook(_copia_excel_legible(ruta), data_only=False)
+    try:
+        calendarios = []
+        for nombre in wb.sheetnames:
+            calendario = _leer_hoja_calendario(wb[nombre])
+            if calendario and calendario["filas"]:
+                calendarios.append(calendario)
+        return calendarios
+    finally:
+        wb.close()
+
+
+def _clase_jornada_asistencia(valor: str) -> str:
+    if not str(valor or "").strip():
+        return "vacio"
+    if _es_descanso_fo(valor):
+        return "fo"
+    return "campo"
+
+
+def _html_calendario_asistencia(calendario: dict, semana: str) -> str:
+    dias = [dia for dia in calendario["dias"] if semana == "Todas las semanas" or dia["semana"] == semana]
+    grupos = []
+    for dia in dias:
+        if not grupos or grupos[-1][0] != dia["semana"]:
+            grupos.append([dia["semana"], 1])
+        else:
+            grupos[-1][1] += 1
+    semanas_html = "".join(
+        f'<th class="semana" colspan="{n}">{html.escape(nombre)}</th>' for nombre, n in grupos
+    )
+    dias_html = "".join(
+        f'<th class="dia"><span>{dia["dia"]:02d}</span><small>{html.escape(dia["nombre"][:3])}</small></th>'
+        for dia in dias
+    )
+    cuerpo = []
+    for fila in calendario["filas"]:
+        celdas = []
+        for dia in dias:
+            valor = str(fila["celdas"].get(dia["fecha"]) or "")
+            clase = _clase_jornada_asistencia(valor)
+            texto = "F/O" if clase == "fo" else (valor or "—")
+            celdas.append(f'<td class="{clase}">{html.escape(texto)}</td>')
+        cuerpo.append(
+            f'<tr><th class="crew">{html.escape(fila["cuadrilla"])}</th>{"".join(celdas)}</tr>'
+        )
+    return (
+        '<div class="cal-asist-wrap"><table class="cal-asist">'
+        f'<thead><tr><th class="crew" rowspan="2">Cuadrilla</th>{semanas_html}</tr>'
+        f"<tr>{dias_html}</tr></thead><tbody>{''.join(cuerpo)}</tbody></table></div>"
+    )
+
+
+def _estilo_calendario_asistencia() -> str:
+    return """
+    <style>
+    .cal-asist-wrap { overflow-x: auto; margin-top: 0.4rem; }
+    .cal-asist { border-collapse: separate; border-spacing: 0; min-width: 100%; font-size: 0.78rem; }
+    .cal-asist th, .cal-asist td {
+        border: 1px solid #334155; padding: 0.35rem 0.4rem; text-align: center; white-space: nowrap;
+    }
+    .cal-asist th.semana { background: #1e3a5f; color: #e2e8f0; font-size: 0.72rem; letter-spacing: 0.04em; }
+    .cal-asist th.dia { background: #0f172a; color: #cbd5e1; }
+    .cal-asist th.dia span { display: block; color: #f8fafc; font-size: 0.85rem; }
+    .cal-asist th.dia small { color: #94a3b8; font-weight: 600; }
+    .cal-asist th.crew {
+        position: sticky; left: 0; z-index: 1; text-align: left; background: #0f172a; color: #f8fafc;
+        min-width: 8.5rem;
+    }
+    .cal-asist td.campo { background: rgba(20, 83, 45, 0.55); color: #bbf7d0; }
+    .cal-asist td.fo { background: rgba(120, 53, 15, 0.55); color: #fde68a; font-weight: 700; }
+    .cal-asist td.vacio { background: #0b1220; color: #475569; }
+    </style>
+    """
+
+
+def render_calendario_asistencia() -> None:
+    st.markdown(_estilo_calendario_asistencia(), unsafe_allow_html=True)
+    ruta = ruta_calendario_asistencia()
+    st.caption("Salidas a campo y descansos F/O. Verde: personal en campo. Ámbar: F/O.")
+    if not os.path.exists(ruta):
+        st.warning(f"No se encontró el calendario en {CALENDARIO_ASISTENCIA_FILE}.")
+        return
+    try:
+        calendarios = leer_calendarios_asistencia(ruta, os.path.getmtime(ruta))
+    except Exception as exc:
+        st.error(f"No se pudo leer el calendario de asistencia: {exc}")
+        return
+    if not calendarios:
+        st.info("El archivo no tiene una matriz de cuadrillas reconocible.")
+        return
+    etiquetas = [item["etiqueta"] for item in calendarios]
+    col_mes, col_sem = st.columns(2)
+    with col_mes:
+        etiqueta = st.selectbox("Mes", etiquetas, key="cal_asist_mes")
+    calendario = next(item for item in calendarios if item["etiqueta"] == etiqueta)
+    with col_sem:
+        semana = st.selectbox(
+            "Semana",
+            ["Todas las semanas", *calendario["semanas"]],
+            key="cal_asist_semana",
+        )
+    dias = [dia for dia in calendario["dias"] if semana == "Todas las semanas" or dia["semana"] == semana]
+    fechas = {dia["fecha"] for dia in dias}
+    salidas = descansos = 0
+    for fila in calendario["filas"]:
+        for fecha, valor in fila["celdas"].items():
+            if fecha not in fechas:
+                continue
+            clase = _clase_jornada_asistencia(valor)
+            if clase == "campo":
+                salidas += 1
+            elif clase == "fo":
+                descansos += 1
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Cuadrillas", len(calendario["filas"]))
+    m2.metric("Salidas a campo", salidas)
+    m3.metric("Descansos F/O", descansos)
+    st.markdown(_html_calendario_asistencia(calendario, semana), unsafe_allow_html=True)
+    st.caption(f"Fuente: {os.path.basename(ruta)}. {calendario['titulo']}.")
+
+
 def render_explorador_admin() -> None:
     st.caption("Distribución perimetral de módulos con núcleo de control temporal y métricas.")
     render_captura_bitacora_admin()
@@ -18749,6 +19042,8 @@ def render_explorador_admin() -> None:
             abrir_modulo_admin("ot_diario")
         if st.button("📓 Bitácora general", use_container_width=True, key="adm_bit"):
             abrir_modulo_admin("auditoria", admin_sub_auditoria="revision")
+        if st.button("📅 Calendario de asistencia", use_container_width=True, key="adm_calendario"):
+            abrir_modulo_admin("calendario_asistencia")
 
     with col_centro:
         st.markdown(f"#### 🗓️ Núcleo operativo · {mes_txt} {jornada.year}")
@@ -18926,6 +19221,8 @@ def render_panel_administrativo() -> None:
         render_programa_octubre()
     elif modulo_id == "auditoria":
         render_auditoria_accesos()
+    elif modulo_id == "calendario_asistencia":
+        render_calendario_asistencia()
     elif modulo_id == "cuadrillas":
         render_historial_cuadrillas(encabezado=False)
     elif modulo_id == "soporte":
