@@ -41,5 +41,21 @@
       "activo": true
     }
   ],
-  "movimientos": []
+  "movimientos": [
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-09",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Soledad (S)",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 5.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "id": "3db7002bd0",
+      "registrado": "2026-10-20 17:08"
+    }
+  ]
 }
