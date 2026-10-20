@@ -221,6 +221,36 @@
       "origen_registro": "campo",
       "id": "99c0a3ea54",
       "registrado": "2026-10-20 18:33"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-12",
+      "secuencia": "Act. 8",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Soledad Norte (SN)",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 6.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "id": "89dfe86f82",
+      "registrado": "2026-10-20 18:37"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-12",
+      "secuencia": "Act. 8",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Soledad Norte (SN)",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 4.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "id": "5c01670eaa",
+      "registrado": "2026-10-20 18:37"
     }
   ]
 }
