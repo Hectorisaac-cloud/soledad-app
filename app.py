@@ -17962,7 +17962,303 @@ def figura_donut(campo: pd.DataFrame, flota: pd.DataFrame):
     return fig
 
 
-def render_dashboard_ejecutivo() -> None:
+_ESPEJO_INSUMO_BITACORA = {
+    "ACEITE (LTS)": "ACEITE SAE 50 PJP4",
+    "BANDAS CANTIDAD": "BANDAS C144 PJP4",
+    "GRASA (KG)": "GRASA OPS",
+    "REFRIGERANTE (LTS)": "REFRIGERANTE OPS",
+}
+_ETIQUETAS_REFACCION = {
+    "aceite sae 50 pjp4": "Aceite SAE 50",
+    "aceite lts": "Aceite SAE 50",
+    "bandas c144 pjp4": "Bandas C144",
+    "bandas c112 pjp4": "Bandas C112",
+    "bandas cantidad": "Bandas",
+    "bomba de agua reparada pjp4": "Bomba de agua",
+    "filtro de aceite pjp4": "Filtro de aceite",
+    "filtro de aceite ops": "Filtro de aceite OPS",
+    "filtros pzas": "Filtro de aceite",
+    "bujias pjp4": "Bujías",
+    "bujias pzas": "Bujías",
+    "juego de cables para bujias": "Cables de bujías",
+    "grasa ops": "Grasa",
+    "grasa kg": "Grasa",
+    "refrigerante ops": "Refrigerante",
+    "refrigerante lts": "Refrigerante",
+    "alternador cantidad": "Alternador",
+    "filtro de aire": "Filtro de aire",
+    "tapa de distribuidor": "Tapa de distribuidor",
+    "rotor": "Rotor",
+    "polea loca": "Polea loca",
+    "boton de arranque": "Botón de arranque",
+}
+
+
+def etiqueta_refaccion(columna: str) -> str:
+    clave = _clave_columna_bitacora(columna)
+    if clave in _ETIQUETAS_REFACCION:
+        return _ETIQUETAS_REFACCION[clave]
+    if columna in ETIQUETAS_INSUMO_SOPORTE:
+        return ETIQUETAS_INSUMO_SOPORTE[columna]
+    texto = re.sub(r"\s*(\(|\b)(PJP4|OPS)\)?\s*$", "", str(columna or ""), flags=re.IGNORECASE).strip()
+    palabras = []
+    for indice, palabra in enumerate(texto.split()):
+        plano = _sin_acentos(palabra).casefold()
+        if indice and plano in {"de", "para", "del", "la", "el", "y", "a"}:
+            palabras.append(palabra.lower())
+        elif re.search(r"\d", palabra):
+            palabras.append(palabra.upper())
+        else:
+            palabras.append(palabra.capitalize())
+    titulo = " ".join(palabras).replace("Bujias", "Bujías").replace("Bujía", "Bujía")
+    return titulo or str(columna or "").strip()
+
+
+def _es_columna_cantidad_refaccion(nombre: str) -> bool:
+    clave = _clave_columna_bitacora(nombre)
+    if not clave or "descripcion" in clave or "estado origen" in clave or clave == "otros insumos":
+        return False
+    if nombre in COLUMNAS_INSUMOS or nombre in {"BANDAS CANTIDAD", "ALTERNADOR CANTIDAD"}:
+        return True
+    return es_columna_insumo_excel(nombre)
+
+
+def _numero_insumo(valor) -> float:
+    if valor is None:
+        return 0.0
+    try:
+        if pd.isna(valor):
+            return 0.0
+    except TypeError:
+        pass
+    texto = str(valor).strip().replace(",", ".")
+    if not texto or texto.lower() in {"nan", "none", "<na>", "nat"}:
+        return 0.0
+    try:
+        numero = float(texto)
+    except ValueError:
+        return 0.0
+    return numero if numero > 0 else 0.0
+
+
+def _partes_otros_insumos(valor) -> list[tuple[str, float]]:
+    texto = texto_visible(valor, "")
+    if not texto:
+        return []
+    salida = []
+    for parte in re.split(r"[,;\n|/]+", texto):
+        pieza = parte.strip()
+        if not pieza or re.fullmatch(r"\d+(?:[.,]\d+)?", pieza):
+            continue
+        numeros = re.findall(r"\d+(?:[.,]\d+)?", pieza)
+        cantidad = float(numeros[-1].replace(",", ".")) if numeros else 1.0
+        nombre = re.sub(r"\d+(?:[.,]\d+)?", " ", pieza)
+        nombre = re.sub(r"\s+", " ", nombre).strip(" -:xX")
+        if not nombre or cantidad <= 0:
+            continue
+        salida.append((etiqueta_refaccion(nombre), cantidad))
+    return salida
+
+
+def _ubicacion_fila_refaccion(fila) -> str:
+    for columna in ("UBICACIÓN", "EQUIPO/UBICACIÓN", "POZO", "SECTOR"):
+        texto = texto_visible(fila.get(columna), "")
+        if texto:
+            return texto
+    return "Sin ubicación"
+
+
+def detalle_insumos_suministrados(df: pd.DataFrame | None) -> pd.DataFrame:
+    vacio = pd.DataFrame(columns=["fecha", "ubicacion", "refaccion", "cantidad"])
+    if df is None or df.empty:
+        return vacio
+    base = df if "_fecha" in df.columns else bitacora_con_fechas(df)
+    columnas = []
+    for columna in base.columns:
+        if not _es_columna_cantidad_refaccion(columna):
+            continue
+        origen = _ESPEJO_INSUMO_BITACORA.get(columna)
+        if origen and origen in base.columns:
+            continue
+        columnas.append(columna)
+    filas = []
+    for _, fila in base.iterrows():
+        dia = fila.get("_fecha")
+        if not isinstance(dia, date):
+            continue
+        ubicacion = _ubicacion_fila_refaccion(fila)
+        for columna in columnas:
+            cantidad = _numero_insumo(fila.get(columna))
+            if cantidad <= 0:
+                continue
+            filas.append(
+                {
+                    "fecha": dia,
+                    "ubicacion": ubicacion,
+                    "refaccion": etiqueta_refaccion(columna),
+                    "cantidad": cantidad,
+                }
+            )
+        for nombre, cantidad in _partes_otros_insumos(fila.get("OTROS INSUMOS")):
+            filas.append(
+                {
+                    "fecha": dia,
+                    "ubicacion": ubicacion,
+                    "refaccion": nombre,
+                    "cantidad": cantidad,
+                }
+            )
+    if not filas:
+        return vacio
+    return pd.DataFrame(filas)
+
+
+def _cantidad_visible(valor: float) -> int | float:
+    if abs(valor - round(valor)) < 1e-6:
+        return int(round(valor))
+    return round(float(valor), 2)
+
+
+def resumen_insumos_periodo(
+    detalle: pd.DataFrame,
+    inicio: date,
+    fin: date,
+    ubicacion: str = "",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if detalle is None or detalle.empty:
+        vacio = pd.DataFrame(columns=["Refacción", "Cantidad"])
+        return vacio, pd.DataFrame(columns=["Equipo", "Refacción", "Cantidad"])
+    vista = detalle.loc[(detalle["fecha"] >= inicio) & (detalle["fecha"] <= fin)].copy()
+    if ubicacion and ubicacion != "Todas las ubicaciones":
+        vista = vista.loc[vista["ubicacion"].astype(str) == ubicacion]
+    if vista.empty:
+        vacio = pd.DataFrame(columns=["Refacción", "Cantidad"])
+        return vacio, pd.DataFrame(columns=["Equipo", "Refacción", "Cantidad"])
+    barras = (
+        vista.groupby("refaccion", as_index=False)["cantidad"]
+        .sum()
+        .rename(columns={"refaccion": "Refacción", "cantidad": "Cantidad"})
+        .sort_values("Cantidad", ascending=False)
+    )
+    barras["Cantidad"] = barras["Cantidad"].map(_cantidad_visible)
+    desglose = (
+        vista.groupby(["ubicacion", "refaccion"], as_index=False)["cantidad"]
+        .sum()
+        .rename(columns={"ubicacion": "Equipo", "refaccion": "Refacción", "cantidad": "Cantidad"})
+    )
+    desglose["Cantidad"] = desglose["Cantidad"].map(_cantidad_visible)
+    desglose["_orden"] = desglose["Equipo"].map(orden_natural_pozo)
+    desglose = desglose.sort_values(["_orden", "Cantidad"], ascending=[True, False]).drop(columns="_orden")
+    return barras, desglose
+
+
+def semanas_de_mes(anio: int, mes: int) -> list[tuple[str, date, date]]:
+    inicio = date(anio, mes, 1)
+    fin = date(anio + (mes == 12), 1 if mes == 12 else mes + 1, 1) - timedelta(days=1)
+    cursor = inicio - timedelta(days=inicio.weekday())
+    semanas = []
+    numero = 1
+    while cursor <= fin:
+        recorte_ini = max(cursor, inicio)
+        recorte_fin = min(cursor + timedelta(days=6), fin)
+        etiqueta = f"Semana {numero} · {recorte_ini.strftime('%d/%m')} al {recorte_fin.strftime('%d/%m')}"
+        semanas.append((etiqueta, recorte_ini, recorte_fin))
+        numero += 1
+        cursor += timedelta(days=7)
+    return semanas
+
+
+def figura_barras_insumos(barras: pd.DataFrame):
+    if barras is None or barras.empty:
+        return None
+    fig = px.bar(
+        barras,
+        x="Refacción",
+        y="Cantidad",
+        text=[str(_cantidad_visible(valor)) for valor in barras["Cantidad"]],
+    )
+    fig.update_traces(
+        marker_color="#1e3a8a",
+        marker_line_color="#172554",
+        marker_line_width=0,
+        textposition="outside",
+        textfont=dict(color="#f8fafc", size=13),
+        cliponaxis=False,
+        hovertemplate="%{x}<br>%{y} suministrados<extra></extra>",
+    )
+    maximo = float(pd.to_numeric(barras["Cantidad"], errors="coerce").max() or 0)
+    estilo_figura_dash(fig, "Insumos y refacciones suministradas")
+    fig.update_layout(
+        height=500,
+        margin=dict(l=12, r=16, t=68, b=110),
+        xaxis_title="",
+        yaxis_title="Cantidad suministrada",
+        xaxis_tickangle=-32,
+        showlegend=False,
+    )
+    fig.update_yaxes(range=[0, maximo * 1.22 if maximo else 1])
+    return fig
+
+
+def render_control_insumos_refacciones() -> None:
+    st.markdown(
+        '<div class="section-title">Control de Insumos y Refacciones Suministradas</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Suma lo reportado en cada mantenimiento de la bitácora operativa: "
+        "filtros, bujías, cables, bandas, aceite y cualquier otra refacción cargada en el registro."
+    )
+    detalle = detalle_insumos_suministrados(bitacora_con_fechas(cargar_bitacora()))
+    if detalle.empty:
+        st.info("La bitácora todavía no tiene insumos o refacciones con cantidad.")
+        return
+    meses = sorted({(dia.year, dia.month) for dia in detalle["fecha"]})
+    etiquetas_mes = [f"{NOMBRES_MES[mes - 1]} {anio}" for anio, mes in meses]
+    hoy = date.today()
+    preferido = f"{NOMBRES_MES[hoy.month - 1]} {hoy.year}"
+    indice_mes = etiquetas_mes.index(preferido) if preferido in etiquetas_mes else len(etiquetas_mes) - 1
+    c_mes, c_sem, c_ubi = st.columns([1.1, 1.4, 1.5])
+    with c_mes:
+        etiqueta_mes = st.selectbox("Mes", etiquetas_mes, index=indice_mes, key="insref_mes")
+    anio, mes = meses[etiquetas_mes.index(etiqueta_mes)]
+    semanas = semanas_de_mes(anio, mes)
+    with c_sem:
+        etiqueta_semana = st.selectbox(
+            "Semana",
+            ["Todas las semanas", *[item[0] for item in semanas]],
+            key=f"insref_semana_{anio}_{mes}",
+        )
+    if etiqueta_semana == "Todas las semanas":
+        inicio, fin = semanas[0][1], semanas[-1][2]
+    else:
+        inicio, fin = next((ini, fin_) for nombre, ini, fin_ in semanas if nombre == etiqueta_semana)
+    ubicaciones = sorted(set(detalle["ubicacion"].astype(str)), key=orden_natural_pozo)
+    with c_ubi:
+        ubicacion = st.selectbox(
+            "Ubicación / pozo",
+            ["Todas las ubicaciones", *ubicaciones],
+            key="insref_ubicacion",
+            filter_mode="contains",
+            help="Escribe un pozo o una batería, por ejemplo PS626 o BSNI.",
+        )
+    barras, desglose = resumen_insumos_periodo(detalle, inicio, fin, ubicacion)
+    st.caption(f"Periodo {inicio.strftime('%d/%m/%Y')} al {fin.strftime('%d/%m/%Y')}.")
+    if barras.empty:
+        st.info("No hay insumos suministrados en ese periodo y ubicación.")
+        return
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Refacciones", int(barras["Refacción"].nunique()))
+    m2.metric("Cantidad suministrada", f"{pd.to_numeric(barras['Cantidad']).sum():,.0f}")
+    m3.metric("Equipos", int(desglose["Equipo"].nunique()) if not desglose.empty else 0)
+    with st.container(border=True):
+        figura = figura_barras_insumos(barras)
+        st.plotly_chart(figura, use_container_width=True, config={"displayModeBar": False})
+    st.markdown("**Desglose por equipo**")
+    st.dataframe(desglose, hide_index=True, use_container_width=True)
+
+
+def render_dashboard_ordenes() -> None:
     if asegurar_datos_demo_si_faltan():
         st.rerun()
     st.markdown('<div class="section-title">Dashboard Ejecutivo</div>', unsafe_allow_html=True)
@@ -18146,6 +18442,16 @@ def render_dashboard_ejecutivo() -> None:
             st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
 
 
+def render_dashboard_ejecutivo() -> None:
+    tab_ordenes, tab_insumos = st.tabs(
+        ["Órdenes y combustible", "Control de Insumos y Refacciones Suministradas"]
+    )
+    with tab_ordenes:
+        render_dashboard_ordenes()
+    with tab_insumos:
+        render_control_insumos_refacciones()
+
+
 MODULOS_ADMIN = [
     {
         "id": "registro_bitacora",
@@ -18157,7 +18463,7 @@ MODULOS_ADMIN = [
         "id": "dashboard",
         "icono": "📈",
         "titulo": "Dashboard Ejecutivo",
-        "descripcion": "KPIs de OT, cumplimiento OPS y combustible con gráficos interactivos del periodo.",
+        "descripcion": "KPIs de OT, combustible y el control de insumos y refacciones suministradas.",
     },
     {
         "id": "ot_diario",
