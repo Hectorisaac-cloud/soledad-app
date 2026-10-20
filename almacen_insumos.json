@@ -161,6 +161,21 @@
       "origen_registro": "campo",
       "id": "4aadd10159",
       "registrado": "2026-10-20 20:48"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-15",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Gallo (GA)",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 8.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "id": "5d7ffa0b20",
+      "registrado": "2026-10-20 21:02"
     }
   ]
 }
