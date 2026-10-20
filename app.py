@@ -5480,6 +5480,10 @@ def guardar_en_excel(df_final: pd.DataFrame, *, sincronizar: bool = True) -> Non
                 pass
     if sincronizar and len(salida) > 0:
         persistencia.respaldar_cambios("Actualización de bitácora")
+        try:
+            sincronizar_calendario_desde_bitacora()
+        except Exception:
+            pass
 
 
 def _encabezados_hoja_bitacora(ws) -> tuple[int, list[tuple[int, str]]]:
@@ -5721,6 +5725,10 @@ def agregar_registro_bitacora_soledad(
         df_bitacora = pd.DataFrame()
     if destino == EXCEL_FILE:
         persistencia.respaldar_cambios("Registro de actividad en bitácora")
+        try:
+            sincronizar_calendario_desde_bitacora()
+        except Exception:
+            pass
     return {
         "secuencia": int(secuencia),
         "fila": fila,
@@ -18856,6 +18864,7 @@ def _leer_hoja_calendario(ws) -> dict | None:
         filas.append(
             {
                 "cuadrilla": etiqueta_cuadrilla_historial(nombre),
+                "fila": fila,
                 "celdas": celdas,
                 "total": total,
             }
@@ -18893,12 +18902,188 @@ def leer_calendarios_asistencia(ruta: str, mtime: float) -> list[dict]:
         wb.close()
 
 
+def _casilla_calendario_vacia(valor: str) -> bool:
+    texto = str(valor or "").strip()
+    return texto.casefold() in {"", "—", "--", "-", "nan", "none", "<na>"}
+
+
 def _clase_jornada_asistencia(valor: str) -> str:
-    if not str(valor or "").strip():
+    if _casilla_calendario_vacia(valor):
         return "vacio"
     if _es_descanso_fo(valor):
         return "fo"
     return "campo"
+
+
+def _ficha_fila_bitacora(fila) -> str:
+    for columna in ("PERSONAL", "MECANICO EN TURNO", "MECANICO TITULAR"):
+        texto = str(fila.get(columna) or "").strip()
+        if texto and texto.casefold() not in {"nan", "none", "<na>"}:
+            return texto
+    return ""
+
+
+def jornadas_bitacora_por_cuadrilla(df: pd.DataFrame | None = None) -> dict[tuple[str, date], str]:
+    """Fecha y cuadrilla con actividad. La ficha vacía queda como cadena vacía, no como ausencia."""
+    base = bitacora_con_fechas(df if df is not None else cargar_bitacora())
+    if base.empty or "CUADRILLA" not in base.columns or "_fecha" not in base.columns:
+        return {}
+    fichas: dict[tuple[str, date], list[str]] = {}
+    for _, fila in base.iterrows():
+        dia = fila.get("_fecha")
+        if not isinstance(dia, date):
+            continue
+        clave = clave_cuadrilla_oficial(str(fila.get("CUADRILLA") or ""))
+        if not clave:
+            continue
+        fichas.setdefault((clave, dia), [])
+        ficha = _ficha_fila_bitacora(fila)
+        if ficha and ficha not in fichas[(clave, dia)]:
+            fichas[(clave, dia)].append(ficha)
+    return {clave: " / ".join(valores) for clave, valores in fichas.items()}
+
+
+def valor_casilla_desde_bitacora(
+    cuadrilla: str,
+    fecha: date,
+    jornadas: dict[tuple[str, date], str],
+    hoy: date | None = None,
+) -> str:
+    """Ficha si hubo actividad, F/O si el día ya pasó sin registro, vacío si es hoy o futuro."""
+    hoy = hoy or date.today()
+    clave = (clave_cuadrilla_oficial(cuadrilla), fecha)
+    if clave in jornadas:
+        return jornadas[clave] or "En campo"
+    if fecha < hoy:
+        return "F/O"
+    return ""
+
+
+def aplicar_bitacora_a_calendario(
+    calendario: dict,
+    jornadas: dict[tuple[str, date], str],
+    hoy: date | None = None,
+) -> dict:
+    hoy = hoy or date.today()
+    filas = []
+    for fila in calendario.get("filas") or []:
+        celdas = {
+            dia["fecha"]: valor_casilla_desde_bitacora(fila["cuadrilla"], dia["fecha"], jornadas, hoy)
+            for dia in calendario.get("dias") or []
+        }
+        filas.append({**fila, "celdas": celdas})
+    salida = dict(calendario)
+    salida["filas"] = filas
+    return salida
+
+
+def _casilla_calendario_equivalente(actual: str, deseado: str) -> bool:
+    if _casilla_calendario_vacia(actual) and _casilla_calendario_vacia(deseado):
+        return True
+    if _es_descanso_fo(actual) and _es_descanso_fo(deseado):
+        return True
+    return str(actual or "").strip() == str(deseado or "").strip()
+
+
+def _firma_sync_calendario(ruta_cal: str, hoy: date) -> tuple:
+    return (_mtime_archivo(ruta_cal), _mtime_archivo(EXCEL_FILE), hoy.isoformat())
+
+
+def _guardar_libro_calendario(wb, destino: str) -> None:
+    import time
+
+    fd, tmp = tempfile.mkstemp(suffix=".xlsx")
+    os.close(fd)
+    ultimo = None
+    try:
+        wb.save(tmp)
+        for intento in range(4):
+            try:
+                shutil.copy2(tmp, destino)
+                return
+            except PermissionError as exc:
+                ultimo = exc
+                if intento < 3:
+                    time.sleep(0.3 * (intento + 1))
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+    raise PermissionError(
+        "calendario_asistencia.xlsx está abierto o en uso. "
+        "La tabla ya muestra la bitácora y el archivo se guardará cuando quede libre."
+    ) from ultimo
+
+
+def sincronizar_calendario_desde_bitacora(
+    jornadas: dict[tuple[str, date], str] | None = None,
+    hoy: date | None = None,
+) -> dict:
+    """Escribe en el calendario la ficha o F/O que salen de la bitácora. No toca fórmulas."""
+    hoy = hoy or date.today()
+    ruta = ruta_calendario_asistencia()
+    if not os.path.exists(ruta):
+        return {"ok": False, "cambios": 0, "mensaje": f"No se encontró {CALENDARIO_ASISTENCIA_FILE}."}
+    firma = _firma_sync_calendario(ruta, hoy)
+    try:
+        if st.session_state.get("_cal_sync_firma") == firma:
+            return {"ok": True, "cambios": 0, "mensaje": ""}
+        fallo = st.session_state.get("_cal_sync_fallo")
+        if isinstance(fallo, tuple) and len(fallo) == 3 and fallo[0] == firma and (datetime.now().timestamp() - fallo[1]) < 90:
+            return {"ok": False, "cambios": 0, "mensaje": fallo[2]}
+    except Exception:
+        pass
+    if jornadas is None:
+        jornadas = jornadas_bitacora_por_cuadrilla()
+    from openpyxl import load_workbook
+    from openpyxl.cell.cell import MergedCell
+
+    wb = load_workbook(_copia_excel_legible(ruta), data_only=False)
+    cambios = 0
+    try:
+        for nombre in wb.sheetnames:
+            ws = wb[nombre]
+            calendario = _leer_hoja_calendario(ws)
+            if not calendario:
+                continue
+            for fila in calendario["filas"]:
+                for dia in calendario["dias"]:
+                    celda = ws.cell(fila["fila"], dia["col"])
+                    if isinstance(celda, MergedCell):
+                        continue
+                    deseado = valor_casilla_desde_bitacora(fila["cuadrilla"], dia["fecha"], jornadas, hoy)
+                    actual = _texto_celda_calendario(celda.value)
+                    if _casilla_calendario_equivalente(actual, deseado):
+                        continue
+                    celda.value = deseado or None
+                    cambios += 1
+        if cambios:
+            _guardar_libro_calendario(wb, ruta)
+            try:
+                leer_calendarios_asistencia.clear()
+            except Exception:
+                pass
+            try:
+                _leer_calendario_asistencia_cache.clear()
+            except Exception:
+                pass
+            firma = _firma_sync_calendario(ruta, hoy)
+    except PermissionError as exc:
+        try:
+            st.session_state["_cal_sync_fallo"] = (firma, datetime.now().timestamp(), str(exc))
+        except Exception:
+            pass
+        return {"ok": False, "cambios": 0, "mensaje": str(exc)}
+    finally:
+        wb.close()
+    try:
+        st.session_state["_cal_sync_firma"] = firma
+        st.session_state.pop("_cal_sync_fallo", None)
+    except Exception:
+        pass
+    return {"ok": True, "cambios": cambios, "mensaje": ""}
 
 
 def _html_calendario_asistencia(calendario: dict, semana: str) -> str:
@@ -18922,7 +19107,7 @@ def _html_calendario_asistencia(calendario: dict, semana: str) -> str:
         for dia in dias:
             valor = str(fila["celdas"].get(dia["fecha"]) or "")
             clase = _clase_jornada_asistencia(valor)
-            texto = "F/O" if clase == "fo" else (valor or "—")
+            texto = "F/O" if clase == "fo" else (valor or "--")
             celdas.append(f'<td class="{clase}">{html.escape(texto)}</td>')
         cuerpo.append(
             f'<tr><th class="crew">{html.escape(fila["cuadrilla"])}</th>{"".join(celdas)}</tr>'
@@ -18960,15 +19145,27 @@ def _estilo_calendario_asistencia() -> str:
 def render_calendario_asistencia() -> None:
     st.markdown(_estilo_calendario_asistencia(), unsafe_allow_html=True)
     ruta = ruta_calendario_asistencia()
-    st.caption("Salidas a campo y descansos F/O. Verde: personal en campo. Ámbar: F/O.")
+    st.caption(
+        "Sale de la bitácora operativa. Verde: ficha del personal en campo. "
+        "Ámbar: F/O cuando la jornada ya pasó y esa cuadrilla no registró actividad. "
+        "El guion es el día de hoy o una fecha futura."
+    )
     if not os.path.exists(ruta):
         st.warning(f"No se encontró el calendario en {CALENDARIO_ASISTENCIA_FILE}.")
         return
+    jornadas = jornadas_bitacora_por_cuadrilla()
+    try:
+        sync = sincronizar_calendario_desde_bitacora(jornadas)
+    except Exception as exc:
+        sync = {"ok": False, "mensaje": str(exc)}
+    if not sync.get("ok") and sync.get("mensaje"):
+        st.caption(sync["mensaje"])
     try:
         calendarios = leer_calendarios_asistencia(ruta, os.path.getmtime(ruta))
     except Exception as exc:
         st.error(f"No se pudo leer el calendario de asistencia: {exc}")
         return
+    calendarios = [aplicar_bitacora_a_calendario(item, jornadas) for item in calendarios]
     if not calendarios:
         st.info("El archivo no tiene una matriz de cuadrillas reconocible.")
         return
@@ -19000,7 +19197,10 @@ def render_calendario_asistencia() -> None:
     m2.metric("Salidas a campo", salidas)
     m3.metric("Descansos F/O", descansos)
     st.markdown(_html_calendario_asistencia(calendario, semana), unsafe_allow_html=True)
-    st.caption(f"Fuente: {os.path.basename(ruta)}. {calendario['titulo']}.")
+    st.caption(
+        f"Sincronizado con la bitácora operativa. {calendario['titulo']}. "
+        f"El archivo {os.path.basename(ruta)} se actualiza solo."
+    )
 
 
 def render_explorador_admin() -> None:
