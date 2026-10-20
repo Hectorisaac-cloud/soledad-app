@@ -356,6 +356,21 @@
       "origen_registro": "campo",
       "id": "0abb805f7b",
       "registrado": "2026-10-20 22:37"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-16",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Soledad Norte (SN)",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 3.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "id": "4c1b0877ed",
+      "registrado": "2026-10-20 22:39"
     }
   ]
 }
