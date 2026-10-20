@@ -18466,6 +18466,12 @@ MODULOS_ADMIN = [
         "descripcion": "KPIs de OT, combustible y el control de insumos y refacciones suministradas.",
     },
     {
+        "id": "insumos_refacciones",
+        "icono": "📦",
+        "titulo": "Insumos y Refacciones",
+        "descripcion": "Consumo de refacciones e insumos suministrados en cada mantenimiento, con filtro de mes, semana y pozo.",
+    },
+    {
         "id": "ot_diario",
         "icono": "📑",
         "titulo": "Historial Diario de Órdenes de Trabajo",
@@ -19626,6 +19632,8 @@ def render_explorador_admin() -> None:
             abrir_modulo_admin("dashboard")
         if st.button("🚗 Vehículos y taller", use_container_width=True, key="adm_veh"):
             abrir_modulo_admin("vehiculos")
+        if st.button("📦 Insumos y Refacciones", use_container_width=True, key="adm_insumos"):
+            abrir_modulo_admin("insumos_refacciones")
 
     with st.expander("Más control: programas, cuadrillas y refacciones", expanded=False):
         x1, x2, x3 = st.columns(3)
@@ -19711,6 +19719,8 @@ def render_panel_administrativo() -> None:
         render_captura_bitacora_admin()
     elif modulo_id == "dashboard":
         render_dashboard_ejecutivo()
+    elif modulo_id == "insumos_refacciones":
+        render_control_insumos_refacciones()
     elif modulo_id == "ot_diario":
         render_historial_diario_ot()
     elif modulo_id == "asignaciones":
