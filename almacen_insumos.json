@@ -116,6 +116,21 @@
       "origen_registro": "campo",
       "id": "55134c339b",
       "registrado": "2026-10-20 17:26"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-09",
+      "secuencia": "Act. 8",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Gallo (GA)",
+      "insumo_id": "otros",
+      "insumo": "MARCAHA RECUPERADA",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "id": "3038634dc6",
+      "registrado": "2026-10-20 17:33"
     }
   ]
 }
