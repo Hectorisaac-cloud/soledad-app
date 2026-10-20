@@ -86,6 +86,21 @@
       "origen_registro": "campo",
       "id": "2c2dc0539d",
       "registrado": "2026-10-20 20:21"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-14",
+      "secuencia": "Act. 4",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Soledad Norte (SN)",
+      "insumo_id": "bandas",
+      "insumo": "Bandas",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "id": "ad3a945d73",
+      "registrado": "2026-10-20 20:25"
     }
   ]
 }
