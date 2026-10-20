@@ -1833,6 +1833,37 @@ def _agregar_opcion_unica(destino: list[str], vistos: set[str], valor) -> None:
     destino.append(texto)
 
 
+_PATRON_CODIGO_POZO = re.compile(r"^(PSN|PGA|PPB|PS|PA|PB|PC)-?\d", re.IGNORECASE)
+
+
+def etiqueta_codigo_ubicacion(nombre: str) -> str:
+    """Muestra el código de pozo en mayúsculas. Conserva nombres como Base PJP4."""
+    texto = str(nombre or "").strip()
+    if not texto:
+        return ""
+    compacto = clave_ubicacion(texto).replace(" ", "")
+    if _PATRON_CODIGO_POZO.match(compacto):
+        return compacto
+    return texto
+
+
+def opciones_ubicacion_catalogo() -> list[str]:
+    """Pozos y ubicaciones de ubicaciones_equipos.json, ordenados por código."""
+    opciones: list[str] = []
+    vistos: set[str] = set()
+    fichas = (cargar_ubicaciones().get("fichas") or {})
+    origen = fichas.values() if isinstance(fichas, dict) else fichas
+    for ficha in origen:
+        if not isinstance(ficha, dict):
+            continue
+        _agregar_opcion_unica(opciones, vistos, etiqueta_codigo_ubicacion(ficha.get("nombre")))
+    for extra in UBICACIONES_ESTANDAR:
+        _agregar_opcion_unica(opciones, vistos, extra)
+    opciones.sort(key=orden_natural_pozo)
+    opciones.append(OPCION_UBICACION_NUEVA)
+    return opciones
+
+
 def opciones_ubicacion_estandar() -> list[str]:
     return list(UBICACIONES_ESTANDAR) + [OPCION_UBICACION_NUEVA]
 
@@ -8710,7 +8741,7 @@ def render_registro_actividad_bitacora() -> None:
     epoch = int(st.session_state.get("bitacora_form_epoch") or 0)
     df_bitacora = bitacora_con_fechas(cargar_bitacora())
     opciones = catalogo_cuadrillas_historial(df_bitacora)
-    opciones_ubi = opciones_ubicacion_estandar()
+    opciones_ubi = opciones_ubicacion_catalogo()
     otra = "Otra (escribir)"
     st.markdown('<div class="section-title">➕ Registrar Actividad en Bitácora</div>', unsafe_allow_html=True)
     st.caption(
@@ -8732,9 +8763,14 @@ def render_registro_actividad_bitacora() -> None:
                 "Ubicación / Equipo",
                 opciones_ubi,
                 index=None,
-                placeholder="Seleccionar...",
+                placeholder="Escribe pozo o ubicación, ej. 272 o PSN",
                 key=f"bit_reg_equipo_{epoch}",
-                help="Ubicaciones estándar del campo. Elige Otra / Nuevo equipo para escribir una distinta.",
+                filter_mode="contains",
+                help=(
+                    "Catálogo completo de pozos y ubicaciones. "
+                    "Escribe un número o letras (272, PSN, PA) para filtrar. "
+                    "Otra / Nuevo equipo sirve para una ubicación que no esté en la lista."
+                ),
             )
             ubicacion_nueva = ""
             if ubicacion_sel == OPCION_UBICACION_NUEVA:
