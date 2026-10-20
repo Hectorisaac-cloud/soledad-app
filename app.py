@@ -17981,8 +17981,8 @@ _ETIQUETAS_REFACCION = {
     "bujias pjp4": "Bujías",
     "bujias pzas": "Bujías",
     "juego de cables para bujias": "Cables de bujías",
-    "grasa ops": "Grasa",
-    "grasa kg": "Grasa",
+    "grasa ops": "Grasa (Kg)",
+    "grasa kg": "Grasa (Kg)",
     "refrigerante ops": "Refrigerante",
     "refrigerante lts": "Refrigerante",
     "alternador cantidad": "Alternador",
@@ -17994,7 +17994,52 @@ _ETIQUETAS_REFACCION = {
 }
 
 
+def _es_grasa(nombre: str) -> bool:
+    return "grasa" in _sin_acentos(str(nombre or "")).casefold()
+
+
+def cantidad_grasa_kg(valor) -> float:
+    """Pasa a kilogramos la grasa capturada en gramos.
+
+    Un valor mayor de 100, o con unidad g/gramos, se divide entre 1,000.
+    Un valor de 100 o menos, o marcado en kg, se conserva en kilogramos.
+    """
+    if isinstance(valor, bool):
+        return 0.0
+    if isinstance(valor, (int, float)):
+        try:
+            if pd.isna(valor):
+                return 0.0
+        except TypeError:
+            pass
+        numero = float(valor)
+        if numero <= 0:
+            return 0.0
+        return numero / 1000.0 if numero > 100 else numero
+    texto = str(valor or "").strip().replace(",", ".")
+    if not texto or texto.lower() in {"nan", "none", "<na>", "nat"}:
+        return 0.0
+    coincidencia = re.search(
+        r"(\d+(?:\.\d+)?)\s*(kilogramos?|kilos?|kg|gramos?|grs|gr|g)?\b",
+        texto,
+        flags=re.IGNORECASE,
+    )
+    if not coincidencia:
+        return 0.0
+    numero = float(coincidencia.group(1))
+    if numero <= 0:
+        return 0.0
+    unidad = (coincidencia.group(2) or "").casefold()
+    if unidad in {"kg", "kilo", "kilos", "kilogramo", "kilogramos"}:
+        return numero
+    if unidad in {"g", "gr", "grs", "gramo", "gramos"} or numero > 100:
+        return numero / 1000.0
+    return numero
+
+
 def etiqueta_refaccion(columna: str) -> str:
+    if _es_grasa(columna):
+        return "Grasa (Kg)"
     clave = _clave_columna_bitacora(columna)
     if clave in _ETIQUETAS_REFACCION:
         return _ETIQUETAS_REFACCION[clave]
@@ -18053,9 +18098,14 @@ def _partes_otros_insumos(valor) -> list[tuple[str, float]]:
         numeros = re.findall(r"\d+(?:[.,]\d+)?", pieza)
         cantidad = float(numeros[-1].replace(",", ".")) if numeros else 1.0
         nombre = re.sub(r"\d+(?:[.,]\d+)?", " ", pieza)
+        nombre = re.sub(r"\b(kg|kilos?|kilogramos?|gramos?|grs|gr|g)\b", " ", nombre, flags=re.IGNORECASE)
         nombre = re.sub(r"\s+", " ", nombre).strip(" -:xX")
         if not nombre or cantidad <= 0:
             continue
+        if _es_grasa(nombre) or _es_grasa(pieza):
+            cantidad = cantidad_grasa_kg(pieza)
+            if cantidad <= 0:
+                continue
         salida.append((etiqueta_refaccion(nombre), cantidad))
     return salida
 
@@ -18088,7 +18138,8 @@ def detalle_insumos_suministrados(df: pd.DataFrame | None) -> pd.DataFrame:
             continue
         ubicacion = _ubicacion_fila_refaccion(fila)
         for columna in columnas:
-            cantidad = _numero_insumo(fila.get(columna))
+            bruto = fila.get(columna)
+            cantidad = cantidad_grasa_kg(bruto) if _es_grasa(columna) else _numero_insumo(bruto)
             if cantidad <= 0:
                 continue
             filas.append(
@@ -18117,6 +18168,13 @@ def _cantidad_visible(valor: float) -> int | float:
     if abs(valor - round(valor)) < 1e-6:
         return int(round(valor))
     return round(float(valor), 2)
+
+
+def _texto_cantidad_refaccion(refaccion: str, valor: float) -> str:
+    visible = _cantidad_visible(valor)
+    if _es_grasa(refaccion):
+        return f"{visible} Kg"
+    return str(visible)
 
 
 def resumen_insumos_periodo(
@@ -18175,7 +18233,10 @@ def figura_barras_insumos(barras: pd.DataFrame):
         barras,
         x="Refacción",
         y="Cantidad",
-        text=[str(_cantidad_visible(valor)) for valor in barras["Cantidad"]],
+        text=[
+            _texto_cantidad_refaccion(nombre, valor)
+            for nombre, valor in zip(barras["Refacción"], barras["Cantidad"])
+        ],
     )
     fig.update_traces(
         marker_color="#1e3a8a",
@@ -18184,7 +18245,7 @@ def figura_barras_insumos(barras: pd.DataFrame):
         textposition="outside",
         textfont=dict(color="#f8fafc", size=13),
         cliponaxis=False,
-        hovertemplate="%{x}<br>%{y} suministrados<extra></extra>",
+        hovertemplate="%{x}<br>%{text}<extra></extra>",
     )
     maximo = float(pd.to_numeric(barras["Cantidad"], errors="coerce").max() or 0)
     estilo_figura_dash(fig, "Insumos y refacciones suministradas")
@@ -18207,7 +18268,8 @@ def render_control_insumos_refacciones() -> None:
     )
     st.caption(
         "Suma lo reportado en cada mantenimiento de la bitácora operativa: "
-        "filtros, bujías, cables, bandas, aceite y cualquier otra refacción cargada en el registro."
+        "filtros, bujías, cables, bandas, aceite y cualquier otra refacción cargada en el registro. "
+        "La grasa capturada en gramos se muestra en kilogramos."
     )
     detalle = detalle_insumos_suministrados(bitacora_con_fechas(cargar_bitacora()))
     if detalle.empty:
@@ -18255,7 +18317,12 @@ def render_control_insumos_refacciones() -> None:
         figura = figura_barras_insumos(barras)
         st.plotly_chart(figura, use_container_width=True, config={"displayModeBar": False})
     st.markdown("**Desglose por equipo**")
-    st.dataframe(desglose, hide_index=True, use_container_width=True)
+    tabla = desglose.copy()
+    tabla["Cantidad"] = [
+        _texto_cantidad_refaccion(nombre, valor)
+        for nombre, valor in zip(tabla["Refacción"], tabla["Cantidad"])
+    ]
+    st.dataframe(tabla, hide_index=True, use_container_width=True)
 
 
 def render_dashboard_ordenes() -> None:
