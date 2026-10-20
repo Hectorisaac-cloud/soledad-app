@@ -296,6 +296,36 @@
       "origen_registro": "campo",
       "id": "fe78d41184",
       "registrado": "2026-10-20 22:08"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-15",
+      "secuencia": "Act. 6",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Soledad Norte (SN)",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 8.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "id": "1283b48ef9",
+      "registrado": "2026-10-20 22:12"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-15",
+      "secuencia": "Act. 6",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Soledad Norte (SN)",
+      "insumo_id": "filtro-de-aceite",
+      "insumo": "Filtro de aceite",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "id": "be6988f1d6",
+      "registrado": "2026-10-20 22:12"
     }
   ]
 }
