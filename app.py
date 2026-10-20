@@ -17994,8 +17994,54 @@ _ETIQUETAS_REFACCION = {
 }
 
 
+RUBRO_INSUMO = "Insumo"
+RUBRO_REPARACION = "Reparación"
+_CLAVES_REPARACION_MCI = (
+    "alternador",
+    "radiador",
+    "bomba de agua",
+    "bomba de aceite",
+    "bomba de combustible",
+    "marcha",
+    "motor de arranque",
+    "boton de arranque",
+    "arranque",
+    "tapa de distribuidor",
+    "distribuidor",
+    "rotor",
+    "polea",
+    "bobina",
+    "carburador",
+    "culata",
+    "piston",
+    "biela",
+    "ciguenal",
+    "volante",
+    "embrague",
+    "termostato",
+    "inyector",
+    "solenoide",
+    "regulador",
+    "reparad",
+    "sustitui",
+)
+
+
 def _es_grasa(nombre: str) -> bool:
     return "grasa" in _sin_acentos(str(nombre or "")).casefold()
+
+
+def clasificar_rubro_refaccion(nombre: str) -> str:
+    """Separa consumibles de componentes del MCI reparados o sustituidos.
+
+    Una columna nueva de la bitácora entra sola: si su nombre corresponde a una
+    pieza del motor (alternador, radiador, bomba, marcha, etc.) se cuenta como
+    reparación; el resto se cuenta como insumo.
+    """
+    clave = _clave_columna_bitacora(nombre)
+    if any(token in clave for token in _CLAVES_REPARACION_MCI):
+        return RUBRO_REPARACION
+    return RUBRO_INSUMO
 
 
 def cantidad_grasa_kg(valor) -> float:
@@ -18119,7 +18165,7 @@ def _ubicacion_fila_refaccion(fila) -> str:
 
 
 def detalle_insumos_suministrados(df: pd.DataFrame | None) -> pd.DataFrame:
-    vacio = pd.DataFrame(columns=["fecha", "ubicacion", "refaccion", "cantidad"])
+    vacio = pd.DataFrame(columns=["fecha", "ubicacion", "rubro", "refaccion", "cantidad"])
     if df is None or df.empty:
         return vacio
     base = df if "_fecha" in df.columns else bitacora_con_fechas(df)
@@ -18146,6 +18192,7 @@ def detalle_insumos_suministrados(df: pd.DataFrame | None) -> pd.DataFrame:
                 {
                     "fecha": dia,
                     "ubicacion": ubicacion,
+                    "rubro": clasificar_rubro_refaccion(columna),
                     "refaccion": etiqueta_refaccion(columna),
                     "cantidad": cantidad,
                 }
@@ -18155,6 +18202,7 @@ def detalle_insumos_suministrados(df: pd.DataFrame | None) -> pd.DataFrame:
                 {
                     "fecha": dia,
                     "ubicacion": ubicacion,
+                    "rubro": clasificar_rubro_refaccion(nombre),
                     "refaccion": nombre,
                     "cantidad": cantidad,
                 }
@@ -18177,21 +18225,26 @@ def _texto_cantidad_refaccion(refaccion: str, valor: float) -> str:
     return str(visible)
 
 
-def resumen_insumos_periodo(
+def _vista_insumos_periodo(
     detalle: pd.DataFrame,
     inicio: date,
     fin: date,
     ubicacion: str = "",
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+    rubro: str = "",
+) -> pd.DataFrame:
     if detalle is None or detalle.empty:
-        vacio = pd.DataFrame(columns=["Refacción", "Cantidad"])
-        return vacio, pd.DataFrame(columns=["Equipo", "Refacción", "Cantidad"])
+        return pd.DataFrame(columns=["fecha", "ubicacion", "rubro", "refaccion", "cantidad"])
     vista = detalle.loc[(detalle["fecha"] >= inicio) & (detalle["fecha"] <= fin)].copy()
     if ubicacion and ubicacion != "Todas las ubicaciones":
         vista = vista.loc[vista["ubicacion"].astype(str) == ubicacion]
-    if vista.empty:
-        vacio = pd.DataFrame(columns=["Refacción", "Cantidad"])
-        return vacio, pd.DataFrame(columns=["Equipo", "Refacción", "Cantidad"])
+    if rubro:
+        vista = vista.loc[vista["rubro"] == rubro]
+    return vista
+
+
+def _barras_desde_vista(vista: pd.DataFrame) -> pd.DataFrame:
+    if vista is None or vista.empty:
+        return pd.DataFrame(columns=["Refacción", "Cantidad"])
     barras = (
         vista.groupby("refaccion", as_index=False)["cantidad"]
         .sum()
@@ -18199,15 +18252,43 @@ def resumen_insumos_periodo(
         .sort_values("Cantidad", ascending=False)
     )
     barras["Cantidad"] = barras["Cantidad"].map(_cantidad_visible)
+    return barras
+
+
+def _desglose_desde_vista(vista: pd.DataFrame, con_rubro: bool = False) -> pd.DataFrame:
+    columnas = ["Equipo", "Rubro", "Refacción", "Cantidad"] if con_rubro else ["Equipo", "Refacción", "Cantidad"]
+    if vista is None or vista.empty:
+        return pd.DataFrame(columns=columnas)
+    claves = ["ubicacion", "rubro", "refaccion"] if con_rubro else ["ubicacion", "refaccion"]
     desglose = (
-        vista.groupby(["ubicacion", "refaccion"], as_index=False)["cantidad"]
+        vista.groupby(claves, as_index=False)["cantidad"]
         .sum()
-        .rename(columns={"ubicacion": "Equipo", "refaccion": "Refacción", "cantidad": "Cantidad"})
+        .rename(
+            columns={
+                "ubicacion": "Equipo",
+                "rubro": "Rubro",
+                "refaccion": "Refacción",
+                "cantidad": "Cantidad",
+            }
+        )
     )
     desglose["Cantidad"] = desglose["Cantidad"].map(_cantidad_visible)
     desglose["_orden"] = desglose["Equipo"].map(orden_natural_pozo)
-    desglose = desglose.sort_values(["_orden", "Cantidad"], ascending=[True, False]).drop(columns="_orden")
-    return barras, desglose
+    orden = ["_orden", "Rubro", "Cantidad"] if con_rubro else ["_orden", "Cantidad"]
+    ascendente = [True, True, False] if con_rubro else [True, False]
+    desglose = desglose.sort_values(orden, ascending=ascendente).drop(columns="_orden")
+    return desglose[columnas]
+
+
+def resumen_insumos_periodo(
+    detalle: pd.DataFrame,
+    inicio: date,
+    fin: date,
+    ubicacion: str = "",
+    rubro: str = "",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    vista = _vista_insumos_periodo(detalle, inicio, fin, ubicacion, rubro)
+    return _barras_desde_vista(vista), _desglose_desde_vista(vista, con_rubro=False)
 
 
 def semanas_de_mes(anio: int, mes: int) -> list[tuple[str, date, date]]:
@@ -18226,7 +18307,7 @@ def semanas_de_mes(anio: int, mes: int) -> list[tuple[str, date, date]]:
     return semanas
 
 
-def figura_barras_insumos(barras: pd.DataFrame):
+def figura_barras_insumos(barras: pd.DataFrame, titulo: str = "Insumos y refacciones suministradas"):
     if barras is None or barras.empty:
         return None
     fig = px.bar(
@@ -18248,7 +18329,7 @@ def figura_barras_insumos(barras: pd.DataFrame):
         hovertemplate="%{x}<br>%{text}<extra></extra>",
     )
     maximo = float(pd.to_numeric(barras["Cantidad"], errors="coerce").max() or 0)
-    estilo_figura_dash(fig, "Insumos y refacciones suministradas")
+    estilo_figura_dash(fig, titulo)
     fig.update_layout(
         height=500,
         margin=dict(l=12, r=16, t=68, b=110),
@@ -18261,19 +18342,42 @@ def figura_barras_insumos(barras: pd.DataFrame):
     return fig
 
 
+def _tabla_cantidades_visibles(desglose: pd.DataFrame) -> pd.DataFrame:
+    tabla = desglose.copy()
+    if tabla.empty or "Cantidad" not in tabla.columns:
+        return tabla
+    tabla["Cantidad"] = [
+        _texto_cantidad_refaccion(nombre, valor)
+        for nombre, valor in zip(tabla["Refacción"], tabla["Cantidad"])
+    ]
+    return tabla
+
+
+def _pintar_barras_y_desglose(barras: pd.DataFrame, desglose: pd.DataFrame, titulo: str, vacio: str) -> None:
+    if barras.empty:
+        st.info(vacio)
+        return
+    with st.container(border=True):
+        figura = figura_barras_insumos(barras, titulo)
+        st.plotly_chart(figura, use_container_width=True, config={"displayModeBar": False})
+    st.markdown("**Desglose por equipo**")
+    st.dataframe(_tabla_cantidades_visibles(desglose), hide_index=True, use_container_width=True)
+
+
 def render_control_insumos_refacciones() -> None:
     st.markdown(
         '<div class="section-title">Control de Insumos y Refacciones Suministradas</div>',
         unsafe_allow_html=True,
     )
     st.caption(
-        "Suma lo reportado en cada mantenimiento de la bitácora operativa: "
-        "filtros, bujías, cables, bandas, aceite y cualquier otra refacción cargada en el registro. "
+        "Separa los consumibles (aceite, filtros, refrigerante, grasa y similares) "
+        "de las reparaciones del MCI (alternador, radiador, bomba de agua, marcha y otras piezas). "
+        "Una columna nueva de la bitácora entra sola en el rubro que le corresponde. "
         "La grasa capturada en gramos se muestra en kilogramos."
     )
     detalle = detalle_insumos_suministrados(bitacora_con_fechas(cargar_bitacora()))
     if detalle.empty:
-        st.info("La bitácora todavía no tiene insumos o refacciones con cantidad.")
+        st.info("La bitácora todavía no tiene insumos o reparaciones con cantidad.")
         return
     meses = sorted({(dia.year, dia.month) for dia in detalle["fecha"]})
     etiquetas_mes = [f"{NOMBRES_MES[mes - 1]} {anio}" for anio, mes in meses]
@@ -18304,25 +18408,48 @@ def render_control_insumos_refacciones() -> None:
             filter_mode="contains",
             help="Escribe un pozo o una batería, por ejemplo PS626 o BSNI.",
         )
-    barras, desglose = resumen_insumos_periodo(detalle, inicio, fin, ubicacion)
+    vista = _vista_insumos_periodo(detalle, inicio, fin, ubicacion)
     st.caption(f"Periodo {inicio.strftime('%d/%m/%Y')} al {fin.strftime('%d/%m/%Y')}.")
-    if barras.empty:
-        st.info("No hay insumos suministrados en ese periodo y ubicación.")
+    if vista.empty:
+        st.info("No hay insumos ni reparaciones en ese periodo y ubicación.")
         return
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Refacciones", int(barras["Refacción"].nunique()))
-    m2.metric("Cantidad suministrada", f"{pd.to_numeric(barras['Cantidad']).sum():,.0f}")
-    m3.metric("Equipos", int(desglose["Equipo"].nunique()) if not desglose.empty else 0)
-    with st.container(border=True):
-        figura = figura_barras_insumos(barras)
-        st.plotly_chart(figura, use_container_width=True, config={"displayModeBar": False})
-    st.markdown("**Desglose por equipo**")
-    tabla = desglose.copy()
-    tabla["Cantidad"] = [
-        _texto_cantidad_refaccion(nombre, valor)
-        for nombre, valor in zip(tabla["Refacción"], tabla["Cantidad"])
-    ]
-    st.dataframe(tabla, hide_index=True, use_container_width=True)
+    insumos = vista.loc[vista["rubro"] == RUBRO_INSUMO]
+    reparaciones = vista.loc[vista["rubro"] == RUBRO_REPARACION]
+    k1, k2 = st.columns(2)
+    k1.metric(
+        "Insumos Suministrados",
+        int(insumos["refaccion"].nunique()) if not insumos.empty else 0,
+        help="Consumibles distintos reportados en el periodo: aceite, filtros, refrigerante, grasa y similares.",
+    )
+    k2.metric(
+        "Reparaciones Realizadas",
+        int(round(pd.to_numeric(reparaciones["cantidad"], errors="coerce").sum())) if not reparaciones.empty else 0,
+        help="Piezas del MCI reparadas o sustituidas en el periodo. Una columna nueva (radiador, marcha, alternador) se suma en cuanto la bitácora traiga cantidad.",
+    )
+    tab_insumos, tab_reparaciones, tab_general = st.tabs(
+        ["Insumos Suministrados", "Reparaciones Realizadas", "Tabla General"]
+    )
+    with tab_insumos:
+        _pintar_barras_y_desglose(
+            _barras_desde_vista(insumos),
+            _desglose_desde_vista(insumos),
+            "Insumos suministrados",
+            "No hay insumos suministrados en ese periodo y ubicación.",
+        )
+    with tab_reparaciones:
+        _pintar_barras_y_desglose(
+            _barras_desde_vista(reparaciones),
+            _desglose_desde_vista(reparaciones),
+            "Reparaciones realizadas",
+            "No hay reparaciones en ese periodo. Aparecerán al cargar alternador, radiador, bomba de agua, marcha u otra pieza del MCI.",
+        )
+    with tab_general:
+        st.markdown("**Tabla general**")
+        st.dataframe(
+            _tabla_cantidades_visibles(_desglose_desde_vista(vista, con_rubro=True)),
+            hide_index=True,
+            use_container_width=True,
+        )
 
 
 def render_dashboard_ordenes() -> None:
