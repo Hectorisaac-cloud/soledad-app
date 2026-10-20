@@ -844,9 +844,14 @@ st.markdown(
             color: #86efac; font-size: 1.55rem; font-weight: 600;
             line-height: 1.15; margin-top: 0.15rem;
         }
+        .metric-fuel .sub {
+            color: #e2e8f0; font-size: 1.15rem; font-weight: 600;
+            line-height: 1.15; margin-top: 0.12rem;
+        }
         .metric-fuel .delta { font-size: 0.82rem; margin-top: 0.15rem; }
         .metric-fuel .delta.down { color: #fca5a5; }
         .metric-fuel .delta.up { color: #86efac; }
+        .metric-fuel .delta.flat { color: #94a3b8; }
         .metric-fuel .corte {
             color: #94a3b8; font-size: 0.72rem; margin-top: 0.4rem; letter-spacing: 0.01em;
         }
@@ -18397,6 +18402,84 @@ def render_seccion_admin(kicker: str, titulo: str, ayuda: str) -> None:
     )
 
 
+_PATRON_POZO_CAMPO = re.compile(r"^(PSN|PGA|PPB|PS|PA|PB|PC)-?\d", re.IGNORECASE)
+
+
+def delta_vs_previo(actual: float, previo: float) -> int | None:
+    if actual > 0 and previo > 0:
+        return round(((actual - previo) / previo) * 100)
+    return None
+
+
+def texto_rango_registros(inicio: date, ultima: date | None) -> str:
+    """Inicio del periodo y fecha del último registro que entra en el total."""
+    ini = inicio.strftime("%d/%m/%Y")
+    if isinstance(ultima, date):
+        return f"Desde {ini} hasta {ultima.strftime('%d/%m/%Y')}"
+    return f"Desde {ini} · sin registros"
+
+
+def ubicacion_de_registro(fila) -> str:
+    for col in ("POZO", "UBICACIÓN", "UBICACION"):
+        texto = texto_visible(fila.get(col), "")
+        if texto:
+            return texto
+    return texto_visible(fila.get("SECTOR"), "")
+
+
+def es_pozo_de_campo(nombre: str) -> bool:
+    clave = clave_ubicacion(nombre).replace(" ", "")
+    if not clave:
+        return False
+    if inferir_zona_id(nombre) not in {"instalaciones", "otros", ""}:
+        return True
+    return bool(_PATRON_POZO_CAMPO.match(clave))
+
+
+def _texto_trabajo_registro(fila) -> str:
+    partes = []
+    for col in (
+        "TIPO DE ACTIVIDAD",
+        "ACTIVIDAD CORTA",
+        "DESCRIPCIÓN DE LA ACTIVIDAD",
+        "DESCRIPCION DE LA ACTIVIDAD",
+        "EQUIPO/UBICACIÓN",
+    ):
+        partes.append(texto_visible(fila.get(col), ""))
+    return " ".join(p for p in partes if p).casefold()
+
+
+def fila_suministra_aceite_mci(fila) -> bool:
+    """Aceite SAE-50 entregado a un MCI en pozo. El hidráulico va en otra columna."""
+    if _num_insumo(fila.get("ACEITE (LTS)")) <= 0:
+        return False
+    if not es_pozo_de_campo(ubicacion_de_registro(fila)):
+        return False
+    texto = _texto_trabajo_registro(fila)
+    if re.search(r"\bmci\b", texto):
+        return True
+    if re.search(r"\bubm\b|unidad de bombeo", texto):
+        return False
+    return True
+
+
+def resumen_aceite_mci(inicio: date, fin: date) -> dict:
+    df = bitacora_con_fechas(cargar_bitacora())
+    total = 0.0
+    ultima: date | None = None
+    if df is not None and not df.empty and "_fecha" in df.columns:
+        for _, fila in df.iterrows():
+            fch = fila.get("_fecha")
+            if not isinstance(fch, date) or fch < inicio or fch > fin:
+                continue
+            if not fila_suministra_aceite_mci(fila):
+                continue
+            total += _num_insumo(fila.get("ACEITE (LTS)"))
+            if ultima is None or fch > ultima:
+                ultima = fch
+    return {"litros": round(total, 2), "ultima": ultima}
+
+
 def metricas_nucleo_admin(jornada: date) -> dict:
     inicio_mes = date(jornada.year, jornada.month, 1)
     if jornada.month == 1:
@@ -18414,12 +18497,11 @@ def metricas_nucleo_admin(jornada: date) -> dict:
     gasto_mes = gasto_registros_combustible(mes_comb, diario)
     gasto_prev = gasto_registros_combustible(prev_comb, diario)
     ultima_carga = ultima_fecha_combustible(mes_comb)
-    delta = None
-    if litros_mes > 0 and litros_prev > 0:
-        delta = round(((litros_mes - litros_prev) / litros_prev) * 100)
-    delta_gasto = None
-    if gasto_mes > 0 and gasto_prev > 0:
-        delta_gasto = round(((gasto_mes - gasto_prev) / gasto_prev) * 100)
+    delta = delta_vs_previo(litros_mes, litros_prev)
+    delta_gasto = delta_vs_previo(gasto_mes, gasto_prev)
+    aceite = resumen_aceite_mci(inicio_mes, jornada)
+    aceite_prev = resumen_aceite_mci(prev_ini, prev_fin)
+    delta_aceite = delta_vs_previo(aceite["litros"], aceite_prev["litros"])
     alertas = 0
     for tabla in inventario_por_origen().values():
         if tabla is not None and not tabla.empty:
@@ -18443,6 +18525,9 @@ def metricas_nucleo_admin(jornada: date) -> dict:
         "gasto_mes": gasto_mes,
         "delta_gasto": delta_gasto,
         "ultima_carga": ultima_carga,
+        "aceite_mes": aceite["litros"],
+        "delta_aceite": delta_aceite,
+        "ultima_aceite": aceite["ultima"],
         "alertas": alertas,
         "bitacoras": 0 if bit is None else int(len(bit)),
         "ot": ot,
@@ -18452,16 +18537,35 @@ def metricas_nucleo_admin(jornada: date) -> dict:
     }
 
 
-def html_tarjeta_combustible(titulo: str, valor: str, delta: str | None, corte: str) -> str:
-    delta_html = ""
-    if delta:
-        clase = "down" if str(delta).strip().startswith("-") else "up"
-        delta_html = f'<div class="delta {clase}">{html.escape(delta)}</div>'
+def _html_delta_metrica(delta: str | None) -> str:
+    if not delta:
+        return ""
+    texto = str(delta).strip()
+    if texto.startswith("-"):
+        clase = "down"
+    elif texto.startswith("+"):
+        clase = "up"
+    else:
+        clase = "flat"
+    return f'<div class="delta {clase}">{html.escape(delta)}</div>'
+
+
+def html_tarjeta_combustible(
+    titulo: str,
+    valor: str,
+    delta: str | None,
+    corte: str,
+    extra: str | None = None,
+    delta_extra: str | None = None,
+) -> str:
+    extra_html = f'<div class="sub">{html.escape(extra)}</div>' if extra else ""
     return (
         f'<div class="metric-fuel">'
         f'<div class="lbl">{html.escape(titulo)}</div>'
         f'<div class="val">{html.escape(valor)}</div>'
-        f"{delta_html}"
+        f"{extra_html}"
+        f"{_html_delta_metrica(delta)}"
+        f"{_html_delta_metrica(delta_extra)}"
         f'<div class="corte">{html.escape(corte)}</div>'
         f"</div>"
     )
@@ -18641,32 +18745,29 @@ def render_explorador_admin() -> None:
                 abrir_modulo_admin("asignaciones")
         st.markdown("#### 📈 Indicadores rápidos de insumos")
         i1, i2, i3 = st.columns(3)
+        inicio_mes = date(jornada.year, jornada.month, 1)
         delta = metricas["delta_litros"]
         delta_gasto = metricas["delta_gasto"]
-        ultima = metricas.get("ultima_carga")
-        inicio_txt = date(jornada.year, jornada.month, 1).strftime("%d/%m")
-        corte = f"Acumulado {inicio_txt} — {jornada.strftime('%d/%m/%Y')}"
-        if isinstance(ultima, date) and ultima < jornada:
-            corte = f"{corte} · última carga {ultima.strftime('%d/%m/%Y')}"
-        elif not isinstance(ultima, date):
-            corte = f"{corte} · sin cargas"
+        delta_aceite = metricas["delta_aceite"]
         with i1:
             st.markdown(
                 html_tarjeta_combustible(
-                    "Combustible del mes",
+                    "Combustible",
                     f"{metricas['litros_mes']:,.0f} L",
-                    None if delta is None else f"{delta:+.0f}% vs mes previo",
-                    corte,
+                    "Sin mes previo · litros" if delta is None else f"{delta:+.0f}% litros vs mes previo",
+                    texto_rango_registros(inicio_mes, metricas.get("ultima_carga")),
+                    extra=f"${metricas['gasto_mes']:,.0f}",
+                    delta_extra="Sin mes previo · costo" if delta_gasto is None else f"{delta_gasto:+.0f}% costo vs mes previo",
                 ),
                 unsafe_allow_html=True,
             )
         with i2:
             st.markdown(
                 html_tarjeta_combustible(
-                    "Costo de combustible",
-                    f"${metricas['gasto_mes']:,.0f}",
-                    None if delta_gasto is None else f"{delta_gasto:+.0f}% vs mes previo",
-                    corte,
+                    "Aceite suministrado a MCI en pozos",
+                    f"{metricas['aceite_mes']:,.0f} L",
+                    "Sin mes previo" if delta_aceite is None else f"{delta_aceite:+.0f}% vs mes previo",
+                    texto_rango_registros(inicio_mes, metricas.get("ultima_aceite")),
                 ),
                 unsafe_allow_html=True,
             )
