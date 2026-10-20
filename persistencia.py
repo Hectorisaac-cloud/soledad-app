@@ -13,6 +13,7 @@ import hashlib
 import io
 import json
 import os
+import stat
 import tempfile
 import threading
 import urllib.error
@@ -26,8 +27,11 @@ REPO_DEFAULT = "Hectorisaac-cloud/soledad-app"
 ARCHIVO_BITACORA = "database/bitacora_operativa_soledad.xlsx"
 ARCHIVO_ESTADO = "database/persistencia_estado.json"
 ARCHIVO_EVIDENCIAS_NUEVAS = "database/evidencias_pendientes.txt"
+ARCHIVO_EVIDENCIAS_ELIMINADAS = "database/evidencias_eliminadas.txt"
+ARCHIVO_BAJAS_BITACORA = "database/bitacora_bajas.json"
 ARCHIVOS_DATOS = (
     ARCHIVO_BITACORA,
+    ARCHIVO_EVIDENCIAS_ELIMINADAS,
     "baul_evidencias.json",
     "evidencia_fotografica.json",
     "almacen_insumos.json",
@@ -57,11 +61,124 @@ API = "https://api.github.com"
 _CANDADO = threading.Lock()
 
 
-def elegir_bitacora(filas_locales: int, filas_remotas: int) -> str:
-    """La copia con más registros gana. Un empate conserva la local."""
-    if filas_remotas > filas_locales:
+def elegir_bitacora(filas_locales: int, filas_remotas: int, bajas: int = 0) -> str:
+    """La copia con más registros gana. Un empate conserva la local.
+
+    `bajas` son los registros que se eliminaron a propósito en esta copia y
+    todavía no llegan a la rama de respaldo; no cuentan como pérdida.
+    """
+    if filas_remotas > filas_locales + max(0, int(bajas or 0)):
         return "remota"
     return "local"
+
+
+def leer_bajas_bitacora() -> int:
+    ruta = resolver_ruta(ARCHIVO_BAJAS_BITACORA)
+    if not os.path.exists(ruta):
+        return 0
+    try:
+        with open(ruta, encoding="utf-8") as archivo:
+            return max(0, int((json.load(archivo) or {}).get("pendientes", 0)))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return 0
+
+
+def _escribir_bajas_bitacora(pendientes: int) -> None:
+    destino = resolver_ruta(ARCHIVO_BAJAS_BITACORA)
+    os.makedirs(os.path.dirname(destino), exist_ok=True)
+    contenido = json.dumps(
+        {"pendientes": max(0, int(pendientes)), "cuando": datetime.now().isoformat(timespec="seconds")},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    _escribir_atomico(destino, contenido)
+
+
+def registrar_baja_bitacora(cantidad: int = 1) -> None:
+    _escribir_bajas_bitacora(leer_bajas_bitacora() + max(0, int(cantidad)))
+
+
+def _evidencias_eliminadas() -> set[str]:
+    ruta = resolver_ruta(ARCHIVO_EVIDENCIAS_ELIMINADAS)
+    if not os.path.exists(ruta):
+        return set()
+    with open(ruta, encoding="utf-8") as archivo:
+        return {linea.strip().replace("\\", "/") for linea in archivo if linea.strip()}
+
+
+def _relativa_evidencia(ruta: str) -> str | None:
+    texto = str(ruta or "").replace("\\", "/").strip()
+    if not texto:
+        return None
+    if os.path.isabs(texto):
+        try:
+            texto = os.path.relpath(texto, RAIZ).replace("\\", "/")
+        except ValueError:
+            return None
+    segura = ruta_segura(texto)
+    if segura and _prefijo_evidencia(segura):
+        return segura
+    return None
+
+
+def _reescribir_lista(relativa: str, lineas: list[str]) -> None:
+    destino = resolver_ruta(relativa)
+    os.makedirs(os.path.dirname(destino), exist_ok=True)
+    texto = "".join(f"{linea}\n" for linea in lineas)
+    _escribir_atomico(destino, texto.encode("utf-8"))
+
+
+def marcar_evidencia_eliminada(rutas: list[str] | None) -> None:
+    """Anota las fotos borradas para que el respaldo no las vuelva a descargar."""
+    limpias = [rel for rel in (_relativa_evidencia(r) for r in rutas or []) if rel]
+    if not limpias:
+        return
+    actuales = sorted(_evidencias_eliminadas() | set(limpias))
+    _reescribir_lista(ARCHIVO_EVIDENCIAS_ELIMINADAS, actuales)
+    pendientes = _evidencias_marcadas()
+    if pendientes:
+        quitar = set(limpias)
+        _reescribir_lista(ARCHIVO_EVIDENCIAS_NUEVAS, [p for p in pendientes if p not in quitar])
+
+
+def _sin_solo_lectura(ruta: str) -> None:
+    try:
+        modo = os.stat(ruta).st_mode
+        if not modo & stat.S_IWRITE:
+            os.chmod(ruta, modo | stat.S_IWRITE)
+    except OSError:
+        pass
+
+
+def borrar_archivo(ruta: str) -> None:
+    """os.remove que también borra archivos marcados como solo lectura (OneDrive)."""
+    try:
+        os.remove(ruta)
+    except PermissionError:
+        _sin_solo_lectura(ruta)
+        os.remove(ruta)
+
+
+def borrar_carpeta_vacia(ruta: str) -> None:
+    """os.rmdir que también borra carpetas con atributo de solo lectura (OneDrive)."""
+    try:
+        os.rmdir(ruta)
+    except PermissionError:
+        _sin_solo_lectura(ruta)
+        os.rmdir(ruta)
+
+
+def aplicar_evidencias_eliminadas() -> int:
+    """Borra del disco las fotos que se eliminaron en una sesión anterior."""
+    borradas = 0
+    for relativa in _evidencias_eliminadas():
+        destino = resolver_ruta(relativa)
+        if os.path.isfile(destino):
+            try:
+                borrar_archivo(destino)
+                borradas += 1
+            except OSError:
+                continue
+    return borradas
 
 
 def debe_bloquear_vaciado(filas_actuales: int, filas_nuevas: int) -> bool:
@@ -300,7 +417,7 @@ def restaurar_desde_github() -> dict:
                 with open(temporal, "wb") as archivo:
                     archivo.write(contenido)
                 remotas = contar_filas_bitacora(temporal)
-                if locales >= 0 and remotas >= 0 and elegir_bitacora(locales, remotas) == "remota":
+                if locales >= 0 and remotas >= 0 and elegir_bitacora(locales, remotas, leer_bajas_bitacora()) == "remota":
                     _escribir_atomico(resolver_ruta(ARCHIVO_BITACORA), contenido)
                     locales = remotas
                     adopto_remota = True
@@ -323,10 +440,11 @@ def restaurar_desde_github() -> dict:
                     continue
                 _escribir_atomico(destino, _descargar_blob(cred, arbol[relativa]))
                 recuperados += 1
+        eliminadas = _evidencias_eliminadas()
         faltantes = []
         for ruta, sha in arbol.items():
             segura = ruta_segura(ruta)
-            if not segura or not _prefijo_evidencia(segura):
+            if not segura or not _prefijo_evidencia(segura) or segura in eliminadas:
                 continue
             destino = resolver_ruta(segura)
             if os.path.exists(destino) and os.path.getsize(destino) > 0:
@@ -336,6 +454,7 @@ def restaurar_desde_github() -> dict:
             _escribir_atomico(resolver_ruta(segura), _descargar_blob(cred, sha))
             recuperados += 1
         pendientes = max(0, len(faltantes) - MAX_DESCARGAS_ARRANQUE)
+        aplicar_evidencias_eliminadas()
         mensaje = (
             f"Bitácora local: {locales} registros. "
             f"Respaldo en {cred['rama']}: {remotas} registros. "
@@ -378,7 +497,12 @@ def restaurar_al_arrancar() -> dict:
         st.session_state["_persistencia_restaurada"] = True
     except Exception:
         pass
-    return restaurar_desde_github()
+    estado = restaurar_desde_github()
+    try:
+        aplicar_evidencias_eliminadas()
+    except Exception:
+        pass
+    return estado
 
 
 def marcar_evidencia_nueva(rutas: list[str] | None) -> None:
@@ -397,6 +521,9 @@ def marcar_evidencia_nueva(rutas: list[str] | None) -> None:
             limpias.append(segura)
     if not limpias:
         return
+    eliminadas = _evidencias_eliminadas()
+    if eliminadas & set(limpias):
+        _reescribir_lista(ARCHIVO_EVIDENCIAS_ELIMINADAS, sorted(eliminadas - set(limpias)))
     destino = resolver_ruta(ARCHIVO_EVIDENCIAS_NUEVAS)
     os.makedirs(os.path.dirname(destino), exist_ok=True)
     previas = []
@@ -491,7 +618,7 @@ def respaldar_cambios(motivo: str) -> dict:
                 }
                 _guardar_estado(estado)
                 return estado
-            if remotas > locales:
+            if remotas > locales + leer_bajas_bitacora():
                 estado = {
                     "ok": False,
                     "motivo": "remoto_mas_nuevo",
@@ -535,6 +662,9 @@ def respaldar_cambios(motivo: str) -> dict:
                 {"path": relativa, "mode": "100644", "type": "blob", "sha": blob["sha"]}
             )
             bytes_usados += len(contenido)
+        for relativa in sorted(_evidencias_eliminadas()):
+            if relativa in arbol and not os.path.exists(resolver_ruta(relativa)):
+                cambios.append({"path": relativa, "mode": "100644", "type": "blob", "sha": None})
         if not cambios:
             estado = {
                 "ok": True,
@@ -568,6 +698,8 @@ def respaldar_cambios(motivo: str) -> dict:
             cred["token"],
             {"sha": nuevo["sha"]},
         )
+        if not omitidos and leer_bajas_bitacora():
+            _escribir_bajas_bitacora(0)
         mensaje = f"Respaldo enviado a la rama {cred['rama']}: {locales} registros y {len(cambios)} archivo(s)."
         if omitidos:
             mensaje += f" Quedaron {omitidos} archivo(s) para el siguiente respaldo."

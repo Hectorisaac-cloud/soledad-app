@@ -5742,6 +5742,296 @@ def agregar_registro_bitacora_soledad(
     }
 
 
+def _texto_comparable_bitacora(valor) -> str:
+    texto = texto_visible(valor, "")
+    return re.sub(r"\s+", " ", _sin_acentos(texto)).strip().casefold()
+
+
+def _columnas_registro_hoja(encabezados: list[tuple[int, str]]) -> dict[str, int | None]:
+    return {
+        "fecha": _columna_encabezado(encabezados, "FECHA"),
+        "cuadrilla": _columna_encabezado(encabezados, "CUADRILLA"),
+        "personal": _columna_encabezado(encabezados, "PERSONAL"),
+        "secuencia": _columna_encabezado(encabezados, "SECUENCIA", "SECUENCIA DE ACTIVIDADES"),
+        "ubicacion": _columna_encabezado(encabezados, "UBICACIÓN", "UBICACION"),
+        "descripcion": _columna_encabezado(encabezados, "DESCRIPCION DE LA ACTIVIDAD"),
+        "comentarios": _columna_encabezado(encabezados, "COMENTARIOS"),
+    }
+
+
+def _fila_hoja_coincide(ws, fila: int, cols: dict, registro) -> bool:
+    if parsear_fecha_valor(ws.cell(fila, cols["fecha"]).value) != parsear_fecha_valor(registro.get("FECHA")):
+        return False
+    if clave_cuadrilla_oficial(str(ws.cell(fila, cols["cuadrilla"]).value or "")) != clave_cuadrilla_oficial(
+        str(registro.get("CUADRILLA") or "")
+    ):
+        return False
+    if cols["secuencia"] and numero_secuencia_actividad(ws.cell(fila, cols["secuencia"]).value) != numero_secuencia_actividad(
+        registro.get("SECUENCIA")
+    ):
+        return False
+    if cols["descripcion"]:
+        desc_df = registro.get("DESCRIPCION DE LA ACTIVIDAD") or registro.get("DESCRIPCIÓN DE LA ACTIVIDAD")
+        if _texto_comparable_bitacora(ws.cell(fila, cols["descripcion"]).value) != _texto_comparable_bitacora(desc_df):
+            return False
+    return True
+
+
+def _localizar_fila_hoja(ws, fila_header: int, cols: dict, registro, idx) -> int:
+    """Ubica en la hoja la fila del registro elegido, sin depender solo del índice."""
+    if not cols["fecha"] or not cols["cuadrilla"]:
+        raise ValueError("La bitácora no tiene columnas de fecha y cuadrilla.")
+    candidata = None
+    try:
+        candidata = fila_header + 1 + int(idx)
+    except (TypeError, ValueError):
+        candidata = None
+    if candidata and candidata <= ws.max_row and _fila_hoja_coincide(ws, candidata, cols, registro):
+        return candidata
+    coincidencias = [
+        fila
+        for fila in range(fila_header + 1, int(ws.max_row or fila_header) + 1)
+        if _fila_hoja_coincide(ws, fila, cols, registro)
+    ]
+    if not coincidencias:
+        raise ValueError("No se encontró ese registro en la bitácora. Recarga la vista e inténtalo de nuevo.")
+    if candidata:
+        coincidencias.sort(key=lambda fila: abs(fila - candidata))
+    return coincidencias[0]
+
+
+def _secuencia_ocupada_hoja(ws, fila_header: int, cols: dict, dia: date, cuadrilla: str, secuencia: int, excluir: int) -> bool:
+    if not cols["secuencia"]:
+        return False
+    objetivo = clave_cuadrilla_oficial(cuadrilla)
+    for fila in range(fila_header + 1, int(ws.max_row or fila_header) + 1):
+        if fila == excluir:
+            continue
+        if parsear_fecha_valor(ws.cell(fila, cols["fecha"]).value) != dia:
+            continue
+        if clave_cuadrilla_oficial(str(ws.cell(fila, cols["cuadrilla"]).value or "")) != objetivo:
+            continue
+        if numero_secuencia_actividad(ws.cell(fila, cols["secuencia"]).value) == secuencia:
+            return True
+    return False
+
+
+def _abrir_libro_bitacora(destino: str):
+    from openpyxl import load_workbook
+
+    if not os.path.exists(destino):
+        raise FileNotFoundError(destino)
+    wb = load_workbook(_copia_excel_legible(destino))
+    ws, fila_header, encabezados = _hoja_bitacora_editable(wb)
+    return wb, ws, fila_header, _columnas_registro_hoja(encabezados)
+
+
+def es_ruta_evidencia_editable(ruta: str) -> bool:
+    """Solo se borran archivos dentro de las carpetas de evidencia del proyecto."""
+    if not ruta:
+        return False
+    absoluta = os.path.realpath(ruta if os.path.isabs(ruta) else os.path.join(persistencia.RAIZ, ruta))
+    for carpeta in persistencia.CARPETAS_EVIDENCIA:
+        base = os.path.realpath(os.path.join(persistencia.RAIZ, carpeta))
+        try:
+            if os.path.commonpath([absoluta, base]) == base and absoluta != base:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _quitar_carpetas_vacias(carpeta: str) -> None:
+    raiz = os.path.realpath(os.path.join(persistencia.RAIZ, EVIDENCIA_OCTUBRE_DIR))
+    actual = os.path.realpath(carpeta)
+    while actual and actual != raiz and es_ruta_evidencia_editable(actual):
+        try:
+            if os.listdir(actual):
+                return
+            persistencia.borrar_carpeta_vacia(actual)
+        except OSError:
+            return
+        actual = os.path.dirname(actual)
+
+
+def carpeta_fotos_registro_bitacora(fila) -> str:
+    dia = parsear_fecha_valor(fila.get("FECHA")) or date.today()
+    existentes = fotos_evidencia_octubre_secuencia(str(fila.get("CUADRILLA") or ""), dia, fila.get("SECUENCIA"))
+    if existentes:
+        return os.path.dirname(existentes[0])
+    return carpeta_evidencia_octubre_secuencia(str(fila.get("CUADRILLA") or ""), dia, fila.get("SECUENCIA"))
+
+
+def _mover_fotos_registro(origen: str, destino: str) -> tuple[list[str], list[str]]:
+    if not origen or not os.path.isdir(origen):
+        return [], []
+    if os.path.realpath(origen) == os.path.realpath(destino):
+        return [], []
+    os.makedirs(destino, exist_ok=True)
+    nuevas, viejas = [], []
+    for nombre in sorted(os.listdir(origen)):
+        fuente = os.path.join(origen, nombre)
+        if not os.path.isfile(fuente):
+            continue
+        objetivo = os.path.join(destino, nombre)
+        raiz, extension = os.path.splitext(objetivo)
+        copia = 2
+        while os.path.exists(objetivo):
+            objetivo = f"{raiz}_{copia}{extension}"
+            copia += 1
+        shutil.move(fuente, objetivo)
+        viejas.append(fuente.replace("\\", "/"))
+        nuevas.append(objetivo.replace("\\", "/"))
+    _quitar_carpetas_vacias(origen)
+    return nuevas, viejas
+
+
+def _ajustar_tablas_tras_borrar(ws, fila: int) -> None:
+    from openpyxl.utils.cell import get_column_letter, range_boundaries
+
+    for tabla in list(ws.tables.values()):
+        try:
+            min_col, min_row, max_col, max_row = range_boundaries(tabla.ref)
+        except (TypeError, ValueError):
+            continue
+        if not (min_row < fila <= max_row) or max_row - 1 <= min_row:
+            continue
+        nuevo = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{max_row - 1}"
+        tabla.ref = nuevo
+        if getattr(tabla, "autoFilter", None) is not None:
+            tabla.autoFilter.ref = nuevo
+
+
+def despues_de_cambio_bitacora(motivo: str) -> dict:
+    """Respalda la bitácora y vuelve a cruzar el calendario de asistencia."""
+    try:
+        persistencia.respaldar_cambios(motivo)
+    except Exception:
+        pass
+    for clave in ("_cal_sync_firma", "_cal_sync_fallo"):
+        st.session_state.pop(clave, None)
+    try:
+        return sincronizar_calendario_desde_bitacora()
+    except Exception as exc:
+        return {"ok": False, "cambios": 0, "mensaje": str(exc)}
+
+
+def actualizar_registro_bitacora(idx, registro, cambios: dict, ruta: str | None = None) -> dict:
+    """Reescribe en su misma fila los campos editados de un registro de la bitácora."""
+    destino = ruta or EXCEL_FILE
+    wb, ws, fila_header, cols = _abrir_libro_bitacora(destino)
+    try:
+        fila = _localizar_fila_hoja(ws, fila_header, cols, registro, idx)
+        dia_viejo = parsear_fecha_valor(registro.get("FECHA"))
+        dia = cambios.get("fecha") or dia_viejo
+        cuadrilla = str(cambios.get("cuadrilla") or registro.get("CUADRILLA") or "").strip()
+        secuencia = cambios.get("secuencia")
+        if secuencia is None:
+            secuencia = numero_secuencia_actividad(registro.get("SECUENCIA"))
+        if not isinstance(dia, date):
+            raise ValueError("La fecha del registro no es válida.")
+        if not cuadrilla:
+            raise ValueError("Selecciona la cuadrilla.")
+        descripcion = str(cambios.get("descripcion", "")).strip()
+        if not descripcion:
+            raise ValueError("La descripción de la actividad no puede quedar vacía.")
+        if secuencia and _secuencia_ocupada_hoja(ws, fila_header, cols, dia, cuadrilla, int(secuencia), fila):
+            raise ValueError(
+                f"La secuencia {int(secuencia)} ya existe para {etiqueta_cuadrilla_historial(cuadrilla)} "
+                f"el {dia.strftime('%d/%m/%Y')}. Elige otra."
+            )
+        ws.cell(fila, cols["fecha"]).value = datetime(dia.year, dia.month, dia.day)
+        ws.cell(fila, cols["cuadrilla"]).value = cuadrilla
+        if cols["personal"] and "personal" in cambios:
+            ws.cell(fila, cols["personal"]).value = str(cambios["personal"]).strip() or None
+        if cols["secuencia"] and secuencia:
+            ws.cell(fila, cols["secuencia"]).value = int(secuencia)
+        if cols["ubicacion"] and "ubicacion" in cambios:
+            ws.cell(fila, cols["ubicacion"]).value = str(cambios["ubicacion"]).strip() or None
+        if cols["descripcion"]:
+            ws.cell(fila, cols["descripcion"]).value = descripcion
+        if cols["comentarios"] and "comentarios" in cambios:
+            ws.cell(fila, cols["comentarios"]).value = str(cambios["comentarios"]).strip() or None
+        origen_fotos = carpeta_fotos_registro_bitacora(registro)
+        _guardar_libro_bitacora(wb, destino)
+    except Exception:
+        wb.close()
+        raise
+    destino_fotos = carpeta_evidencia_octubre_secuencia(cuadrilla, dia, secuencia)
+    movidas, viejas = [], []
+    aviso = ""
+    try:
+        movidas, viejas = _mover_fotos_registro(origen_fotos, destino_fotos)
+    except OSError as exc:
+        aviso = f"Las fotos se quedaron en {origen_fotos.replace(os.sep, '/')}: {exc}"
+    if movidas:
+        persistencia.marcar_evidencia_nueva(movidas)
+        persistencia.marcar_evidencia_eliminada(viejas)
+    return {"fila": fila, "fotos_movidas": len(movidas), "aviso": aviso}
+
+
+def eliminar_registro_bitacora(idx, registro, ruta: str | None = None) -> dict:
+    """Quita la fila de la bitácora y borra la carpeta de fotos de esa actividad."""
+    destino = ruta or EXCEL_FILE
+    wb, ws, fila_header, cols = _abrir_libro_bitacora(destino)
+    try:
+        fila = _localizar_fila_hoja(ws, fila_header, cols, registro, idx)
+        ws.delete_rows(fila, 1)
+        _ajustar_tablas_tras_borrar(ws, fila)
+        _guardar_libro_bitacora(wb, destino)
+    except Exception:
+        wb.close()
+        raise
+    borradas = []
+    carpetas = set()
+    for ruta_foto in rutas_fotos_fila(registro):
+        if not es_ruta_evidencia_editable(ruta_foto) or not os.path.isfile(ruta_foto):
+            continue
+        try:
+            persistencia.borrar_archivo(ruta_foto)
+        except OSError:
+            continue
+        borradas.append(ruta_foto.replace("\\", "/"))
+        carpetas.add(os.path.dirname(ruta_foto))
+    for carpeta in carpetas:
+        _quitar_carpetas_vacias(carpeta)
+    persistencia.registrar_baja_bitacora(1)
+    persistencia.marcar_evidencia_eliminada(borradas)
+    return {"fila": fila, "fotos_borradas": len(borradas)}
+
+
+def eliminar_foto_registro(ruta_foto: str) -> bool:
+    if not es_ruta_evidencia_editable(ruta_foto):
+        raise ValueError("Esa ruta no pertenece a las carpetas de evidencia.")
+    if not os.path.isfile(ruta_foto):
+        return False
+    persistencia.borrar_archivo(ruta_foto)
+    persistencia.marcar_evidencia_eliminada([ruta_foto])
+    _quitar_carpetas_vacias(os.path.dirname(ruta_foto))
+    return True
+
+
+def anexar_fotos_registro_bitacora(registro, archivos: list) -> list[str]:
+    dia = parsear_fecha_valor(registro.get("FECHA")) or date.today()
+    carpeta = carpeta_fotos_registro_bitacora(registro)
+    os.makedirs(carpeta, exist_ok=True)
+    inicio = len(fotos_evidencia_octubre_secuencia(str(registro.get("CUADRILLA") or ""), dia, registro.get("SECUENCIA")))
+    rutas = []
+    for numero, archivo in enumerate(archivos or [], start=inicio + 1):
+        destino = os.path.join(carpeta, _nombre_foto_bitacora(numero, getattr(archivo, "name", "foto.jpg")))
+        raiz, extension = os.path.splitext(destino)
+        copia = 2
+        while os.path.exists(destino):
+            destino = f"{raiz}_{copia}{extension}"
+            copia += 1
+        contenido = archivo.getvalue() if hasattr(archivo, "getvalue") else archivo.read()
+        with open(destino, "wb") as salida:
+            salida.write(contenido)
+        rutas.append(destino.replace("\\", "/"))
+    persistencia.marcar_evidencia_nueva(rutas)
+    return rutas
+
+
 def construir_registro(
     fecha: date,
     secuencia: str,
@@ -7327,10 +7617,248 @@ def etiqueta_registro(df: pd.DataFrame, idx: int) -> str:
     fecha_txt = fecha.strftime("%d/%m/%Y") if fecha else str(fila.get("FECHA") or "")
     ubic = str(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or fila.get("SECTOR") or "").strip()
     evid = estatus_evidencia_fila(fila)
+    secuencia = numero_secuencia_actividad(fila.get("SECUENCIA"))
+    actividad = texto_visible(fila.get("DESCRIPCION DE LA ACTIVIDAD") or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD"), "")
+    if len(actividad) > 45:
+        actividad = actividad[:44].rstrip() + "…"
+    # Streamlit identifica la opción elegida por su texto: dos etiquetas iguales saltan al otro registro.
     return (
-        f"{fecha_txt} · {fila.get('CUADRILLA', '')} · {ubic or 'Sin ubicación'} · "
-        f"{evid} · {len(rutas_fotos_fila(fila))} foto(s)"
+        f"{fecha_txt} · {fila.get('CUADRILLA', '')} · Sec. {secuencia or '—'} · {ubic or 'Sin ubicación'} · "
+        f"{actividad or 'Sin descripción'} · {evid} · {len(rutas_fotos_fila(fila))} foto(s) · reg. {idx + 1}"
     )
+
+
+MENSAJE_BITACORA_EN_USO = (
+    "La bitácora está abierta en Excel o OneDrive la está sincronizando. "
+    "Ciérrala y vuelve a intentar; no se guardó ningún cambio."
+)
+
+
+def _avisar_revision(tipo: str, texto: str) -> None:
+    st.session_state["_rev_aviso"] = (tipo, texto)
+    st.session_state["_rev_ver"] = int(st.session_state.get("_rev_ver", 0)) + 1
+
+
+def render_aviso_revision() -> None:
+    aviso = st.session_state.pop("_rev_aviso", None)
+    if not aviso:
+        return
+    tipo, texto = aviso
+    {"success": st.success, "warning": st.warning, "error": st.error}.get(tipo, st.info)(texto)
+
+
+def _texto_sync_calendario(resultado: dict) -> str:
+    if resultado.get("ok"):
+        return " El calendario de asistencia quedó recalculado."
+    mensaje = str(resultado.get("mensaje") or "").strip()
+    return f" El calendario se recalcula en pantalla; el archivo se actualizará cuando quede libre ({mensaje})." if mensaje else ""
+
+
+def _opciones_cuadrilla_edicion(df: pd.DataFrame, actual: str) -> list[str]:
+    por_clave: dict[str, str] = {}
+    for valor in [actual, *df.get("CUADRILLA", pd.Series(dtype=object)).astype(str).tolist()]:
+        texto = str(valor or "").strip()
+        clave = clave_cuadrilla_oficial(texto)
+        if texto and clave and clave not in por_clave:
+            por_clave[clave] = texto
+    for oficial in ORDEN_CUADRILLAS_OFICIAL:
+        clave = clave_cuadrilla_oficial(oficial)
+        if clave not in por_clave:
+            por_clave[clave] = _sin_acentos(oficial).upper()
+    return sorted(por_clave.values(), key=orden_cuadrilla_oficial)
+
+
+def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
+    fila = df.loc[idx]
+    ver = int(st.session_state.get("_rev_ver", 0))
+    dia = parsear_fecha_valor(fila.get("FECHA")) or date.today()
+    cuadrilla_actual = str(fila.get("CUADRILLA") or "").strip()
+    opciones_cuadrilla = _opciones_cuadrilla_edicion(df, cuadrilla_actual)
+    clave_actual = clave_cuadrilla_oficial(cuadrilla_actual)
+    indice_cuadrilla = next(
+        (i for i, op in enumerate(opciones_cuadrilla) if clave_cuadrilla_oficial(op) == clave_actual),
+        0,
+    )
+    ubic_actual = str(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or "").strip()
+    opciones_ubic = [op for op in opciones_ubicacion_catalogo() if op != OPCION_UBICACION_NUEVA]
+    if ubic_actual and ubic_actual not in opciones_ubic:
+        opciones_ubic.insert(0, ubic_actual)
+    indice_ubic = opciones_ubic.index(ubic_actual) if ubic_actual in opciones_ubic else None
+    secuencia_actual = numero_secuencia_actividad(fila.get("SECUENCIA")) or 1
+    descripcion_actual = texto_visible(
+        fila.get("DESCRIPCION DE LA ACTIVIDAD") or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD"), ""
+    )
+    comentarios_actual = texto_visible(fila.get("COMENTARIOS"), "")
+    personal_actual = texto_visible(fila.get("PERSONAL"), "")
+
+    st.markdown("##### ✏️ Editar datos del registro")
+    with st.form(f"rev_editar_{idx}_{ver}"):
+        c1, c2, c3 = st.columns([1, 1.2, 0.8])
+        with c1:
+            nueva_fecha = st.date_input("Fecha", value=dia, format="DD/MM/YYYY")
+        with c2:
+            nueva_cuadrilla = st.selectbox(
+                "Cuadrilla",
+                opciones_cuadrilla,
+                index=indice_cuadrilla,
+                format_func=etiqueta_cuadrilla_historial,
+            )
+        with c3:
+            nueva_secuencia = st.number_input("Secuencia", min_value=1, step=1, value=int(secuencia_actual))
+        c4, c5 = st.columns([1.4, 1])
+        with c4:
+            nueva_ubic = st.selectbox(
+                "Ubicación / Pozo",
+                opciones_ubic,
+                index=indice_ubic,
+                filter_mode="contains",
+                accept_new_options=True,
+                placeholder="Escribe o elige el pozo",
+            )
+        with c5:
+            nuevo_personal = st.text_input("Ficha / Personal", value=personal_actual)
+        nueva_desc = st.text_area("Descripción de la actividad", value=descripcion_actual, height=110)
+        nuevos_coment = st.text_area("Comentarios", value=comentarios_actual, height=80)
+        guardar = st.form_submit_button("💾 Guardar Cambios en Bitácora", type="primary")
+    if not guardar:
+        return
+    cambios = {
+        "fecha": nueva_fecha,
+        "cuadrilla": nueva_cuadrilla,
+        "secuencia": int(nueva_secuencia),
+        "ubicacion": str(nueva_ubic or "").strip(),
+        "personal": nuevo_personal,
+        "descripcion": nueva_desc,
+        "comentarios": nuevos_coment,
+    }
+    sin_cambios = (
+        nueva_fecha == dia
+        and clave_cuadrilla_oficial(nueva_cuadrilla) == clave_actual
+        and int(nueva_secuencia) == int(secuencia_actual)
+        and cambios["ubicacion"] == ubic_actual
+        and nuevo_personal.strip() == personal_actual
+        and nueva_desc.strip() == descripcion_actual
+        and nuevos_coment.strip() == comentarios_actual
+    )
+    if sin_cambios:
+        st.info("No hay cambios por guardar.")
+        return
+    try:
+        resultado = actualizar_registro_bitacora(idx, fila, cambios)
+    except PermissionError:
+        st.error(MENSAJE_BITACORA_EN_USO)
+        return
+    except (ValueError, FileNotFoundError) as exc:
+        st.error(str(exc))
+        return
+    sync = despues_de_cambio_bitacora("Edición de registro en bitácora")
+    texto = f"Registro actualizado en la fila {resultado['fila']} de la bitácora."
+    if resultado["fotos_movidas"]:
+        texto += f" Se movieron {resultado['fotos_movidas']} foto(s) a la carpeta de la nueva fecha, cuadrilla o secuencia."
+    texto += _texto_sync_calendario(sync)
+    if resultado.get("aviso"):
+        _avisar_revision("warning", f"{texto} {resultado['aviso']}")
+    else:
+        _avisar_revision("success", texto)
+    st.session_state["_rev_seleccion"] = idx
+    st.rerun()
+
+
+def render_fotos_registro_editables(df: pd.DataFrame, idx) -> None:
+    fila = df.loc[idx]
+    ver = int(st.session_state.get("_rev_ver", 0))
+    rutas = rutas_fotos_fila(fila)
+    en_disco = [ruta for ruta in rutas if os.path.isfile(ruta)]
+    carpeta = carpeta_fotos_registro_bitacora(fila).replace("\\", "/")
+    st.markdown("##### 📷 Fotografías del registro")
+    st.caption(f"{len(en_disco)} foto(s) en `{carpeta}`.")
+    if not rutas:
+        st.info("Este registro todavía no tiene fotografías.")
+    for inicio in range(0, len(rutas), 3):
+        columnas = st.columns(3, gap="small")
+        for col, ruta in zip(columnas, rutas[inicio : inicio + 3]):
+            with col:
+                nombre = os.path.basename(ruta)
+                if not os.path.isfile(ruta):
+                    st.markdown(f'<div class="foto-vacia">No encontrada<br>{html.escape(nombre)}</div>', unsafe_allow_html=True)
+                    continue
+                st.image(ruta, use_container_width=True)
+                st.caption(nombre)
+                firma = hashlib.sha1(ruta.encode("utf-8", errors="ignore")).hexdigest()[:10]
+                if st.button("🗑️ Eliminar foto", key=f"rev_borrar_foto_{idx}_{firma}", use_container_width=True):
+                    try:
+                        eliminar_foto_registro(ruta)
+                    except (OSError, ValueError) as exc:
+                        st.error(f"No se pudo borrar {nombre}: {exc}")
+                        continue
+                    try:
+                        persistencia.respaldar_cambios("Foto eliminada de un registro")
+                    except Exception:
+                        pass
+                    _avisar_revision("success", f"Se eliminó la foto {nombre}.")
+                    st.session_state["_rev_seleccion"] = idx
+                    st.rerun()
+    huecos = MAX_FOTOS - len(en_disco)
+    if huecos <= 0:
+        st.caption(f"El registro ya tiene {MAX_FOTOS} fotografías. Elimina una para adjuntar otra.")
+        return
+    archivos = st.file_uploader(
+        f"Adjuntar fotografías a este registro (quedan {huecos} espacio(s))",
+        type=["png", "jpg", "jpeg", "webp"],
+        accept_multiple_files=True,
+        key=f"rev_fotos_nuevas_{idx}_{ver}",
+    )
+    if archivos and len(archivos) > huecos:
+        st.caption(f"Solo se guardarán las primeras {huecos} foto(s).")
+    if st.button("📷 Adjuntar fotos al registro", key=f"rev_adjuntar_{idx}_{ver}", disabled=not archivos):
+        nuevas = anexar_fotos_registro_bitacora(fila, list(archivos)[:huecos])
+        try:
+            persistencia.respaldar_cambios("Evidencia anexada a un registro")
+        except Exception:
+            pass
+        _avisar_revision("success", f"Se adjuntaron {len(nuevas)} foto(s) al registro.")
+        st.session_state["_rev_seleccion"] = idx
+        st.rerun()
+
+
+def render_eliminar_registro_bitacora(df: pd.DataFrame, idx) -> None:
+    fila = df.loc[idx]
+    ver = int(st.session_state.get("_rev_ver", 0))
+    fotos = [ruta for ruta in rutas_fotos_fila(fila) if os.path.isfile(ruta)]
+    st.markdown("##### ⚠️ Eliminar actividad")
+    with st.container(border=True):
+        st.caption(
+            "Quita la fila de la bitácora operativa y borra la carpeta de fotografías de esta actividad. "
+            "El calendario de asistencia se recalcula al terminar."
+        )
+        confirmar = st.checkbox(
+            f"Confirmo que quiero eliminar esta actividad y sus {len(fotos)} fotografía(s). No se puede deshacer.",
+            key=f"rev_confirmar_borrado_{idx}_{ver}",
+        )
+        if not st.button(
+            "🗑️ Eliminar Actividad Completa",
+            type="primary",
+            disabled=not confirmar,
+            key=f"rev_borrar_registro_{idx}_{ver}",
+        ):
+            return
+    dia_txt = (parsear_fecha_valor(fila.get("FECHA")) or date.today()).strftime("%d/%m/%Y")
+    etiqueta = f"{dia_txt} · {fila.get('CUADRILLA', '')} · Sec. {numero_secuencia_actividad(fila.get('SECUENCIA')) or '—'}"
+    try:
+        resultado = eliminar_registro_bitacora(idx, fila)
+    except PermissionError:
+        st.error(MENSAJE_BITACORA_EN_USO)
+        return
+    except (ValueError, FileNotFoundError) as exc:
+        st.error(str(exc))
+        return
+    sync = despues_de_cambio_bitacora("Registro eliminado de la bitácora")
+    _avisar_revision(
+        "success",
+        f"Se eliminó la actividad {etiqueta} y {resultado['fotos_borradas']} foto(s).{_texto_sync_calendario(sync)}",
+    )
+    st.session_state["_rev_seleccion"] = idx
+    st.rerun()
 
 
 def render_revision_bitacoras() -> None:
@@ -7415,10 +7943,19 @@ def render_revision_bitacoras() -> None:
         return
 
     indices = list(filtrado.index)
+    render_aviso_revision()
+    # Tras editar o borrar cambian las etiquetas; un key nuevo evita que el navegador conserve el texto viejo.
+    clave_registro = f"rev_registro_{int(st.session_state.get('_rev_ver', 0))}"
+    pendiente = st.session_state.pop("_rev_seleccion", None)
+    if pendiente in indices:
+        st.session_state[clave_registro] = pendiente
+    elif st.session_state.get(clave_registro) not in indices:
+        st.session_state.pop(clave_registro, None)
     seleccionado = st.selectbox(
         "Registro a auditar",
         indices,
         format_func=lambda i: etiqueta_registro(df, i),
+        key=clave_registro,
     )
     fila = df.loc[seleccionado]
     gente = personal_de_registro(fila)
@@ -7438,11 +7975,10 @@ def render_revision_bitacoras() -> None:
         dia_revision,
         str(fila.get("PERSONAL") or ""),
     )
-    st.write(fila.get("DESCRIPCIÓN DE LA ACTIVIDAD") or fila.get("DESCRIPCION DE LA ACTIVIDAD") or "Sin descripción.")
-    renderizar_galeria_rutas(rutas_fotos_fila(fila))
-    st.markdown("##### Completar o actualizar evidencia")
-    render_panel_evidencia_posterior(df, seleccionado, clave=f"rev_{seleccionado}")
+    render_edicion_registro_bitacora(df, seleccionado)
+    render_fotos_registro_editables(df, seleccionado)
 
+    st.markdown("##### Estatus de revisión")
     col_est, col_obs = st.columns([1, 2])
     with col_est:
         estado_actual = str(fila.get("REVISIÓN") or "Pendiente")
@@ -7460,6 +7996,8 @@ def render_revision_bitacoras() -> None:
         guardar_en_excel(df)
         st.success("Revisión actualizada.")
         st.rerun()
+
+    render_eliminar_registro_bitacora(df, seleccionado)
 
 
 def render_editor_lista(titulo: str, clave: str, ayuda: str) -> None:

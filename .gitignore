@@ -7,3 +7,5 @@ Thumbs.db
 .streamlit/secrets.toml
 database/persistencia_estado.json
 database/evidencias_pendientes.txt
+database/evidencias_eliminadas.txt
+database/bitacora_bajas.json
