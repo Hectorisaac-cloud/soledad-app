@@ -401,6 +401,21 @@
       "origen_registro": "campo",
       "id": "4148378e2a",
       "registrado": "2026-10-20 22:43"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-16",
+      "secuencia": "Act. 4",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Coyotes (Coy)",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 4.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "id": "f0cd3f292b",
+      "registrado": "2026-10-20 22:46"
     }
   ]
 }
