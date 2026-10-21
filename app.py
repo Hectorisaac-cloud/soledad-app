@@ -3849,6 +3849,10 @@ def opciones_personal_turno(default: str) -> list[str]:
 def _selector_nombre_turno(etiqueta: str, default: str, key: str) -> str:
     opciones = opciones_personal_turno(default)
     indice = opciones.index(default) if default in opciones else 0
+    if key in st.session_state and st.session_state[key] not in opciones:
+        st.session_state.pop(key, None)
+    if key in st.session_state:
+        indice = None
     elegido = st.selectbox(etiqueta, opciones, index=indice, key=key)
     if elegido == PERSONAL_OTRO:
         return st.text_input(
@@ -3937,6 +3941,92 @@ def render_bloque_cobertura(form_id: int, cuadrilla: str) -> dict:
         "cobertura": "Sí" if hay_cobertura else "No",
         "codigo": codigo,
     }
+
+
+def primer_registro_jornada(fecha: date, cuadrilla: str):
+    """Primer registro (consecutivo más bajo) de la cuadrilla en la fecha, o None."""
+    objetivo = clave_cuadrilla_oficial(cuadrilla) if cuadrilla else ""
+    if not objetivo:
+        return None
+    df = cargar_bitacora()
+    if df is None or df.empty or "FECHA" not in df.columns or "CUADRILLA" not in df.columns:
+        return None
+    del_dia = bitacora_del_dia(bitacora_con_fechas(df), fecha)
+    if del_dia.empty:
+        return None
+    del_dia = del_dia.loc[del_dia["CUADRILLA"].astype(str).map(clave_cuadrilla_oficial) == objetivo]
+    if del_dia.empty:
+        return None
+    orden = del_dia["SECUENCIA"].map(lambda v: numero_secuencia_actividad(v) or 10**6)
+    return del_dia.loc[orden.sort_values(kind="stable").index[0]]
+
+
+def aplicar_precarga_jornada(marca: str, firma: tuple, calcular) -> dict:
+    """Siembra los widgets una sola vez por jornada; luego el usuario puede cambiarlos."""
+    previa = st.session_state.get(marca) or {}
+    if previa.get("firma") == firma:
+        return previa.get("valores") or {}
+    for clave, valor in (previa.get("valores") or {}).items():
+        if not clave.startswith("_") and st.session_state.get(clave) == valor:
+            st.session_state.pop(clave, None)
+    valores = calcular() or {}
+    for clave, valor in valores.items():
+        if not clave.startswith("_"):
+            st.session_state[clave] = valor
+    st.session_state[marca] = {"firma": firma, "valores": valores}
+    return valores
+
+
+def valores_precarga_campo(form_id: int, fecha: date, cuadrilla: str, equipos: list[str]) -> dict:
+    fila = primer_registro_jornada(fecha, cuadrilla)
+    if fila is None:
+        return {}
+    valores: dict = {}
+    if str(fila.get("COBERTURA") or "").strip().casefold() in {"sí", "si"}:
+        valores[f"cobertura_modo_{form_id}_{cuadrilla}"] = "Cobertura / sustitución"
+        item = posicion_personal_cuadrilla(cuadrilla)
+        ayudantes = [p.strip() for p in str(fila.get("AYUDANTE EN TURNO") or "").split("·")]
+        nombres = [str(fila.get("MECANICO EN TURNO") or "").strip(), *ayudantes[:2]]
+        bases = [("mec_real", item["mecanico"]), ("ayu_real", item["ayudante"]), ("apoyo_real", item["apoyo"])]
+        for (base, titular), nombre in zip(bases, nombres):
+            if not nombre or (base == "apoyo_real" and not titular):
+                continue
+            clave = f"{base}_{form_id}_{cuadrilla}"
+            if nombre in opciones_personal_turno(titular):
+                valores[clave] = nombre
+            else:
+                valores[clave] = PERSONAL_OTRO
+                valores[f"{clave}_otro"] = nombre
+    elif str(fila.get("COBERTURA") or "").strip():
+        valores[f"cobertura_modo_{form_id}_{cuadrilla}"] = "Personal titular"
+    equipo = str(fila.get("EQUIPO/UBICACIÓN") or "").strip()
+    if equipo in equipos:
+        valores[f"equipo_{form_id}_{cuadrilla}"] = equipo
+    if valores:
+        valores["_secuencia"] = numero_secuencia_actividad(fila.get("SECUENCIA")) or 1
+    return valores
+
+
+def valores_precarga_ficha(epoch: int, fecha: date, cuadrilla: str) -> dict:
+    fila = primer_registro_jornada(fecha, cuadrilla)
+    if fila is None:
+        return {}
+    ficha = str(fila.get("PERSONAL") or fila.get("MECANICO EN TURNO") or "").strip()
+    if not ficha:
+        return {}
+    return {
+        f"bit_reg_personal_{epoch}": ficha,
+        "_secuencia": numero_secuencia_actividad(fila.get("SECUENCIA")) or 1,
+    }
+
+
+def aviso_precarga_jornada(valores: dict) -> None:
+    if valores:
+        st.info(
+            f"Jornada en curso: se precargaron los datos del registro "
+            f"{etiqueta_secuencia_consecutiva(int(valores.get('_secuencia') or 1))} de esta cuadrilla. "
+            "Cámbialos si hubo relevo de personal."
+        )
 
 
 def personal_de_registro(fila) -> dict:
@@ -7415,6 +7505,12 @@ def render_captura_actividades_campo() -> None:
                 f"Siguiente consecutivo de {etiqueta_cuadrilla_historial(cuadrilla)} "
                 f"en esta fecha: **{etiqueta_secuencia_consecutiva(secuencia_n)}**."
             )
+            precarga = aplicar_precarga_jornada(
+                f"_precarga_campo_{form_id}",
+                (fecha.isoformat(), cuadrilla),
+                lambda: valores_precarga_campo(form_id, fecha, cuadrilla, equipos),
+            )
+            aviso_precarga_jornada(precarga)
             cobertura = render_bloque_cobertura(form_id, cuadrilla)
             equipo_sel = st.selectbox(
                 "Equipo",
@@ -9408,6 +9504,12 @@ def render_registro_actividad_bitacora() -> None:
                 f"Siguiente consecutivo de esta cuadrilla en la fecha: "
                 f"**{etiqueta_secuencia_consecutiva(int(secuencia_n))}**."
             )
+            precarga = aplicar_precarga_jornada(
+                f"_precarga_ficha_{epoch}",
+                (fecha.isoformat(), cuadrilla),
+                lambda: valores_precarga_ficha(epoch, fecha, cuadrilla),
+            )
+            aviso_precarga_jornada(precarga)
             personal = st.text_input(
                 "Ficha / Personal a cargo",
                 placeholder="Ej. 1705-2107",
