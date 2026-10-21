@@ -20,12 +20,19 @@ from openpyxl.workbook.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from PIL import Image as PILImage
 from PIL import ImageOps
+from xml.sax.saxutils import escape
+
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.utils import ImageReader
+from reportlab.platypus import Paragraph, Table, TableStyle
 
+VERSION_DISENO_PDF = 3
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -86,8 +93,8 @@ FIRMANTES_PDF = (
     ("LUIS CARMELO CAMPOS BRITO", "COORDINADOR Y/O GERENTE DE PJP4"),
     ("GERARDO BERNABE RICARDEZ", "COORDINADOR DE OPS"),
 )
-COLOR_MARCO_FOTO = (0.72, 0.56, 0.32)
-COLOR_BARRA_FIRMAS = (0.93, 0.74, 0.13)
+COLOR_MARCO_FOTO = colors.HexColor("#B8862E")
+COLOR_BARRA_FIRMAS = colors.HexColor("#E5A200")
 
 
 def _ancho_columna_px(ws: Worksheet, columna: int) -> float:
@@ -492,36 +499,44 @@ def _hoja_a_pdf(
     tabla_arriba = y_pt(3)
     tabla_abajo = y_pt(8)
     alto_etiquetas = min(16.0, (tabla_arriba - tabla_abajo) * 0.3)
-    linea_etiquetas = tabla_arriba - alto_etiquetas
-    pdf.setFillColorRGB(0.9, 0.9, 0.9)
-    pdf.rect(tabla_x, linea_etiquetas, tabla_ancho, alto_etiquetas, stroke=0, fill=1)
-    x_celda = tabla_x
-    for etiqueta, celda, proporcion in CABECERA_PDF:
-        ancho_celda = tabla_ancho * proporcion
-        es_descripcion = celda == "E3"
-        _texto_en_caja(pdf, etiqueta, x_celda, linea_etiquetas, ancho_celda, alto_etiquetas, fuente_negrita, 7.5)
-        _texto_en_caja(
-            pdf,
+    alto_valores = tabla_arriba - tabla_abajo - alto_etiquetas
+    anchos = [tabla_ancho * proporcion for _etiqueta, _celda, proporcion in CABECERA_PDF]
+    padding = 2
+    fila_etiquetas = [
+        _parrafo_ajustado(etiqueta, fuente_negrita, 7.5, ancho - 2 * padding, alto_etiquetas - 2)
+        for (etiqueta, _celda, _p), ancho in zip(CABECERA_PDF, anchos)
+    ]
+    fila_valores = [
+        _parrafo_ajustado(
             _texto_celda(ws[celda].value),
-            x_celda + 2,
-            tabla_abajo,
-            ancho_celda - 4,
-            linea_etiquetas - tabla_abajo,
-            fuente_negrita if es_descripcion else fuente,
-            7 if es_descripcion else 8,
+            fuente_negrita if celda == "E3" else fuente,
+            7 if celda == "E3" else 8,
+            ancho - 2 * padding,
+            alto_valores - 2 * padding,
         )
-        x_celda += ancho_celda
-    pdf.setStrokeColorRGB(0, 0, 0)
-    pdf.setLineWidth(1)
-    pdf.rect(tabla_x, tabla_abajo, tabla_ancho, tabla_arriba - tabla_abajo, stroke=1, fill=0)
-    pdf.line(tabla_x, linea_etiquetas, tabla_x + tabla_ancho, linea_etiquetas)
-    x_celda = tabla_x
-    for _etiqueta, _celda, proporcion in CABECERA_PDF[:-1]:
-        x_celda += tabla_ancho * proporcion
-        pdf.line(x_celda, tabla_arriba, x_celda, tabla_abajo)
+        for (_etiqueta, celda, _p), ancho in zip(CABECERA_PDF, anchos)
+    ]
+    tabla = Table([fila_etiquetas, fila_valores], colWidths=anchos, rowHeights=[alto_etiquetas, alto_valores])
+    tabla.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 1.2, colors.black),
+                ("INNERGRID", (0, 0), (-1, -1), 0.8, colors.black),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E6E6E6")),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), padding),
+                ("RIGHTPADDING", (0, 0), (-1, -1), padding),
+                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+            ]
+        )
+    )
+    tabla.wrapOn(pdf, tabla_ancho, tabla_arriba - tabla_abajo)
+    tabla.drawOn(pdf, tabla_x, tabla_abajo)
 
-    pdf.setStrokeColorRGB(*COLOR_MARCO_FOTO)
-    pdf.setLineWidth(1.2)
+    pdf.setStrokeColor(COLOR_MARCO_FOTO)
+    pdf.setLineWidth(1.5)
     for imagen, caja in fotos:
         col_ini, fila_ini, col_fin, fila_fin = _ranura_de_caja(ws, caja)
         buffer = io.BytesIO()
@@ -541,8 +556,8 @@ def _hoja_a_pdf(
     caja_arriba = y_pt(62) + 4
     caja_abajo = y_pt(70)
     mitad = tabla_x + tabla_ancho / 2
-    pdf.setFillColorRGB(*COLOR_BARRA_FIRMAS)
-    pdf.rect(tabla_x, caja_arriba + 8, tabla_ancho, 6, stroke=0, fill=1)
+    pdf.setFillColor(COLOR_BARRA_FIRMAS)
+    pdf.rect(tabla_x, caja_arriba + 6, tabla_ancho, 7, stroke=0, fill=1)
     pdf.setStrokeColorRGB(0, 0, 0)
     pdf.setLineWidth(1)
     pdf.rect(tabla_x, caja_abajo, tabla_ancho, caja_arriba - caja_abajo, stroke=1, fill=0)
@@ -601,32 +616,22 @@ def _texto_celda(valor) -> str:
     return str(valor).strip()
 
 
-def _texto_en_caja(pdf, texto, x, y, ancho, alto, fuente, tamano) -> None:
-    if not texto:
-        return
-    pdf.setFillColorRGB(0.08, 0.12, 0.1)
-    pdf.setFont(fuente, tamano)
-    palabras = texto.split()
-    lineas: list[str] = []
-    actual = ""
-    for palabra in palabras:
-        propuesta = f"{actual} {palabra}".strip()
-        if pdf.stringWidth(propuesta, fuente, tamano) <= ancho - 4:
-            actual = propuesta
-        else:
-            if actual:
-                lineas.append(actual)
-            actual = palabra
-    if actual:
-        lineas.append(actual)
-    if not lineas:
-        return
-    alto_linea = tamano + 1.5
-    bloque = min(len(lineas), max(1, int(alto / alto_linea)))
-    y_texto = y + (alto + bloque * alto_linea) / 2 - tamano
-    for linea in lineas[:bloque]:
-        pdf.drawCentredString(x + ancho / 2, y_texto, linea)
-        y_texto -= alto_linea
+def _parrafo_ajustado(texto: str, fuente: str, tamano: float, ancho: float, alto: float) -> Paragraph:
+    contenido = escape(texto or "")
+    while True:
+        estilo = ParagraphStyle(
+            "celda",
+            fontName=fuente,
+            fontSize=tamano,
+            leading=tamano + 1.5,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor("#141F1A"),
+        )
+        parrafo = Paragraph(contenido, estilo)
+        _ancho, alto_texto = parrafo.wrap(ancho, alto)
+        if alto_texto <= alto or tamano <= 5:
+            return parrafo
+        tamano -= 0.5
 
 
 def _fuentes_pdf() -> tuple[str, str]:

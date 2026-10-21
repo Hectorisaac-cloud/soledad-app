@@ -3,6 +3,7 @@ import calendar
 import hashlib
 import hmac
 import html
+import importlib
 import io
 import json
 import os
@@ -14015,7 +14016,17 @@ def actividades_reporte_fotografico(inicio: date, fin: date) -> list[dict]:
     return actividades
 
 
+def modulo_reporte_fotografico():
+    """Streamlit no recarga módulos ya importados; sin esto el PDF sale con el diseño anterior."""
+    mtime = _mtime_archivo(reporte_fotografico.__file__)
+    if getattr(reporte_fotografico, "_mtime_cargado", None) != mtime:
+        importlib.reload(reporte_fotografico)
+        reporte_fotografico._mtime_cargado = mtime
+    return reporte_fotografico
+
+
 def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> None:
+    generador = modulo_reporte_fotografico()
     st.markdown(
         '<div class="section-title">Reporte fotográfico</div>',
         unsafe_allow_html=True,
@@ -14082,7 +14093,7 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
         else:
             with st.spinner("Armando el Excel y el PDF…"):
                 try:
-                    xlsx, pdf, resumen = reporte_fotografico.generar_reporte_fotografico(actividades)
+                    xlsx, pdf, resumen = generador.generar_reporte_fotografico(actividades)
                 except Exception as exc:
                     st.session_state.pop(f"{key_prefix}_paquete", None)
                     st.error(f"No se pudo generar el reporte: {exc}")
@@ -14094,8 +14105,13 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
                         "inicio": min(inicio, fin),
                         "fin": max(inicio, fin),
                         "cuadrilla": "" if cuadrilla_filtro == opcion_todas else cuadrilla_filtro,
+                        "version": generador.VERSION_DISENO_PDF,
                     }
     paquete = st.session_state.get(f"{key_prefix}_paquete")
+    if paquete and paquete.get("version") != generador.VERSION_DISENO_PDF:
+        st.session_state.pop(f"{key_prefix}_paquete", None)
+        st.info("El diseño del reporte se actualizó; vuelve a presionar «Generar reporte fotográfico».")
+        return
     if not paquete:
         return
     resumen = paquete["resumen"]
