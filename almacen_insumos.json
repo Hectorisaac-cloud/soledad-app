@@ -41,5 +41,21 @@
       "activo": true
     }
   ],
-  "movimientos": []
+  "movimientos": [
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-19",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Gallo (GA)",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 4.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "id": "870898614a",
+      "registrado": "2026-10-21 15:47"
+    }
+  ]
 }
