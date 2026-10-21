@@ -116,6 +116,21 @@
       "origen_registro": "campo",
       "id": "cb72adecd4",
       "registrado": "2026-10-21 18:44"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-20",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Coyotes (Coy)",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 6.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "id": "199491da6b",
+      "registrado": "2026-10-21 18:56"
     }
   ]
 }
