@@ -74,6 +74,20 @@ FIRMAS_ESTATICAS = ("firma_derecha.png", "firma_gerardo.png", "firma_ops.png")
 _MARGEN_RANURA = 8
 _FUENTE_PDF = "ReporteFoto"
 _FUENTE_PDF_NEGRITA = "ReporteFoto-Bold"
+CABECERA_PDF = (
+    ("N° OT", "A4", 0.12),
+    ("Ubicación", "C4", 0.13),
+    ("Fecha", "D4", 0.12),
+    ("Descripción de la Actividad", "E3", 0.37),
+    ("% Avance", "K4", 0.10),
+    ("Cuadrilla", "L4", 0.16),
+)
+FIRMANTES_PDF = (
+    ("LUIS CARMELO CAMPOS BRITO", "COORDINADOR Y/O GERENTE DE PJP4"),
+    ("GERARDO BERNABE RICARDEZ", "COORDINADOR DE OPS"),
+)
+COLOR_MARCO_FOTO = (0.72, 0.56, 0.32)
+COLOR_BARRA_FIRMAS = (0.93, 0.74, 0.13)
 
 
 def _ancho_columna_px(ws: Worksheet, columna: int) -> float:
@@ -473,40 +487,47 @@ def _hoja_a_pdf(
     pdf.setFillColorRGB(0.08, 0.12, 0.1)
     pdf.setFont(fuente_negrita, 11)
     pdf.drawCentredString(x_pt(4) + ancho_pt(4, 12) / 2, y_pt(1) - 28, "REPORTE DE EVIDENCIA FOTOGRAFICA")
-    pdf.setFont(fuente, 8)
-    etiquetas = ((1, "N° OT"), (3, "Ubicación"), (4, "Fecha"), (11, "% Avance"), (12, "Cuadrilla"))
-    for columna, texto in etiquetas:
-        pdf.drawCentredString(x_pt(columna) + ancho_pt(columna, columna if columna not in (1, 12) else columna + (1 if columna == 1 else 2)) / 2, y_pt(3) - 11, texto)
-    valores = (
-        (1, 2, 4, 7, _texto_celda(ws["A4"].value)),
-        (3, 3, 4, 7, _texto_celda(ws["C4"].value)),
-        (4, 4, 4, 7, _texto_celda(ws["D4"].value)),
-        (5, 10, 3, 7, _texto_celda(ws["E3"].value)),
-        (11, 11, 4, 7, _texto_celda(ws["K4"].value)),
-        (12, 14, 4, 7, _texto_celda(ws["L4"].value)),
-    )
-    for col_ini, col_fin, fila_ini, fila_fin, texto in valores:
+    tabla_x = x_pt(1)
+    tabla_ancho = ancho_pt(1, 14)
+    tabla_arriba = y_pt(3)
+    tabla_abajo = y_pt(8)
+    alto_etiquetas = min(16.0, (tabla_arriba - tabla_abajo) * 0.3)
+    linea_etiquetas = tabla_arriba - alto_etiquetas
+    pdf.setFillColorRGB(0.9, 0.9, 0.9)
+    pdf.rect(tabla_x, linea_etiquetas, tabla_ancho, alto_etiquetas, stroke=0, fill=1)
+    x_celda = tabla_x
+    for etiqueta, celda, proporcion in CABECERA_PDF:
+        ancho_celda = tabla_ancho * proporcion
+        es_descripcion = celda == "E3"
+        _texto_en_caja(pdf, etiqueta, x_celda, linea_etiquetas, ancho_celda, alto_etiquetas, fuente_negrita, 7.5)
         _texto_en_caja(
             pdf,
-            texto,
-            x_pt(col_ini),
-            y_pt(fila_fin + 1),
-            ancho_pt(col_ini, col_fin),
-            alto_pt(fila_ini, fila_fin),
-            fuente if col_ini != 5 else fuente_negrita,
-            7 if col_ini == 5 else 8,
+            _texto_celda(ws[celda].value),
+            x_celda + 2,
+            tabla_abajo,
+            ancho_celda - 4,
+            linea_etiquetas - tabla_abajo,
+            fuente_negrita if es_descripcion else fuente,
+            7 if es_descripcion else 8,
         )
-    pdf.setStrokeColorRGB(0.75, 0.78, 0.76)
-    pdf.setLineWidth(0.6)
-    for ranura in RANURAS:
-        col_ini, fila_ini, col_fin, fila_fin = ranura
-        pdf.rect(x_pt(col_ini), y_pt(fila_fin + 1), ancho_pt(col_ini, col_fin), alto_pt(fila_ini, fila_fin), stroke=1, fill=0)
+        x_celda += ancho_celda
+    pdf.setStrokeColorRGB(0, 0, 0)
+    pdf.setLineWidth(1)
+    pdf.rect(tabla_x, tabla_abajo, tabla_ancho, tabla_arriba - tabla_abajo, stroke=1, fill=0)
+    pdf.line(tabla_x, linea_etiquetas, tabla_x + tabla_ancho, linea_etiquetas)
+    x_celda = tabla_x
+    for _etiqueta, _celda, proporcion in CABECERA_PDF[:-1]:
+        x_celda += tabla_ancho * proporcion
+        pdf.line(x_celda, tabla_arriba, x_celda, tabla_abajo)
+
+    pdf.setStrokeColorRGB(*COLOR_MARCO_FOTO)
+    pdf.setLineWidth(1.2)
     for imagen, caja in fotos:
         col_ini, fila_ini, col_fin, fila_fin = _ranura_de_caja(ws, caja)
         buffer = io.BytesIO()
         imagen.save(buffer, format="JPEG", quality=85)
         buffer.seek(0)
-        _dibujar_proporcion(
+        dibujado = _dibujar_proporcion(
             pdf,
             ImageReader(buffer),
             x_pt(col_ini) + caja["dx"] * 72 / 96 * escala,
@@ -514,16 +535,30 @@ def _hoja_a_pdf(
             caja["ancho"] * 72 / 96 * escala,
             caja["alto"] * 72 / 96 * escala,
         )
-    pdf.setFillColorRGB(0.1, 0.14, 0.12)
-    pdf.setFont(fuente, 7)
-    pdf.drawCentredString(x_pt(1) + ancho_pt(1, 7) / 2, y_pt(62) - 10, _texto_celda(ws["A62"].value))
-    pdf.drawCentredString(x_pt(8) + ancho_pt(8, 14) / 2, y_pt(62) - 10, _texto_celda(ws["H62"].value))
-    pdf.setFont(fuente_negrita, 8)
-    pdf.drawCentredString(x_pt(1) + ancho_pt(1, 7) / 2, y_pt(68) - 14, _texto_celda(ws["A68"].value))
-    pdf.drawCentredString(x_pt(8) + ancho_pt(8, 14) / 2, y_pt(68) - 14, _texto_celda(ws["H68"].value))
-    pdf.setFont(fuente, 7)
-    pdf.drawCentredString(x_pt(1) + ancho_pt(1, 7) / 2, y_pt(69) - 12, _texto_celda(ws["A69"].value))
-    pdf.drawCentredString(x_pt(8) + ancho_pt(8, 14) / 2, y_pt(69) - 12, _texto_celda(ws["H69"].value))
+        if dibujado:
+            pdf.rect(*dibujado, stroke=1, fill=0)
+
+    caja_arriba = y_pt(62) + 4
+    caja_abajo = y_pt(70)
+    mitad = tabla_x + tabla_ancho / 2
+    pdf.setFillColorRGB(*COLOR_BARRA_FIRMAS)
+    pdf.rect(tabla_x, caja_arriba + 8, tabla_ancho, 6, stroke=0, fill=1)
+    pdf.setStrokeColorRGB(0, 0, 0)
+    pdf.setLineWidth(1)
+    pdf.rect(tabla_x, caja_abajo, tabla_ancho, caja_arriba - caja_abajo, stroke=1, fill=0)
+    pdf.line(mitad, caja_arriba, mitad, caja_abajo)
+    pdf.setLineWidth(0.6)
+    for indice, (nombre, cargo) in enumerate(FIRMANTES_PDF):
+        x_columna = tabla_x + indice * tabla_ancho / 2
+        centro = x_columna + tabla_ancho / 4
+        pdf.line(x_columna + tabla_ancho * 0.08, y_pt(68) + 1, x_columna + tabla_ancho * 0.42, y_pt(68) + 1)
+        pdf.setFillColorRGB(0.1, 0.14, 0.12)
+        pdf.setFont(fuente, 7)
+        pdf.drawCentredString(centro, y_pt(62) - 6, _texto_celda(ws["A62" if indice == 0 else "H62"].value) or "APROBADO:")
+        pdf.setFont(fuente_negrita, 8)
+        pdf.drawCentredString(centro, y_pt(68) - 10, nombre)
+        pdf.setFont(fuente, 7)
+        pdf.drawCentredString(centro, y_pt(69) - 9, cargo)
     pdf.showPage()
 
 
@@ -531,26 +566,29 @@ def _ranura_de_caja(ws: Worksheet, caja: dict) -> tuple[int, int, int, int]:
     return caja["ranura_idx"]
 
 
-def _dibujar_proporcion(pdf, lector, x, y, ancho, alto) -> None:
+def _dibujar_proporcion(pdf, lector, x, y, ancho, alto) -> tuple[float, float, float, float] | None:
     try:
         imagen_ancho, imagen_alto = lector.getSize()
     except Exception:
         pdf.drawImage(lector, x, y, width=ancho, height=alto, preserveAspectRatio=True, mask="auto", anchor="c")
-        return
+        return None
     if not imagen_ancho or not imagen_alto:
-        return
+        return None
     escala = min(ancho / imagen_ancho, alto / imagen_alto)
     dibujo_ancho = imagen_ancho * escala
     dibujo_alto = imagen_alto * escala
+    x_dibujo = x + (ancho - dibujo_ancho) / 2
+    y_dibujo = y + (alto - dibujo_alto) / 2
     pdf.drawImage(
         lector,
-        x + (ancho - dibujo_ancho) / 2,
-        y + (alto - dibujo_alto) / 2,
+        x_dibujo,
+        y_dibujo,
         width=dibujo_ancho,
         height=dibujo_alto,
         preserveAspectRatio=True,
         mask="auto",
     )
+    return x_dibujo, y_dibujo, dibujo_ancho, dibujo_alto
 
 
 def _texto_celda(valor) -> str:
