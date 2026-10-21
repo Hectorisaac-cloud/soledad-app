@@ -1,10 +1,10 @@
 {
   "posiciones": {
     "Electricos": {
-      "mecanico": "",
-      "ayudante": "",
+      "mecanico": "2179 LUIS MANUEL ZALETA CALDERON",
+      "ayudante": "2622 JOSE RAMON CHONG RAMIREZ",
       "apoyo": "",
-      "codigo": ""
+      "codigo": "2179-2622"
     },
     "Instrumentos": {
       "mecanico": "1705 CARLOS HERNANDEZ GALLEGOS",
@@ -40,7 +40,7 @@
       "mecanico": "1360 VICTOR RUIZ R.",
       "ayudante": "1851 PASCUAL MARTINEZ",
       "apoyo": "631 ERNESTO ARELLANO",
-      "codigo": "1360-1851-631"
+      "codigo": "1360-1851-638"
     },
     "Soldadura": {
       "mecanico": "207 MIGUEL VALENCIA M.",
@@ -55,5 +55,10 @@
       "codigo": ""
     }
   },
-  "extras": []
+  "extras": [
+    "2111 CARLOS ROMERO RESENDEZ",
+    "2647 JOSE LUIS DE LA CRUZ VICENCIO",
+    "2239 LUIS EMMANUEL GOMEZ MELO",
+    "2304 CALIXTO PEREZ CASTAÑEDA"
+  ]
 }

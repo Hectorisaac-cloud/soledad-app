@@ -101,6 +101,21 @@
       "origen_registro": "campo",
       "id": "e409db70a5",
       "registrado": "2026-10-21 18:39"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-19",
+      "secuencia": "Act. 6",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Soledad Norte (SN)",
+      "insumo_id": "otros",
+      "insumo": "1 BOMBA DE AGUA Y 1 BANDA MICRO V",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "id": "cb72adecd4",
+      "registrado": "2026-10-21 18:44"
     }
   ]
 }
