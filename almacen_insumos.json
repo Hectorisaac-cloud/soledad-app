@@ -39,6 +39,38 @@
       "columna_excel": "BUJÍAS (PZAS)",
       "precargado": true,
       "activo": true
+    },
+    {
+      "id": "banda-c-112",
+      "nombre": "Banda C-112",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "precargado": false,
+      "activo": true
+    },
+    {
+      "id": "banda-c-240",
+      "nombre": "Banda C-240",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "precargado": false,
+      "activo": true
+    },
+    {
+      "id": "banda-c-115",
+      "nombre": "Banda C-115",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "precargado": false,
+      "activo": true
+    },
+    {
+      "id": "banda-micro-v",
+      "nombre": "Banda Micro V",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "precargado": false,
+      "activo": true
     }
   ],
   "movimientos": [
