@@ -32,7 +32,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, Table, TableStyle
 
-VERSION_DISENO_PDF = 3
+VERSION_DISENO_PDF = 4
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -77,7 +77,7 @@ RECURSOS_PLANTILLA = (
         ("firma_izquierda.png", "firma_luis.png"),
     ),
 )
-FIRMAS_ESTATICAS = ("firma_derecha.png", "firma_gerardo.png", "firma_ops.png")
+FIRMAS_ESTATICAS = ("firma_ops.png", "firma_derecha.png", "firma_gerardo.png")
 _MARGEN_RANURA = 8
 _FUENTE_PDF = "ReporteFoto"
 _FUENTE_PDF_NEGRITA = "ReporteFoto-Bold"
@@ -237,6 +237,9 @@ def _buffer_png(datos: bytes, nombre: str) -> io.BytesIO:
 
 
 def _firma_derecha_png(ruta_plantilla: str) -> io.BytesIO | None:
+    estatica = _archivo_estatico(*FIRMAS_ESTATICAS)
+    if estatica:
+        return _buffer_png(estatica, "firma_derecha.png")
     datos = b""
     try:
         with zipfile.ZipFile(ruta_plantilla) as paquete:
@@ -247,8 +250,6 @@ def _firma_derecha_png(ruta_plantilla: str) -> io.BytesIO | None:
     except (FileNotFoundError, zipfile.BadZipFile, KeyError):
         datos = b""
     raster = _bytes_raster(datos, "firma.emf") if datos else None
-    if raster is None:
-        raster = _archivo_estatico(*FIRMAS_ESTATICAS)
     if not raster:
         return None
     return _buffer_png(raster, "firma_derecha.png")
