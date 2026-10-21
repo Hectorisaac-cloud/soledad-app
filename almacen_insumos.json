@@ -131,6 +131,36 @@
       "origen_registro": "campo",
       "id": "199491da6b",
       "registrado": "2026-10-21 18:56"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-20",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Soledad Norte (SN)",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 10.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "id": "e442d73724",
+      "registrado": "2026-10-21 19:00"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-20",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Soledad Norte (SN)",
+      "insumo_id": "otros",
+      "insumo": "2 PZ DE MANGUERA DE 1/2\" RECUPERADA",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "id": "141f1073dd",
+      "registrado": "2026-10-21 19:00"
     }
   ]
 }
