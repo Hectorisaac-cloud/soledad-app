@@ -33,7 +33,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, Table, TableStyle
 
-VERSION_DISENO_PDF = 6
+VERSION_DISENO_PDF = 7
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -510,7 +510,7 @@ def _hoja_a_pdf(
     ]
     fila_valores = [
         _parrafo_ajustado(
-            _valor_tabla_pdf(celda, ws[celda].value),
+            _valor_tabla_pdf(celda, ws[celda].value, ws["C4"].value),
             fuente_negrita if celda == "E3" else fuente,
             7 if celda == "E3" else 8,
             ancho - 2 * padding,
@@ -673,7 +673,23 @@ def _tag_cuadrilla_pdf(valor) -> str:
     return texto.upper()
 
 
-def _valor_tabla_pdf(celda: str, valor) -> str:
+def _descripcion_tabla_pdf(descripcion, ubicacion) -> str:
+    """Agrega el pozo al final de la descripción. Solo se usa al dibujar el PDF."""
+    texto = _texto_celda(descripcion)
+    pozo = _ubicacion_tabla_pdf(ubicacion)
+    if not pozo:
+        return texto
+    sufijo = f'"EN {pozo}"'
+    if texto.endswith(sufijo):
+        return texto
+    if not texto:
+        return sufijo
+    return f"{texto} {sufijo}"
+
+
+def _valor_tabla_pdf(celda: str, valor, ubicacion=None) -> str:
+    if celda == "E3":
+        return _descripcion_tabla_pdf(valor, ubicacion)
     if celda == "C4":
         return _ubicacion_tabla_pdf(valor)
     if celda == "L4":
