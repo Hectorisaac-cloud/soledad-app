@@ -13570,10 +13570,10 @@ def actividades_reporte_fotografico(inicio: date, fin: date) -> list[dict]:
         cuadrilla_bruta = str(fila.get("CUADRILLA") or "").strip()
         cuadrilla = etiqueta_cuadrilla_historial(cuadrilla_bruta)
         secuencia = numero_secuencia_actividad(fila.get("SECUENCIA")) or 0
-        ubicacion = texto_visible(
+        pozo = texto_visible(fila.get("POZO"), "")
+        ubicacion = pozo or texto_visible(
             fila.get("UBICACIÓN")
             or fila.get("EQUIPO/UBICACIÓN")
-            or fila.get("POZO")
             or fila.get("SECTOR"),
             "",
         )

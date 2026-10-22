@@ -33,7 +33,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, Table, TableStyle
 
-VERSION_DISENO_PDF = 5
+VERSION_DISENO_PDF = 6
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -630,6 +630,8 @@ _TAGS_CUADRILLA_PDF = {
     "instrumentista": "INSTR",
     "mecanico 1": "MECA-1",
     "mecanico 2": "MECA-2",
+    "mecanico 3": "MECA-3",
+    "mecanico 4": "MECA-4",
     "montaje": "MONTA",
     "soldadura": "SOLD",
     "retro": "RETRO",
@@ -650,12 +652,14 @@ def _es_sector_zona(texto: str) -> bool:
 
 
 def _ubicacion_tabla_pdf(valor) -> str:
-    """Deja el pozo, o pozo y equipo, sin el sector o la zona delante."""
+    """Deja solo el pozo. Quita el sector o la zona y el equipo que vengan pegados."""
     texto = _texto_celda(valor)
     partes = [parte.strip() for parte in texto.split("·") if parte.strip()]
+    if not partes:
+        return texto
     if len(partes) >= 2 and _es_sector_zona(partes[0]):
-        partes = partes[1:]
-    return " · ".join(partes) if partes else texto
+        return partes[1]
+    return partes[0]
 
 
 def _tag_cuadrilla_pdf(valor) -> str:
