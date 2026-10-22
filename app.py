@@ -18882,6 +18882,12 @@ MODULOS_ADMIN = [
         "descripcion": "Ficha técnica por pozo: MCI, UB, historial, programados e importación Excel.",
     },
     {
+        "id": "historial_base",
+        "icono": "📚",
+        "titulo": "Historial",
+        "descripcion": "Historial de OTs, bitácora general y calendario de asistencia de cuadrillas.",
+    },
+    {
         "id": "programados",
         "icono": "📊",
         "titulo": "Programados vs No Programados",
@@ -19901,9 +19907,453 @@ def render_calendario_asistencia() -> None:
     )
 
 
+def _texto_celda_admin(valor) -> str:
+    return texto_visible(valor, "")
+
+
+def _pozo_fila_admin(fila) -> str:
+    pozo = _texto_celda_admin(fila.get("POZO"))
+    if pozo:
+        return pozo
+    ubicacion = _texto_celda_admin(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN"))
+    partes = [parte.strip() for parte in ubicacion.split("·") if parte.strip()]
+    if len(partes) >= 2:
+        return partes[1]
+    return partes[0] if partes else ""
+
+
+def _sector_fila_admin(fila) -> str:
+    sector = _texto_celda_admin(fila.get("SECTOR"))
+    if sector:
+        return sector
+    ubicacion = _texto_celda_admin(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN"))
+    partes = [parte.strip() for parte in ubicacion.split("·") if parte.strip()]
+    if len(partes) >= 2:
+        return partes[0]
+    return ""
+
+
+def _estatus_fila_admin(fila) -> str:
+    return _texto_celda_admin(
+        fila.get("EVALUACIÓN DEL ESTATUS") or fila.get("REVISIÓN") or fila.get("ESTATUS")
+    )
+
+
+def _cuadrilla_fila_admin(fila) -> str:
+    bruto = _texto_celda_admin(fila.get("CUADRILLA"))
+    return etiqueta_cuadrilla_historial(bruto) if bruto else ""
+
+
+def _descripcion_fila_admin(fila) -> str:
+    return _texto_celda_admin(
+        fila.get("DESCRIPCIÓN DE LA ACTIVIDAD") or fila.get("DESCRIPCION DE LA ACTIVIDAD")
+    )
+
+
+def _ubicacion_fila_admin(fila) -> str:
+    return _texto_celda_admin(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN"))
+
+
+def _bitacora_mes_admin(jornada: date) -> pd.DataFrame:
+    base = bitacora_con_fechas(cargar_bitacora())
+    if base.empty or "_fecha" not in base.columns:
+        return base.iloc[0:0]
+    return base.loc[
+        base["_fecha"].map(
+            lambda dia: isinstance(dia, date) and dia.year == jornada.year and dia.month == jornada.month
+        )
+    ].copy()
+
+
+def _filtrar_vista_admin(df: pd.DataFrame, ot: str, sector: str, pozo: str, cuadrilla: str, estatus: str) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df if df is not None else pd.DataFrame()
+    ot = (ot or "").strip()
+    conservar = []
+    for posicion, (_, fila) in enumerate(df.iterrows()):
+        if ot:
+            secuencia = str(numero_secuencia_actividad(fila.get("SECUENCIA")) or _texto_celda_admin(fila.get("SECUENCIA")))
+            if ot.casefold() not in secuencia.casefold():
+                continue
+        if sector and sector != "Todos" and _sector_fila_admin(fila).casefold() != sector.casefold():
+            continue
+        if pozo and pozo != "Todos" and _pozo_fila_admin(fila).casefold() != pozo.casefold():
+            continue
+        if cuadrilla and cuadrilla != "Todos" and _cuadrilla_fila_admin(fila).casefold() != cuadrilla.casefold():
+            continue
+        if estatus and estatus != "Todos" and _estatus_fila_admin(fila).casefold() != estatus.casefold():
+            continue
+        conservar.append(posicion)
+    return df.iloc[conservar].copy()
+
+
+def _opciones_admin(df: pd.DataFrame, extractor) -> list[str]:
+    valores = set()
+    if df is not None and not df.empty:
+        for _, fila in df.iterrows():
+            texto = extractor(fila).strip()
+            if texto:
+                valores.add(texto)
+    return ["Todos"] + sorted(valores, key=str.casefold)
+
+
+def _contar_avance_admin(df: pd.DataFrame) -> tuple[int, int, int]:
+    if df is None or df.empty:
+        return 0, 0, 0
+    clases = df.apply(clasificar_mantenimiento, axis=1)
+    return int((clases == "Programado").sum()), int((clases == "No programado").sum()), int(len(df))
+
+
+def _excel_tabla_admin(df: pd.DataFrame) -> bytes:
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Insumos")
+    return buffer.getvalue()
+
+
+def _nombre_excel_programa(nombre: str) -> str:
+    base = os.path.basename(str(nombre or "").replace("\\", "/"))
+    if not base or base.startswith("~$") or ".." in base:
+        return ""
+    if not base.lower().endswith(EXTENSIONES_PROGRAMA_EXCEL):
+        return ""
+    return base
+
+
+def _guardar_excel_programa_admin(archivo) -> None:
+    if archivo is None:
+        st.warning("Elige un archivo Excel de mantenimientos programados.")
+        return
+    nombre = _nombre_excel_programa(getattr(archivo, "name", ""))
+    if not nombre:
+        st.warning("El archivo tiene que ser un Excel (.xlsx, .xls o .xlsm).")
+        return
+    carpeta = directorio_programas_mtto()
+    os.makedirs(carpeta, exist_ok=True)
+    destino = os.path.join(carpeta, nombre)
+    reemplazo = os.path.exists(destino)
+    with open(destino, "wb") as salida:
+        salida.write(archivo.getvalue())
+    try:
+        cargar_actividades_octubre.clear()
+    except Exception:
+        pass
+    verbo = "Se reemplazó" if reemplazo else "Quedó cargado"
+    st.success(
+        f"{verbo} {nombre} en la carpeta de programas de mantenimiento. "
+        "La bitácora y los catálogos siguen respaldándose en la rama datos."
+    )
+
+
+def _guardar_edicion_dia_admin(dia: pd.DataFrame, editada: pd.DataFrame) -> None:
+    guardados = 0
+    errores = []
+    indices = list(dia.index)
+    for posicion, (_, row) in enumerate(editada.iterrows()):
+        bruto = row["_idx"] if "_idx" in row.index else None
+        try:
+            idx = int(bruto) if bruto is not None and pd.notna(bruto) else indices[posicion]
+        except (TypeError, ValueError, IndexError):
+            continue
+        if idx not in dia.index:
+            continue
+        original = dia.loc[idx]
+        if isinstance(original, pd.DataFrame):
+            original = original.iloc[0]
+        desc_nueva = str(row.get("Descripción") or "").strip()
+        ubic_nueva = str(row.get("Ubicación") or "").strip()
+        if desc_nueva == _descripcion_fila_admin(original) and ubic_nueva == _ubicacion_fila_admin(original):
+            continue
+        try:
+            actualizar_registro_bitacora(
+                idx,
+                original,
+                {
+                    "fecha": parsear_fecha_valor(original.get("FECHA")),
+                    "cuadrilla": str(original.get("CUADRILLA") or "").strip(),
+                    "secuencia": numero_secuencia_actividad(original.get("SECUENCIA")),
+                    "descripcion": desc_nueva,
+                    "ubicacion": ubic_nueva,
+                    "personal": _texto_celda_admin(original.get("PERSONAL")),
+                    "comentarios": _texto_celda_admin(original.get("COMENTARIOS")),
+                },
+            )
+            guardados += 1
+        except Exception as exc:
+            errores.append(str(exc))
+    if guardados:
+        despues_de_cambio_bitacora("edición de actividades de la jornada en el panel administrativo")
+        st.session_state.adm_m_edicion_ok = guardados
+    for error in errores:
+        st.warning(error)
+    if guardados and not errores:
+        st.rerun()
+    elif not guardados and not errores:
+        st.info("La tabla ya coincide con lo guardado.")
+
+
+def render_entrada_datos_admin() -> None:
+    with st.container(border=True):
+        render_seccion_admin(
+            "Superior izquierda",
+            "Entrada de Datos",
+            "Registra actividades, carga el Excel de mantenimientos programados y da de alta el catálogo.",
+        )
+        if st.button(
+            "Registrar o editar actividad de bitácora",
+            use_container_width=True,
+            key="adm_m_registro",
+        ):
+            abrir_modulo_admin("registro_bitacora")
+        archivo_programa = st.file_uploader(
+            "Excel de mantenimientos programados",
+            type=["xlsx", "xls", "xlsm"],
+            key="adm_m_excel_prog",
+        )
+        if st.button("Cargar Excel al programa", use_container_width=True, key="adm_m_cargar_excel"):
+            _guardar_excel_programa_admin(archivo_programa)
+        alta_ubic, alta_eq, alta_ins = st.columns(3)
+        with alta_ubic:
+            if st.button("Ubicación", use_container_width=True, key="adm_m_alta_ub"):
+                abrir_modulo_admin(
+                    "auditoria",
+                    admin_sub_auditoria="catalogos",
+                    admin_sub_catalogos="ubicaciones",
+                )
+        with alta_eq:
+            if st.button("Equipo", use_container_width=True, key="adm_m_alta_eq"):
+                abrir_modulo_admin("auditoria", admin_sub_auditoria="catalogos")
+        with alta_ins:
+            if st.button("Insumos", use_container_width=True, key="adm_m_alta_ins"):
+                abrir_modulo_admin("almacen", admin_sub_almacen="gestion")
+        st.caption("Altas rápidas de ubicación, equipo (MCI y UB) e insumos del catálogo.")
+
+
+def render_edicion_captura_admin(jornada: date) -> None:
+    with st.container(border=True):
+        render_seccion_admin(
+            "Inferior izquierda",
+            "Edición de Captura",
+            "Corrige las actividades de la jornada y edita equipos, ubicaciones o insumos.",
+        )
+        aviso = st.session_state.pop("adm_m_edicion_ok", None)
+        if aviso:
+            st.success(f"Se actualizaron {aviso} actividad(es). El cambio quedó en la bitácora y en la rama datos.")
+        dia = bitacora_del_dia(bitacora_con_fechas(cargar_bitacora()), jornada)
+        if dia.empty:
+            st.info(f"No hay actividades cargadas el {jornada.strftime('%d/%m/%Y')}.")
+        else:
+            tabla = pd.DataFrame(
+                {
+                    "_idx": list(dia.index),
+                    "OT": [
+                        str(numero_secuencia_actividad(fila.get("SECUENCIA")) or _texto_celda_admin(fila.get("SECUENCIA")))
+                        for _, fila in dia.iterrows()
+                    ],
+                    "Cuadrilla": [_cuadrilla_fila_admin(fila) for _, fila in dia.iterrows()],
+                    "Ubicación": [_ubicacion_fila_admin(fila) for _, fila in dia.iterrows()],
+                    "Descripción": [_descripcion_fila_admin(fila) for _, fila in dia.iterrows()],
+                }
+            )
+            editada = st.data_editor(
+                tabla,
+                num_rows="fixed",
+                hide_index=True,
+                use_container_width=True,
+                key=f"adm_m_editor_{jornada.isoformat()}",
+                disabled=["_idx", "OT", "Cuadrilla"],
+                column_config={
+                    "_idx": None,
+                    "Descripción": st.column_config.TextColumn("Descripción", width="large"),
+                },
+            )
+            if st.button(
+                "Guardar actividades del día",
+                type="primary",
+                use_container_width=True,
+                key="adm_m_guardar_dia",
+            ):
+                _guardar_edicion_dia_admin(dia, editada)
+        ed_cat, ed_ins = st.columns(2)
+        with ed_cat:
+            if st.button("Editar equipos y ubicaciones", use_container_width=True, key="adm_m_edit_cat"):
+                abrir_modulo_admin("auditoria", admin_sub_auditoria="catalogos")
+        with ed_ins:
+            if st.button("Editar insumos", use_container_width=True, key="adm_m_edit_ins"):
+                abrir_modulo_admin("almacen", admin_sub_almacen="gestion")
+
+
+def render_vista_previa_admin(jornada: date) -> None:
+    with st.container(border=True):
+        render_seccion_admin(
+            "Superior derecha",
+            "Vista Previa",
+            "Insumos consumidos y avance de mantenimientos del mes de la jornada.",
+        )
+        mes = _bitacora_mes_admin(jornada)
+        filtros = st.columns(2)
+        with filtros[0]:
+            ot = st.text_input("OT", key="adm_m_f_ot", placeholder="Secuencia")
+            pozo = st.selectbox("Pozo", _opciones_admin(mes, _pozo_fila_admin), key="adm_m_f_pozo")
+            estatus = st.selectbox("Estatus", _opciones_admin(mes, _estatus_fila_admin), key="adm_m_f_estatus")
+        with filtros[1]:
+            sector = st.selectbox("Sector", _opciones_admin(mes, _sector_fila_admin), key="adm_m_f_sector")
+            cuadrilla = st.selectbox("Cuadrilla", _opciones_admin(mes, _cuadrilla_fila_admin), key="adm_m_f_cuadrilla")
+        filtrada = _filtrar_vista_admin(mes, ot, sector, pozo, cuadrilla, estatus)
+        programados, imprevistos, total = _contar_avance_admin(filtrada)
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Programados", programados)
+        m2.metric("No programados", imprevistos)
+        m3.metric("Total", total)
+        avance = go.Figure(
+            go.Bar(
+                x=["Programados", "No programados", "Total"],
+                y=[programados, imprevistos, total],
+                marker_color=["#86efac", "#fbbf24", "#93c5fd"],
+            )
+        )
+        avance.update_layout(
+            height=190,
+            margin=dict(l=8, r=8, t=28, b=8),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font_color="#e2e8f0",
+            title="Avance de mantenimientos",
+        )
+        st.plotly_chart(avance, use_container_width=True, key="adm_m_chart_avance")
+        detalle = detalle_insumos_suministrados(filtrada)
+        if detalle.empty:
+            st.caption("Sin insumos consumidos para el filtro de este mes.")
+        else:
+            resumen = (
+                detalle.groupby("refaccion", as_index=False)["cantidad"]
+                .sum()
+                .sort_values("cantidad", ascending=False)
+                .head(8)
+            )
+            figura = px.bar(
+                resumen,
+                x="refaccion",
+                y="cantidad",
+                labels={"refaccion": "Insumo", "cantidad": "Cantidad"},
+            )
+            figura.update_layout(
+                height=220,
+                margin=dict(l=8, r=8, t=28, b=8),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font_color="#e2e8f0",
+                title="Insumos consumidos",
+            )
+            st.plotly_chart(figura, use_container_width=True, key="adm_m_chart_insumos")
+
+
+def _insumos_rango_admin(desde: date, hasta: date) -> pd.DataFrame:
+    if not isinstance(desde, date) or not isinstance(hasta, date):
+        return pd.DataFrame(columns=["fecha", "ubicacion", "rubro", "refaccion", "cantidad"])
+    inicio, fin = min(desde, hasta), max(desde, hasta)
+    base = bitacora_con_fechas(cargar_bitacora())
+    if base.empty or "_fecha" not in base.columns:
+        return pd.DataFrame(columns=["fecha", "ubicacion", "rubro", "refaccion", "cantidad"])
+    periodo = base.loc[
+        base["_fecha"].map(lambda dia: isinstance(dia, date) and inicio <= dia <= fin)
+    ].copy()
+    detalle = detalle_insumos_suministrados(periodo)
+    if detalle.empty:
+        return detalle
+    detalle = detalle.copy()
+    detalle["fecha"] = detalle["fecha"].map(lambda dia: dia.strftime("%d/%m/%Y") if isinstance(dia, date) else dia)
+    return detalle
+
+
+def render_extraccion_evidencia_admin(jornada: date) -> None:
+    with st.container(border=True):
+        render_seccion_admin(
+            "Inferior derecha",
+            "Extracción de Evidencia",
+            "Reporte de insumos por rango de fechas y reporte fotográfico en PDF.",
+        )
+        desde_col, hasta_col = st.columns(2)
+        with desde_col:
+            desde = st.date_input(
+                "Desde",
+                value=date(jornada.year, jornada.month, 1),
+                format="DD/MM/YYYY",
+                key="adm_m_ins_desde",
+            )
+        with hasta_col:
+            hasta = st.date_input(
+                "Hasta",
+                value=jornada,
+                format="DD/MM/YYYY",
+                key="adm_m_ins_hasta",
+            )
+        if st.button("Generar reporte de insumos", use_container_width=True, key="adm_m_gen_insumos"):
+            detalle = _insumos_rango_admin(desde, hasta)
+            st.session_state.adm_m_ins_xlsx = _excel_tabla_admin(detalle)
+            st.session_state.adm_m_ins_csv = detalle.to_csv(index=False).encode("utf-8-sig")
+            st.session_state.adm_m_ins_marca = f"{min(desde, hasta).strftime('%Y%m%d')}_{max(desde, hasta).strftime('%Y%m%d')}"
+            st.session_state.adm_m_ins_filas = int(len(detalle))
+        if st.session_state.get("adm_m_ins_xlsx"):
+            filas = int(st.session_state.get("adm_m_ins_filas") or 0)
+            st.caption(f"{filas} movimiento(s) de insumo en el rango.")
+            marca = st.session_state.get("adm_m_ins_marca") or "insumos"
+            baja_xls, baja_csv = st.columns(2)
+            with baja_xls:
+                st.download_button(
+                    "Descargar Excel",
+                    data=st.session_state.adm_m_ins_xlsx,
+                    file_name=f"insumos_{marca}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="adm_m_dl_xlsx",
+                )
+            with baja_csv:
+                st.download_button(
+                    "Descargar CSV",
+                    data=st.session_state.adm_m_ins_csv,
+                    file_name=f"insumos_{marca}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key="adm_m_dl_csv",
+                )
+        with st.expander("Reporte fotográfico PDF", expanded=False):
+            render_generador_reporte_fotografico(key_prefix="adm_matriz_foto")
+
+
+def render_calendario_jornada_admin(jornada: date, metricas: dict) -> None:
+    with st.container(border=True):
+        mes_txt = NOMBRES_MES[jornada.month - 1]
+        dia_txt = NOMBRES_DIA[jornada.weekday()]
+        st.markdown(f"#### Calendario de Jornada · {mes_txt} {jornada.year}")
+        st.markdown(
+            f"""
+            <div class="nucleo-dia">
+                <div class="kicker">Día activo</div>
+                <h3>{html.escape(dia_txt)}, {jornada.day} de {html.escape(mes_txt.lower())} de {jornada.year}</h3>
+                <p>{metricas['bitacoras']} registro(s) de bitácora en esta jornada.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.date_input("Consultar jornada específica", format="DD/MM/YYYY", key="admin_jornada")
+        render_mini_calendario_admin(jornada, metricas["fechas_bit"], metricas["fechas_ot"])
+        if metricas.get("alertas"):
+            st.caption(f"Insumos críticos sin existencia: {metricas['alertas']}.")
+        ot_col, asig_col = st.columns(2)
+        with ot_col:
+            if st.button("OT de esta jornada", use_container_width=True, key="adm_m_ot_dia"):
+                if metricas.get("ot"):
+                    st.session_state.ot_hist_sel = metricas["ot"]["etiqueta"]
+                abrir_modulo_admin("ot_diario")
+        with asig_col:
+            if st.button("Asignaciones del día", use_container_width=True, key="adm_m_asig_dia"):
+                st.session_state.fecha_asignacion_admin = jornada
+                abrir_modulo_admin("asignaciones")
+
+
 def render_explorador_admin() -> None:
-    st.caption("Distribución perimetral de módulos con núcleo de control temporal y métricas.")
-    render_captura_bitacora_admin()
+    st.caption("Calendario de jornada al centro, con entrada, edición, vista previa y extracción alrededor.")
     pendiente = st.session_state.pop("admin_jornada_pendiente", None)
     if isinstance(pendiente, date):
         st.session_state.admin_jornada = pendiente
@@ -19911,133 +20361,69 @@ def render_explorador_admin() -> None:
         st.session_state.admin_jornada = parsear_fecha_valor(st.session_state.get("admin_jornada")) or date.today()
     jornada = st.session_state.admin_jornada
     metricas = metricas_nucleo_admin(jornada)
-    mes_txt = NOMBRES_MES[jornada.month - 1]
-    dia_txt = NOMBRES_DIA[jornada.weekday()]
-    hoy = date.today()
-    if jornada == hoy:
-        turno = "Turno en curso en Base Álamo. Sincronización de bitácoras activa."
-    else:
-        turno = "Consulta de jornada histórica. Elige otra fecha para cruzar OT, bitácora y asignaciones."
-    if metricas["asignacion"]:
-        estado_asig = "Asignaciones del día publicadas."
-    else:
-        estado_asig = "Sin asignaciones publicadas para esta jornada."
-    ot_txt = "PDF de OT disponible." if metricas["ot"] else "Sin PDF de OT para este día."
-
-    col_izq, col_centro, col_der = st.columns([1.15, 2.4, 1.15], gap="medium")
+    col_izq, col_centro, col_der = st.columns([1.12, 1.35, 1.12], gap="medium")
     with col_izq:
-        st.markdown("#### 🚜 Flota y campo")
-        st.caption("Gestión de activos")
-        if st.button("📍 Ubicación y Equipos", use_container_width=True, key="adm_eq"):
-            abrir_modulo_admin("ubicaciones")
-        if st.button("📊 Programados vs Paros", use_container_width=True, key="adm_paros"):
-            abrir_modulo_admin("programados")
-        st.markdown("---")
-        st.caption("Historiales")
-        if st.button("📄 Historial diario (OT)", use_container_width=True, key="adm_ot"):
-            if metricas["ot"]:
-                st.session_state.ot_hist_sel = metricas["ot"]["etiqueta"]
-            abrir_modulo_admin("ot_diario")
-        if st.button("📓 Bitácora general", use_container_width=True, key="adm_bit"):
-            abrir_modulo_admin("auditoria", admin_sub_auditoria="revision")
-        if st.button("📅 Calendario de asistencia", use_container_width=True, key="adm_calendario"):
-            abrir_modulo_admin("calendario_asistencia")
-
+        render_entrada_datos_admin()
+        render_edicion_captura_admin(jornada)
     with col_centro:
-        st.markdown(f"#### 🗓️ Núcleo operativo · {mes_txt} {jornada.year}")
-        st.markdown(
-            f"""
-            <div class="nucleo-dia">
-                <div class="kicker">Día activo</div>
-                <h3>{html.escape(dia_txt)}, {jornada.day} de {html.escape(mes_txt.lower())} de {jornada.year}</h3>
-                <p>{html.escape(turno)} {html.escape(estado_asig)} {html.escape(ot_txt)}
-                {metricas['bitacoras']} registro(s) de bitácora.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.date_input(
-            "Consultar jornada específica",
-            format="DD/MM/YYYY",
-            key="admin_jornada",
-        )
-        render_mini_calendario_admin(jornada, metricas["fechas_bit"], metricas["fechas_ot"])
-        n1, n2 = st.columns(2)
-        with n1:
-            if st.button("📄 Abrir OT de esta jornada", use_container_width=True, key="adm_ot_dia"):
-                if metricas["ot"]:
-                    st.session_state.ot_hist_sel = metricas["ot"]["etiqueta"]
-                abrir_modulo_admin("ot_diario")
-        with n2:
-            if st.button("📌 Ver asignaciones del día", use_container_width=True, key="adm_asig_dia"):
-                st.session_state.fecha_asignacion_admin = jornada
-                abrir_modulo_admin("asignaciones")
-        st.markdown("#### 📈 Indicadores rápidos de insumos")
-        i1, i2, i3 = st.columns(3)
-        inicio_mes = date(jornada.year, jornada.month, 1)
-        delta = metricas["delta_litros"]
-        delta_gasto = metricas["delta_gasto"]
-        delta_aceite = metricas["delta_aceite"]
-        with i1:
-            st.markdown(
-                html_tarjeta_combustible(
-                    "Combustible",
-                    f"{metricas['litros_mes']:,.0f} L",
-                    "Sin mes previo · litros" if delta is None else f"{delta:+.0f}% litros vs mes previo",
-                    texto_rango_registros(inicio_mes, metricas.get("ultima_carga")),
-                    extra=f"${metricas['gasto_mes']:,.0f}",
-                    delta_extra="Sin mes previo · costo" if delta_gasto is None else f"{delta_gasto:+.0f}% costo vs mes previo",
-                ),
-                unsafe_allow_html=True,
-            )
-        with i2:
-            st.markdown(
-                html_tarjeta_combustible(
-                    "Aceite suministrado a MCI en pozos",
-                    f"{metricas['aceite_mes']:,.0f} L",
-                    "Sin mes previo" if delta_aceite is None else f"{delta_aceite:+.0f}% vs mes previo",
-                    texto_rango_registros(inicio_mes, metricas.get("ultima_aceite")),
-                ),
-                unsafe_allow_html=True,
-            )
-        i3.metric("Insumos críticos", f"{metricas['alertas']} alertas", "Sin existencia" if metricas["alertas"] else "Estable")
-
+        render_calendario_jornada_admin(jornada, metricas)
     with col_der:
-        st.markdown("#### ✍️ Administración")
-        st.caption("Entrada de datos")
-        if st.button("➕ Registrar actividad en bitácora", use_container_width=True, key="adm_registro_bitacora"):
-            abrir_modulo_admin("registro_bitacora")
-        if st.button("📝 Editor de asignaciones", use_container_width=True, key="adm_asig"):
-            st.session_state.fecha_asignacion_admin = jornada
-            abrir_modulo_admin("asignaciones")
-        if st.button("📦 Control de almacén", use_container_width=True, key="adm_alm"):
-            abrir_modulo_admin("almacen")
-        st.markdown("---")
-        st.caption("Analítica")
-        if st.button("📈 Dashboard ejecutivo", use_container_width=True, key="adm_dash"):
-            abrir_modulo_admin("dashboard")
-        if st.button("🚗 Vehículos y taller", use_container_width=True, key="adm_veh"):
-            abrir_modulo_admin("vehiculos")
-        if st.button("📦 Insumos y Refacciones", use_container_width=True, key="adm_insumos"):
-            abrir_modulo_admin("insumos_refacciones")
+        render_vista_previa_admin(jornada)
+        render_extraccion_evidencia_admin(jornada)
 
-    with st.expander("Más control: programas, cuadrillas y refacciones", expanded=False):
-        x1, x2, x3 = st.columns(3)
-        with x1:
-            if st.button("🗂️ Programas mensuales", use_container_width=True, key="adm_prog"):
+    st.markdown("#### Módulos base")
+    pie_hist, pie_ub = st.columns(2)
+    with pie_hist:
+        if st.button("Historial", type="primary", use_container_width=True, key="adm_pie_historial"):
+            abrir_modulo_admin("historial_base")
+        st.caption("Historial de OTs · Bitácora general · Calendario de asistencia de cuadrillas.")
+    with pie_ub:
+        if st.button("Ubicación y Equipos", type="primary", use_container_width=True, key="adm_pie_ubicaciones"):
+            abrir_modulo_admin("ubicaciones")
+        st.caption("Catálogo de activos, sectores y fichas de pozo.")
+
+    with st.expander("Otros módulos del centro de control", expanded=False):
+        extra = st.columns(4)
+        with extra[0]:
+            if st.button("Dashboard", use_container_width=True, key="adm_m_dash"):
+                abrir_modulo_admin("dashboard")
+            if st.button("Programas mensuales", use_container_width=True, key="adm_m_prog"):
                 abrir_modulo_admin("programas")
-        with x2:
-            if st.button("👷 Historial de cuadrillas", use_container_width=True, key="adm_cuad"):
-                abrir_modulo_admin("cuadrillas")
-        with x3:
-            if st.button("🧰 Soporte de refacciones", use_container_width=True, key="adm_sop"):
+        with extra[1]:
+            if st.button("Vehículos y taller", use_container_width=True, key="adm_m_veh"):
+                abrir_modulo_admin("vehiculos")
+            if st.button("Programa de octubre", use_container_width=True, key="adm_m_octubre"):
+                abrir_modulo_admin("programa_octubre")
+        with extra[2]:
+            if st.button("Soporte de refacciones", use_container_width=True, key="adm_m_sop"):
                 abrir_modulo_admin("soporte")
-        if st.button(
-            "📅 Programa de octubre",
-            use_container_width=True,
-            key="adm_programa_octubre",
-        ):
-            abrir_modulo_admin("programa_octubre")
+            if st.button("Permisos", use_container_width=True, key="adm_m_perm"):
+                abrir_modulo_admin("auditoria", admin_sub_auditoria="permisos")
+        with extra[3]:
+            if st.button("Historial de cuadrillas", use_container_width=True, key="adm_m_cuad"):
+                abrir_modulo_admin("cuadrillas")
+            if st.button("Programados vs paros", use_container_width=True, key="adm_m_paros"):
+                abrir_modulo_admin("programados")
+
+
+def render_historial_base_admin() -> None:
+    st.markdown('<div class="section-title">Historial</div>', unsafe_allow_html=True)
+    seccion = st.radio(
+        "Sección",
+        [
+            "Historial de OTs",
+            "Bitácora General",
+            "Calendario de Asistencia de Cuadrillas",
+        ],
+        horizontal=True,
+        key="historial_base_seccion",
+    )
+    if seccion == "Historial de OTs":
+        render_historial_diario_ot()
+    elif seccion == "Bitácora General":
+        render_revision_bitacoras()
+    else:
+        render_calendario_asistencia()
 
 
 def render_barra_modulo_admin(titulo: str) -> None:
@@ -20080,7 +20466,7 @@ def render_panel_administrativo() -> None:
     if not modulo_id:
         render_encabezado(
             "🗂️ Centro de Comando Administrativo",
-            "Soledad · Base Álamo — hangar perimetral con núcleo de jornada",
+            "Soledad · Base Álamo — calendario de jornada al centro",
         )
     else:
         render_encabezado(
@@ -20115,6 +20501,8 @@ def render_panel_administrativo() -> None:
         render_control_almacen()
     elif modulo_id == "ubicaciones":
         render_panel_ubicaciones(encabezado=False)
+    elif modulo_id == "historial_base":
+        render_historial_base_admin()
     elif modulo_id == "programados":
         render_control_programados()
     elif modulo_id == "programas":
