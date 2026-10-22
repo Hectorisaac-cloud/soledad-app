@@ -48,8 +48,6 @@ EVIDENCIAS_DIR = "evidencias"
 EVIDENCIA_FOTOGRAFICA_DIR = "Evidencia Fotografica"
 EVIDENCIA_FOTOGRAFICA_FILE = "evidencia_fotografica.json"
 EVIDENCIA_OCTUBRE_DIR = "evidencia_fotografica_octubre"
-BAUL_DIR = "Baul_Evidencias"
-BAUL_FILE = "baul_evidencias.json"
 CATALOGOS_FILE = "catalogos.json"
 PERMISOS_FILE = "permisos.json"
 ASIGNACIONES_FILE = "asignaciones_diarias.json"
@@ -187,12 +185,21 @@ ESTATUS_OT_CERRADA = "cerrada"
 ORIGEN_PJP4 = "PJP4 (Propio)"
 ORIGEN_OPS = "OPS (Proporcionado por el Cliente)"
 ORIGENES_INSUMO = [ORIGEN_PJP4, ORIGEN_OPS]
+TIPO_INSUMO_CONSUMIBLE = "Consumible"
+TIPO_INSUMO_ROTATIVO = "Componente Rotativo / Reparable"
+TIPOS_INSUMO = [TIPO_INSUMO_CONSUMIBLE, TIPO_INSUMO_ROTATIVO]
+CONDICION_PIEZA_INSTALADA = ["Nuevo", "Reparado por PJP4"]
+DESTINO_PIEZA_RETIRADA = [
+    "Enviada a Taller de Reparación",
+    "Baja definitiva (Chatarra)",
+]
 INSUMOS_CATALOGO_DEFAULT = [
     {
         "id": "aceite-sae-50",
         "nombre": "Aceite SAE 50",
         "unidad": "L",
         "columna_excel": "ACEITE (LTS)",
+        "tipo": TIPO_INSUMO_CONSUMIBLE,
         "precargado": True,
     },
     {
@@ -200,6 +207,7 @@ INSUMOS_CATALOGO_DEFAULT = [
         "nombre": "Refrigerante",
         "unidad": "L",
         "columna_excel": "REFRIGERANTE (LTS)",
+        "tipo": TIPO_INSUMO_CONSUMIBLE,
         "precargado": True,
     },
     {
@@ -207,6 +215,7 @@ INSUMOS_CATALOGO_DEFAULT = [
         "nombre": "Grasa",
         "unidad": "Kg",
         "columna_excel": "GRASA (KG)",
+        "tipo": TIPO_INSUMO_CONSUMIBLE,
         "precargado": True,
     },
     {
@@ -214,6 +223,7 @@ INSUMOS_CATALOGO_DEFAULT = [
         "nombre": "Filtro de aceite",
         "unidad": "Pzas",
         "columna_excel": "FILTROS (PZAS)",
+        "tipo": TIPO_INSUMO_CONSUMIBLE,
         "precargado": True,
     },
     {
@@ -221,6 +231,63 @@ INSUMOS_CATALOGO_DEFAULT = [
         "nombre": "Bujías",
         "unidad": "Pzas",
         "columna_excel": "BUJÍAS (PZAS)",
+        "tipo": TIPO_INSUMO_CONSUMIBLE,
+        "precargado": True,
+    },
+    {
+        "id": "banda-c-115",
+        "nombre": "Banda C-115",
+        "unidad": "Pzas",
+        "columna_excel": "",
+        "tipo": TIPO_INSUMO_CONSUMIBLE,
+        "precargado": True,
+    },
+    {
+        "id": "banda-c-112",
+        "nombre": "Banda C-112",
+        "unidad": "Pzas",
+        "columna_excel": "",
+        "tipo": TIPO_INSUMO_CONSUMIBLE,
+        "precargado": True,
+    },
+    {
+        "id": "banda-c-240",
+        "nombre": "Banda C-240",
+        "unidad": "Pzas",
+        "columna_excel": "",
+        "tipo": TIPO_INSUMO_CONSUMIBLE,
+        "precargado": True,
+    },
+    {
+        "id": "banda-micro-v",
+        "nombre": "Banda Micro V",
+        "unidad": "Pzas",
+        "columna_excel": "",
+        "tipo": TIPO_INSUMO_CONSUMIBLE,
+        "precargado": True,
+    },
+    {
+        "id": "bomba-de-agua",
+        "nombre": "Bomba de agua",
+        "unidad": "Pzas",
+        "columna_excel": "",
+        "tipo": TIPO_INSUMO_ROTATIVO,
+        "precargado": True,
+    },
+    {
+        "id": "alternador",
+        "nombre": "Alternador",
+        "unidad": "Pzas",
+        "columna_excel": "ALTERNADOR CANTIDAD",
+        "tipo": TIPO_INSUMO_ROTATIVO,
+        "precargado": True,
+    },
+    {
+        "id": "marcha-motor-arranque",
+        "nombre": "Marcha / Motor de arranque",
+        "unidad": "Pzas",
+        "columna_excel": "",
+        "tipo": TIPO_INSUMO_ROTATIVO,
         "precargado": True,
     },
 ]
@@ -280,8 +347,6 @@ INSUMOS_REGISTRO_COMUNES = [
     "Grasa",
     "Filtro de aceite",
     "Bujías",
-    "Bandas",
-    "Alternador",
 ]
 SECTORES_DEFAULT = [
     "Almacen OPS (AOPS)",
@@ -555,6 +620,7 @@ COLUMNAS_INSUMOS_NUEVOS = [
     "ALTERNADOR ESTADO/ORIGEN",
     "ALTERNADOR DESCRIPCIÓN",
     "OTROS INSUMOS",
+    "PIEZAS ROTATIVAS",
 ]
 
 COLUMNAS_EXCEL = [
@@ -694,43 +760,6 @@ st.markdown(
             color: #94a3b8;
             font-size: 0.85rem;
         }
-        .baul-chip {
-            display: inline-block;
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-            border-radius: 999px;
-            padding: 0.12rem 0.5rem;
-            margin: 0.15rem 0 0.35rem;
-        }
-        .baul-chip.lista { background: #e2e8f0; color: #334155; }
-        .baul-chip.oficial { background: #d1fae5; color: #065f46; }
-        .baul-cofre {
-            background:
-                radial-gradient(circle at 50% 0%, rgba(232, 201, 138, 0.2), transparent 46%),
-                linear-gradient(180deg, #4a3424 0%, #2a1c12 58%, #1a120c 100%);
-            border: 1px solid #d4b483;
-            border-radius: 18px;
-            padding: 1rem 1.15rem 0.95rem;
-            margin: 0.35rem 0 0.85rem;
-            box-shadow: inset 0 1px 0 rgba(255, 236, 196, 0.28), 0 10px 24px rgba(42, 28, 18, 0.22);
-        }
-        .baul-cofre .tapa {
-            color: #e8c98a;
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 0.16em;
-            text-transform: uppercase;
-            margin: 0;
-        }
-        .baul-cofre h3 {
-            color: #fff6e4;
-            margin: 0.15rem 0 0.4rem;
-            font-size: 1.35rem;
-        }
-        .baul-cofre p { color: #f0e0c4; margin: 0.12rem 0; }
-        .baul-cofre .cuenta { color: #e8c98a; margin-top: 0.4rem; font-size: 0.88rem; }
         div[data-testid="stImage"] img {
             height: 180px;
             object-fit: cover;
@@ -1926,6 +1955,24 @@ def unidad_es_entera(unidad: str) -> bool:
     }
 
 
+def tipo_insumo_por_nombre(nombre: str) -> str:
+    clave = _sin_acentos(str(nombre or "")).casefold()
+    if any(token in clave for token in ("bomba de agua", "alternador", "motor de arranque", "marcha")):
+        return TIPO_INSUMO_ROTATIVO
+    return TIPO_INSUMO_CONSUMIBLE
+
+
+def tipo_insumo_item(item: dict) -> str:
+    explicito = str(item.get("tipo") or "").strip()
+    if explicito in TIPOS_INSUMO:
+        return explicito
+    return tipo_insumo_por_nombre(str(item.get("nombre") or ""))
+
+
+def es_insumo_rotativo(item: dict) -> bool:
+    return tipo_insumo_item(item) == TIPO_INSUMO_ROTATIVO
+
+
 def almacen_default() -> dict:
     catalogo = []
     for item in INSUMOS_CATALOGO_DEFAULT:
@@ -1935,6 +1982,7 @@ def almacen_default() -> dict:
                 "nombre": item["nombre"],
                 "unidad": item["unidad"],
                 "columna_excel": item.get("columna_excel", ""),
+                "tipo": tipo_insumo_item(item),
                 "precargado": True,
                 "activo": True,
             }
@@ -1964,6 +2012,7 @@ def normalizar_almacen(datos) -> dict:
                 "nombre": nombre,
                 "unidad": str(item.get("unidad") or "Pzas").strip(),
                 "columna_excel": str(item.get("columna_excel", "") or ""),
+                "tipo": tipo_insumo_item(item),
                 "precargado": bool(item.get("precargado", False)),
                 "activo": bool(item.get("activo", True)),
             }
@@ -1993,11 +2042,13 @@ def catalogo_insumos_activos() -> list[dict]:
     return [item for item in cargar_almacen()["catalogo"] if item.get("activo", True)]
 
 
-def alta_insumo_catalogo(nombre: str, unidad: str) -> str | None:
+def alta_insumo_catalogo(nombre: str, unidad: str, tipo: str = TIPO_INSUMO_CONSUMIBLE) -> str | None:
     nombre = nombre.strip()
     unidad = unidad.strip() or "Pzas"
     if not nombre:
         return "Escribe el nombre del insumo."
+    if tipo not in TIPOS_INSUMO:
+        return "Selecciona si el insumo es consumible o componente rotativo / reparable."
     datos = cargar_almacen()
     if any(item["nombre"].casefold() == nombre.casefold() for item in datos["catalogo"]):
         return f"«{nombre}» ya existe en el catálogo."
@@ -2007,6 +2058,7 @@ def alta_insumo_catalogo(nombre: str, unidad: str) -> str | None:
             "nombre": nombre,
             "unidad": unidad,
             "columna_excel": "",
+            "tipo": tipo,
             "precargado": False,
             "activo": True,
         }
@@ -2035,21 +2087,24 @@ def registrar_consumos_campo(
         cantidad = float(consumo.get("cantidad") or 0)
         if cantidad <= 0:
             continue
-        registrar_movimiento_almacen(
-            {
-                "tipo": "consumo",
-                "fecha": fecha.strftime("%Y-%m-%d"),
-                "secuencia": secuencia,
-                "cuadrilla": cuadrilla,
-                "sector": sector,
-                "insumo_id": consumo.get("insumo_id", ""),
-                "insumo": consumo.get("nombre", ""),
-                "cantidad": cantidad,
-                "unidad": consumo.get("unidad", ""),
-                "origen": consumo.get("origen", ""),
-                "origen_registro": "campo",
-            }
-        )
+        movimiento = {
+            "tipo": "consumo",
+            "fecha": fecha.strftime("%Y-%m-%d"),
+            "secuencia": secuencia,
+            "cuadrilla": cuadrilla,
+            "sector": sector,
+            "insumo_id": consumo.get("insumo_id", ""),
+            "insumo": consumo.get("nombre", ""),
+            "cantidad": cantidad,
+            "unidad": consumo.get("unidad", ""),
+            "origen": consumo.get("origen", ""),
+            "origen_registro": "campo",
+            "tipo_insumo": str(consumo.get("tipo") or TIPO_INSUMO_CONSUMIBLE),
+        }
+        if str(consumo.get("tipo") or "") == TIPO_INSUMO_ROTATIVO:
+            movimiento["condicion_instalada"] = str(consumo.get("condicion_instalada") or "")
+            movimiento["destino_retirada"] = str(consumo.get("destino_retirada") or "")
+        registrar_movimiento_almacen(movimiento)
 
 
 def movimientos_consumo(mes_clave: str = "") -> list[dict]:
@@ -2103,6 +2158,23 @@ def validar_consumos_campo(consumos: list[dict]) -> str | None:
             return f"Indica una cantidad mayor a 0 para «{nombre}»."
         if consumo.get("origen") not in ORIGENES_INSUMO:
             return f"Selecciona el origen del insumo «{nombre}» (PJP4 o OPS)."
+    return validar_piezas_rotativas(consumos)
+
+
+def validar_piezas_rotativas(consumos: list[dict]) -> str | None:
+    for consumo in consumos:
+        if str(consumo.get("tipo") or "") != TIPO_INSUMO_ROTATIVO:
+            continue
+        nombre = str(consumo.get("nombre") or "componente").strip() or "componente"
+        condicion = str(consumo.get("condicion_instalada") or "").strip()
+        destino = str(consumo.get("destino_retirada") or "").strip()
+        if condicion not in CONDICION_PIEZA_INSTALADA:
+            return (
+                f"Selecciona la condición de la pieza instalada para «{nombre}» "
+                "(Nuevo o Reparado por PJP4)."
+            )
+        if destino not in DESTINO_PIEZA_RETIRADA:
+            return f"Selecciona el destino de la pieza retirada para «{nombre}»."
     return None
 
 
@@ -2900,6 +2972,9 @@ def insumos_de_fila(fila) -> list[str]:
     otros = str(fila.get("OTROS INSUMOS") or "").strip()
     if otros and otros.lower() not in {"0", "nan", "none"}:
         partes.append(otros)
+    piezas = str(fila.get("PIEZAS ROTATIVAS") or "").strip()
+    if piezas and piezas.lower() not in {"0", "nan", "none"}:
+        partes.append(piezas)
     return partes
 
 
@@ -4808,13 +4883,89 @@ def insumos_vacios() -> dict[str, float | int | str]:
             "ALTERNADOR ESTADO/ORIGEN": "",
             "ALTERNADOR DESCRIPCIÓN": "",
             "OTROS INSUMOS": "",
+            "PIEZAS ROTATIVAS": "",
         }
     )
     return valores
 
 
+def _texto_cantidad_insumo(cantidad) -> str:
+    try:
+        numero = float(cantidad or 0)
+    except (TypeError, ValueError):
+        return "0"
+    if numero.is_integer():
+        return str(int(numero))
+    return f"{numero:g}"
+
+
+def texto_pieza_rotativa(consumo: dict) -> str:
+    nombre = str(consumo.get("nombre") or "Componente").strip()
+    cantidad = _texto_cantidad_insumo(consumo.get("cantidad"))
+    condicion = str(consumo.get("condicion_instalada") or "").strip()
+    destino = str(consumo.get("destino_retirada") or "").strip()
+    return f"{nombre} x{cantidad}: instalada {condicion}; retirada {destino}"
+
+
+def volcar_detalle_insumos(valores: dict, consumos: list[dict]) -> None:
+    bandas_cant = 0.0
+    bandas_desc: list[str] = []
+    bandas_origen: list[str] = []
+    alt_cant = 0.0
+    alt_cond: list[str] = []
+    alt_dest: list[str] = []
+    bomba_cant = 0.0
+    piezas: list[str] = []
+    otros_extra: list[str] = []
+    for consumo in consumos:
+        nombre = str(consumo.get("nombre") or "").strip()
+        clave = _sin_acentos(nombre).casefold()
+        try:
+            cantidad = float(consumo.get("cantidad") or 0)
+        except (TypeError, ValueError):
+            cantidad = 0.0
+        if str(consumo.get("tipo") or "") == TIPO_INSUMO_ROTATIVO:
+            piezas.append(texto_pieza_rotativa(consumo))
+            if "alternador" in clave:
+                alt_cant += cantidad
+                if consumo.get("condicion_instalada"):
+                    alt_cond.append(str(consumo["condicion_instalada"]))
+                if consumo.get("destino_retirada"):
+                    alt_dest.append(str(consumo["destino_retirada"]))
+            elif "bomba de agua" in clave:
+                bomba_cant += cantidad
+            else:
+                otros_extra.append(f"{nombre} {_texto_cantidad_insumo(cantidad)}")
+            continue
+        if "banda" in clave:
+            bandas_cant += cantidad
+            bandas_desc.append(
+                nombre if cantidad == 1 else f"{nombre} x{_texto_cantidad_insumo(cantidad)}"
+            )
+            origen = str(consumo.get("origen") or "").strip()
+            if origen and origen not in bandas_origen:
+                bandas_origen.append(origen)
+    if bandas_cant:
+        valores["BANDAS CANTIDAD"] = bandas_cant
+        valores["BANDAS DESCRIPCIÓN"] = ", ".join(bandas_desc)
+        valores["BANDAS PROPORCIONADO POR"] = ", ".join(bandas_origen)
+    if alt_cant:
+        valores["ALTERNADOR CANTIDAD"] = alt_cant
+        valores["ALTERNADOR ESTADO/ORIGEN"] = " | ".join(dict.fromkeys(alt_cond))
+        valores["ALTERNADOR DESCRIPCIÓN"] = " | ".join(dict.fromkeys(alt_dest))
+    if bomba_cant:
+        valores["BOMBA DE AGUA REPARADA PJP4"] = bomba_cant
+    if piezas:
+        valores["PIEZAS ROTATIVAS"] = " | ".join(piezas)
+    if otros_extra:
+        previo = str(valores.get("OTROS INSUMOS") or "").strip()
+        extra = ", ".join(otros_extra)
+        valores["OTROS INSUMOS"] = f"{previo}, {extra}" if previo else extra
+
+
 def renderizar_insumo_catalogo(form_id: int, item: dict) -> dict | None:
     slug = item.get("id") or slug_insumo(item["nombre"])
+    rotativo = es_insumo_rotativo(item)
     usa = st.checkbox(item["nombre"], key=f"usa_cat_{slug}_{form_id}")
     if not usa:
         return None
@@ -4843,6 +4994,23 @@ def renderizar_insumo_catalogo(form_id: int, item: dict) -> dict | None:
         horizontal=True,
         key=f"origen_cat_{slug}_{form_id}",
     )
+    condicion = ""
+    destino = ""
+    if rotativo:
+        condicion = st.selectbox(
+            "Condición de la pieza instalada",
+            CONDICION_PIEZA_INSTALADA,
+            index=None,
+            placeholder="Seleccionar...",
+            key=f"cond_cat_{slug}_{form_id}",
+        ) or ""
+        destino = st.selectbox(
+            "Destino de la pieza retirada",
+            DESTINO_PIEZA_RETIRADA,
+            index=None,
+            placeholder="Seleccionar...",
+            key=f"dest_cat_{slug}_{form_id}",
+        ) or ""
     return {
         "insumo_id": slug,
         "nombre": item["nombre"],
@@ -4850,136 +5018,79 @@ def renderizar_insumo_catalogo(form_id: int, item: dict) -> dict | None:
         "unidad": unidad,
         "origen": origen or "",
         "columna_excel": item.get("columna_excel", ""),
+        "tipo": TIPO_INSUMO_ROTATIVO if rotativo else TIPO_INSUMO_CONSUMIBLE,
+        "condicion_instalada": condicion,
+        "destino_retirada": destino,
     }
+
+
+def _render_grupo_insumos(form_id: int, titulo: str, ayuda: str, items: list[dict]) -> list[dict]:
+    if not items:
+        return []
+    st.markdown(f"**{titulo}**")
+    st.caption(ayuda)
+    consumos: list[dict] = []
+    columnas = st.columns(3, gap="medium")
+    for indice, item in enumerate(items):
+        with columnas[indice % 3]:
+            consumo = renderizar_insumo_catalogo(form_id, item)
+            if consumo:
+                consumos.append(consumo)
+    return consumos
 
 
 def renderizar_insumos(form_id: int) -> dict[str, float | int | str]:
     valores = insumos_vacios()
-    consumos: list[dict] = []
     catalogo = catalogo_insumos_activos()
-    columnas = st.columns(3, gap="medium")
-    for i, item in enumerate(catalogo):
-        with columnas[i % 3]:
-            consumo = renderizar_insumo_catalogo(form_id, item)
-            if consumo:
-                consumos.append(consumo)
-                col_excel = consumo.get("columna_excel") or ""
-                if col_excel in COLUMNAS_INSUMOS:
-                    valores[col_excel] = consumo["cantidad"]
+    consumibles = [item for item in catalogo if not es_insumo_rotativo(item)]
+    rotativos = [item for item in catalogo if es_insumo_rotativo(item)]
+    consumos = _render_grupo_insumos(
+        form_id,
+        "Consumibles",
+        "Aceite, filtros, bandas (C-115, C-112, C-240, Micro V) y el resto de material que se gasta.",
+        consumibles,
+    )
+    consumos.extend(
+        _render_grupo_insumos(
+            form_id,
+            "Componentes rotativos / reparables",
+            "Bomba de agua, alternador y marcha. Al marcar uno se pide la condición de la pieza instalada y el destino de la retirada.",
+            rotativos,
+        )
+    )
+    for consumo in consumos:
+        col_excel = consumo.get("columna_excel") or ""
+        if col_excel in COLUMNAS_INSUMOS:
+            valores[col_excel] = consumo["cantidad"]
 
-    extras = st.columns(3, gap="medium")
-    with extras[0]:
-        usa_bandas = st.checkbox("Bandas", key=f"usa_bandas_{form_id}")
-        if usa_bandas:
-            valores["BANDAS CANTIDAD"] = st.number_input(
-                "Cantidad de bandas",
-                min_value=0,
-                step=1,
-                value=1,
-                key=f"bandas_cant_{form_id}",
-            )
-            valores["BANDAS DESCRIPCIÓN"] = st.text_input(
-                "Tipo de banda",
-                placeholder="Describe el tipo de banda",
-                key=f"bandas_desc_{form_id}",
-            ).strip()
-            proveedor = st.radio(
-                "Origen del insumo",
-                ORIGENES_INSUMO,
-                index=None,
-                horizontal=True,
-                key=f"bandas_prov_{form_id}",
-            )
-            valores["BANDAS PROPORCIONADO POR"] = proveedor or ""
+    usa_otros = st.checkbox("Otros insumos", key=f"usa_otros_{form_id}")
+    if usa_otros:
+        valores["OTROS INSUMOS"] = st.text_area(
+            "Detalle de otros insumos",
+            height=120,
+            placeholder="Escribe cualquier otro insumo utilizado…",
+            key=f"otros_insumos_{form_id}",
+        ).strip()
+        origen_otros = st.radio(
+            "Origen del insumo",
+            ORIGENES_INSUMO,
+            index=None,
+            horizontal=True,
+            key=f"otros_origen_{form_id}",
+        )
+        if valores["OTROS INSUMOS"]:
             consumos.append(
                 {
-                    "insumo_id": "bandas",
-                    "nombre": "Bandas",
-                    "cantidad": valores["BANDAS CANTIDAD"],
+                    "insumo_id": "otros",
+                    "nombre": valores["OTROS INSUMOS"],
+                    "cantidad": 1,
                     "unidad": "Pzas",
-                    "origen": proveedor or "",
+                    "origen": origen_otros or "",
+                    "tipo": TIPO_INSUMO_CONSUMIBLE,
                 }
             )
 
-    origen_alternador = None
-    with extras[1]:
-        usa_alternador = st.checkbox("Alternador", key=f"usa_alternador_{form_id}")
-        if usa_alternador:
-            valores["ALTERNADOR CANTIDAD"] = st.number_input(
-                "Cantidad de alternadores",
-                min_value=0,
-                step=1,
-                value=1,
-                key=f"alternador_cant_{form_id}",
-            )
-            origen_alternador = st.selectbox(
-                "Estado / Origen",
-                ALTERNADOR_ORIGEN,
-                index=None,
-                placeholder="Seleccionar...",
-                key=f"alternador_origen_{form_id}",
-            )
-            if origen_alternador == "Otro (Especificar)":
-                origen_otro = st.text_input(
-                    "Especificar origen",
-                    placeholder="Escribe el origen o estado",
-                    key=f"alternador_origen_otro_{form_id}",
-                ).strip()
-                valores["ALTERNADOR ESTADO/ORIGEN"] = origen_otro
-            else:
-                valores["ALTERNADOR ESTADO/ORIGEN"] = origen_alternador or ""
-            valores["ALTERNADOR DESCRIPCIÓN"] = st.text_input(
-                "Descripción / detalles",
-                placeholder="Detalles adicionales del alternador",
-                key=f"alternador_desc_{form_id}",
-            ).strip()
-            origen_alt = st.radio(
-                "Origen del insumo",
-                ORIGENES_INSUMO,
-                index=None,
-                horizontal=True,
-                key=f"alternador_origen_insumo_{form_id}",
-            )
-            consumos.append(
-                {
-                    "insumo_id": "alternador",
-                    "nombre": "Alternador",
-                    "cantidad": valores["ALTERNADOR CANTIDAD"],
-                    "unidad": "Pzas",
-                    "origen": origen_alt or "",
-                }
-            )
-
-    with extras[2]:
-        usa_otros = st.checkbox("Otros insumos", key=f"usa_otros_{form_id}")
-        if usa_otros:
-            valores["OTROS INSUMOS"] = st.text_area(
-                "Detalle de otros insumos",
-                height=120,
-                placeholder="Escribe cualquier otro insumo utilizado…",
-                key=f"otros_insumos_{form_id}",
-            ).strip()
-            origen_otros = st.radio(
-                "Origen del insumo",
-                ORIGENES_INSUMO,
-                index=None,
-                horizontal=True,
-                key=f"otros_origen_{form_id}",
-            )
-            if valores["OTROS INSUMOS"]:
-                consumos.append(
-                    {
-                        "insumo_id": "otros",
-                        "nombre": valores["OTROS INSUMOS"],
-                        "cantidad": 1,
-                        "unidad": "Pzas",
-                        "origen": origen_otros or "",
-                    }
-                )
-
-    valores["_usa_bandas"] = usa_bandas
-    valores["_usa_alternador"] = usa_alternador
-    valores["_origen_alternador"] = origen_alternador if usa_alternador else ""
+    volcar_detalle_insumos(valores, consumos)
     valores["_consumos"] = consumos
     return valores
 
@@ -6225,7 +6336,10 @@ def construir_registro(
         registro[col] = insumos.get(col, 0 if col in COLUMNAS_NUMERICAS else "")
     for origen, destino in MAPA_CONSUMIBLE_SOLEDAD.items():
         registro[destino] = insumos.get(origen, 0)
-    if insumos.get("OTROS INSUMOS"):
+    bomba = insumos.get("BOMBA DE AGUA REPARADA PJP4")
+    if bomba:
+        registro["BOMBA DE AGUA REPARADA PJP4"] = bomba
+    elif insumos.get("OTROS INSUMOS"):
         registro["BOMBA DE AGUA REPARADA PJP4"] = insumos.get("OTROS INSUMOS")
     for i, col in enumerate(COLUMNAS_FOTOS):
         registro[col] = rutas[i]
@@ -7556,32 +7670,14 @@ def render_captura_actividades_campo() -> None:
     st.markdown("")
     st.markdown('<div class="section-title">🛢️ Insumos utilizados</div>', unsafe_allow_html=True)
     st.caption(
-        "Activa solo los insumos que aplican. El origen — PJP4 (Propio) u OPS (Cliente) — es obligatorio."
+        "Activa solo los insumos que aplican. El origen — PJP4 (Propio) u OPS (Cliente) — es obligatorio. "
+        "En un componente rotativo también se registra la condición de la pieza instalada y el destino de la retirada."
     )
     insumos = renderizar_insumos(form_id)
 
     st.markdown("---")
     st.markdown('<div class="section-title">📷 Evidencia fotográfica</div>', unsafe_allow_html=True)
-    actividad_baul = ""
-    if tipo_actividad and tipo_actividad != "Otra":
-        actividad_baul = str(tipo_actividad)
-    elif tipo_actividad_otro:
-        actividad_baul = str(tipo_actividad_otro).strip()
-    secuencia_baul = formatear_secuencia(int(secuencia_n))
-    turno_baul = texto_par_personal(
-        str(cobertura.get("mecanico_real") or ""),
-        str(cobertura.get("ayudante_real") or ""),
-    )
-    render_baul_actividad(
-        cuadrilla=cuadrilla,
-        dia=fecha,
-        secuencia=secuencia_baul,
-        actividad=actividad_baul,
-        turno=turno_baul,
-        key_prefix=f"baul_cap_{form_id}_{clave_baul_actividad(cuadrilla, fecha, secuencia_baul)}",
-    )
-    st.markdown("##### Fotos directas de esta OT")
-    st.caption("Opcional. Hasta 9 imágenes que se guardan ya en el registro al pulsar Guardar.")
+    st.caption("Carga directa de la actividad. Hasta 9 imágenes se guardan en el registro al pulsar Guardar.")
     archivos_foto = st.file_uploader(
         "Cargar fotografías",
         type=["png", "jpg", "jpeg", "webp"],
@@ -7625,8 +7721,6 @@ def render_captura_actividades_campo() -> None:
     )
     pozo_final = pozo.strip() if sector_requiere_pozo(sector_sel) else ""
     secuencia_final = formatear_secuencia(secuencia_n)
-    usa_alternador = bool(insumos.get("_usa_alternador"))
-    origen_alternador = insumos.get("_origen_alternador") or ""
     consumos = list(insumos.get("_consumos") or [])
     error_consumo = validar_consumos_campo(consumos)
 
@@ -7642,14 +7736,6 @@ def render_captura_actividades_campo() -> None:
         st.warning("Por favor selecciona una actividad oficial de la cuadrilla.")
     elif cobertura.get("cobertura") == "Sí" and not cobertura.get("mecanico_real"):
         st.warning("Captura el nombre real de quien ejecutó el servicio en esta cobertura.")
-    elif usa_alternador and not origen_alternador:
-        st.warning("Por favor selecciona el estado / origen del alternador.")
-    elif (
-        usa_alternador
-        and origen_alternador == "Otro (Especificar)"
-        and not insumos.get("ALTERNADOR ESTADO/ORIGEN")
-    ):
-        st.warning("Por favor especifica el origen o estado del alternador.")
     elif error_consumo:
         st.warning(error_consumo)
     else:
@@ -7679,17 +7765,6 @@ def render_captura_actividades_campo() -> None:
                     ignore_index=True,
                 )
             guardar_en_excel(df_final)
-            vincular_baul_actividad(
-                cuadrilla,
-                fecha,
-                secuencia_final,
-                registro["ID_REGISTRO"],
-                tipo_actividad_final or "",
-                texto_par_personal(
-                    str(cobertura.get("mecanico_real") or ""),
-                    str(cobertura.get("ayudante_real") or ""),
-                ),
-            )
             registrar_consumos_campo(
                 fecha, secuencia_final, cuadrilla, sector_final, consumos
             )
@@ -9393,26 +9468,86 @@ def render_programados_ops_excel(
         st.session_state.ops_evidencia_abierta = None
 
 
-def nombres_insumos_registro() -> list[str]:
-    nombres = list(INSUMOS_REGISTRO_COMUNES)
-    vistos = {nombre.casefold() for nombre in nombres}
+def _items_insumos_registro() -> list[dict]:
+    items: list[dict] = []
+    vistos: set[str] = set()
     for item in catalogo_insumos_activos():
         nombre = str(item.get("nombre") or "").strip()
-        if nombre and nombre.casefold() not in vistos:
-            nombres.append(nombre)
-            vistos.add(nombre.casefold())
-    return nombres
+        if not nombre or nombre.casefold() in vistos:
+            continue
+        vistos.add(nombre.casefold())
+        items.append(
+            {
+                "nombre": nombre,
+                "tipo": tipo_insumo_item(item),
+                "id": str(item.get("id") or slug_insumo(nombre)),
+            }
+        )
+    for nombre in INSUMOS_REGISTRO_COMUNES:
+        if nombre.casefold() in vistos:
+            continue
+        vistos.add(nombre.casefold())
+        items.append({"nombre": nombre, "tipo": TIPO_INSUMO_CONSUMIBLE, "id": slug_insumo(nombre)})
+    return items
 
 
-def render_insumos_registro_bitacora(epoch: int) -> str:
-    st.caption("Marca solo los insumos que se utilizaron. Los marcados se guardan juntos en el registro.")
-    nombres = nombres_insumos_registro()
-    columnas = st.columns(3, gap="medium")
-    marcados: list[str] = []
-    for indice, nombre in enumerate(nombres):
-        with columnas[indice % 3]:
-            if st.checkbox(nombre, key=f"bit_reg_insumo_{slug_insumo(nombre)}_{epoch}"):
-                marcados.append(nombre)
+def render_insumos_registro_bitacora(epoch: int) -> dict:
+    st.caption(
+        "Marca solo lo que se instaló o se gastó. "
+        "Un componente rotativo pide la condición de la pieza nueva y el destino de la retirada."
+    )
+    items = _items_insumos_registro()
+    nombres: list[str] = []
+    rotativos: list[dict] = []
+    grupos = [
+        (
+            TIPO_INSUMO_CONSUMIBLE,
+            "Consumibles",
+            "Bandas C-115, C-112, C-240, Micro V y el resto de material que se gasta.",
+        ),
+        (
+            TIPO_INSUMO_ROTATIVO,
+            "Componentes rotativos / reparables",
+            "Bomba de agua, alternador y marcha / motor de arranque.",
+        ),
+    ]
+    for tipo, titulo, ayuda in grupos:
+        del_tipo = [item for item in items if item["tipo"] == tipo]
+        if not del_tipo:
+            continue
+        st.markdown(f"**{titulo}**")
+        st.caption(ayuda)
+        columnas = st.columns(3, gap="medium")
+        for indice, item in enumerate(del_tipo):
+            with columnas[indice % 3]:
+                slug = item["id"]
+                if not st.checkbox(item["nombre"], key=f"bit_reg_insumo_{slug}_{epoch}"):
+                    continue
+                nombres.append(item["nombre"])
+                if tipo != TIPO_INSUMO_ROTATIVO:
+                    continue
+                condicion = st.selectbox(
+                    "Condición de la pieza instalada",
+                    CONDICION_PIEZA_INSTALADA,
+                    index=None,
+                    placeholder="Seleccionar...",
+                    key=f"bit_reg_cond_{slug}_{epoch}",
+                )
+                destino = st.selectbox(
+                    "Destino de la pieza retirada",
+                    DESTINO_PIEZA_RETIRADA,
+                    index=None,
+                    placeholder="Seleccionar...",
+                    key=f"bit_reg_dest_{slug}_{epoch}",
+                )
+                rotativos.append(
+                    {
+                        "nombre": item["nombre"],
+                        "tipo": TIPO_INSUMO_ROTATIVO,
+                        "condicion_instalada": condicion or "",
+                        "destino_retirada": destino or "",
+                    }
+                )
     usa_otros = st.checkbox("Otros insumos", key=f"bit_reg_insumo_otros_{epoch}")
     if usa_otros:
         detalle = st.text_input(
@@ -9420,10 +9555,12 @@ def render_insumos_registro_bitacora(epoch: int) -> str:
             placeholder="Escribe cualquier otro insumo utilizado",
             key=f"bit_reg_insumo_otros_txt_{epoch}",
         ).strip()
-        marcados.append(detalle or "Otros insumos")
-    if marcados:
-        st.caption("Se guardará: **" + ", ".join(marcados) + "**")
-    return ", ".join(marcados)
+        nombres.append(detalle or "Otros insumos")
+    if nombres or rotativos:
+        resumen = list(nombres)
+        resumen.extend(texto_pieza_rotativa(pieza) for pieza in rotativos)
+        st.caption("Se guardará: **" + " · ".join(resumen) + "**")
+    return {"nombres": nombres, "rotativos": rotativos}
 
 
 def render_registro_actividad_bitacora() -> None:
@@ -9438,7 +9575,7 @@ def render_registro_actividad_bitacora() -> None:
     st.markdown('<div class="section-title">➕ Registrar Actividad en Bitácora</div>', unsafe_allow_html=True)
     st.caption(
         "El registro se agrega a la bitácora operativa. "
-        "Las fotos del baúl y las fotos directas quedan en la carpeta de la cuadrilla, la fecha y la secuencia."
+        "Las fotografías se cargan directo y quedan en la carpeta de la cuadrilla, la fecha y la secuencia."
     )
 
     col_u, col_o = st.columns(2, gap="medium")
@@ -9530,27 +9667,14 @@ def render_registro_actividad_bitacora() -> None:
 
     with st.container(border=True):
         st.markdown('<div class="section-title">🧪 Insumos utilizados</div>', unsafe_allow_html=True)
-        consumibles = render_insumos_registro_bitacora(epoch)
+        seleccion_insumos = render_insumos_registro_bitacora(epoch)
 
-    secuencia_txt = formatear_secuencia(int(secuencia_n))
     with st.container(border=True):
         st.markdown(
-            '<div class="section-title">📷 Evidencia fotográfica (Baúl de la Cuadrilla)</div>',
+            '<div class="section-title">📷 Evidencia fotográfica</div>',
             unsafe_allow_html=True,
         )
-        if cuadrilla:
-            render_baul_actividad(
-                cuadrilla=cuadrilla,
-                dia=fecha,
-                secuencia=secuencia_txt,
-                actividad=str(descripcion or "").strip(),
-                turno=str(personal or "").strip(),
-                key_prefix=f"baul_admin_{epoch}_{clave_baul_actividad(cuadrilla, fecha, secuencia_txt)}",
-            )
-        else:
-            st.info("Escribe la cuadrilla para abrir el baúl de esta actividad.")
-        st.markdown("##### Fotos directas de esta actividad")
-        st.caption("Opcional. Hasta 9 imágenes que se guardan en el registro al pulsar Guardar.")
+        st.caption("Carga directa de la actividad. Hasta 9 imágenes se guardan en el registro al pulsar Guardar.")
         fotos = st.file_uploader(
             "Cargar fotografías",
             type=["jpg", "jpeg", "png"],
@@ -9587,6 +9711,15 @@ def render_registro_actividad_bitacora() -> None:
     elif not str(descripcion or "").strip():
         st.error("Escribe la descripción de la actividad realizada.")
     else:
+        error_rotativo = validar_piezas_rotativas(seleccion_insumos["rotativos"])
+        if error_rotativo:
+            st.error(error_rotativo)
+            return
+        consumibles = ", ".join(seleccion_insumos["nombres"])
+        notas_rotativas = [texto_pieza_rotativa(pieza) for pieza in seleccion_insumos["rotativos"]]
+        if notas_rotativas:
+            bloque = "Piezas rotativas: " + " | ".join(notas_rotativas)
+            comentarios = f"{str(comentarios or '').strip()} · {bloque}".strip(" ·") if str(comentarios or "").strip() else bloque
         try:
             resultado = agregar_registro_bitacora_soledad(
                 fecha,
@@ -10267,18 +10400,22 @@ def render_gestion_insumos_catalogo() -> None:
     st.markdown("**Alta de insumos**")
     st.caption(
         "Formulario libre para dar de alta materiales que no están en el catálogo inicial. "
+        "Elige si es consumible (bandas C-115, C-112, C-240, Micro V, aceite, filtros) "
+        "o componente rotativo / reparable (bomba de agua, alternador, marcha). "
         "Se guarda en almacen_insumos.json y aparece de inmediato en campo."
     )
     if st.session_state.pop("insumo_alta_ok", False):
         st.success("Insumo agregado al catálogo.")
 
-    col_nom, col_uni, col_otra = st.columns([2, 1, 1])
+    col_nom, col_tipo, col_uni, col_otra = st.columns([2, 1.4, 1, 1])
     with col_nom:
         nombre = st.text_input(
             "Nombre del insumo",
-            placeholder="Ej. Filtro de aire, Estopa, Anticongelante…",
+            placeholder="Ej. Filtro de aire, Banda C-115, Bomba de agua…",
             key="alta_insumo_nombre",
         )
+    with col_tipo:
+        tipo = st.selectbox("Categoría", TIPOS_INSUMO, key="alta_insumo_tipo")
     with col_uni:
         unidad = st.selectbox("Unidad", UNIDADES_INSUMO, key="alta_insumo_unidad")
     with col_otra:
@@ -10297,7 +10434,7 @@ def render_gestion_insumos_catalogo() -> None:
         if unidad == "Otra" and not unidad_final:
             st.warning("Especifica la unidad del insumo.")
         else:
-            error = alta_insumo_catalogo(nombre, unidad_final)
+            error = alta_insumo_catalogo(nombre, unidad_final, tipo)
             if error:
                 st.warning(error)
             else:
@@ -10308,6 +10445,7 @@ def render_gestion_insumos_catalogo() -> None:
     filas = [
         {
             "Insumo": item["nombre"],
+            "Categoría": tipo_insumo_item(item),
             "Unidad": item.get("unidad", ""),
             "Origen del catálogo": "Precargado" if item.get("precargado") else "Alta administrativa",
             "Activo": "Sí" if item.get("activo", True) else "No",
@@ -12992,261 +13130,6 @@ def guardar_lote_evidencia_cuadrilla(cuadrilla: str, dia: date, archivos: list) 
     }
 
 
-EXTENSIONES_BAUL = {".jpg", ".jpeg", ".png", ".webp"}
-
-
-def baul_default() -> dict:
-    return {"imagenes": []}
-
-
-def cargar_baul() -> dict:
-    datos = leer_json(BAUL_FILE, baul_default())
-    if not isinstance(datos, dict) or not isinstance(datos.get("imagenes"), list):
-        return baul_default()
-    imagenes = []
-    for item in datos["imagenes"]:
-        if not isinstance(item, dict):
-            continue
-        imagen_id = str(item.get("id") or "").strip()
-        ruta = str(item.get("ruta") or "").strip().replace("\\", "/")
-        if not imagen_id or not ruta:
-            continue
-        try:
-            orden = int(item.get("orden_oficial") or 0)
-        except (TypeError, ValueError):
-            orden = 0
-        if orden < 1 or orden > MAX_FOTOS:
-            orden = 0
-        estado = "oficial" if str(item.get("estado") or "") == "oficial" and orden else "en_baul"
-        imagenes.append(
-            {
-                "id": imagen_id,
-                "cuadrilla": str(item.get("cuadrilla") or "").strip(),
-                "cuadrilla_clave": str(item.get("cuadrilla_clave") or "").strip(),
-                "fecha": str(item.get("fecha") or "").strip(),
-                "nota": str(item.get("nota") or "").strip(),
-                "ruta": ruta,
-                "nombre": str(item.get("nombre") or os.path.basename(ruta)).strip(),
-                "subido": str(item.get("subido") or "").strip(),
-                "estado": estado,
-                "orden_oficial": orden or None,
-                "destino": str(item.get("destino") or "").strip() if estado == "oficial" else "",
-                "destino_etiqueta": str(item.get("destino_etiqueta") or "").strip() if estado == "oficial" else "",
-                "baul_clave": str(item.get("baul_clave") or "").strip(),
-                "secuencia": str(item.get("secuencia") or "").strip(),
-                "actividad": str(item.get("actividad") or "").strip(),
-                "turno": str(item.get("turno") or "").strip(),
-                "registro_id": str(item.get("registro_id") or "").strip(),
-            }
-        )
-    return {"imagenes": imagenes}
-
-
-def guardar_baul(datos: dict) -> None:
-    escribir_json(BAUL_FILE, datos)
-
-
-def clave_baul_actividad(cuadrilla: str, dia: date, secuencia: str) -> str:
-    sec = re.sub(r"\s+", " ", str(secuencia or "").strip()) or "sin-secuencia"
-    return f"{clave_hist_cuadrilla(cuadrilla)}|{dia.isoformat()}|{sec.casefold()}"
-
-
-def carpeta_baul(cuadrilla: str, dia: date, secuencia: str = "") -> str:
-    base = os.path.join(BAUL_DIR, nombre_carpeta_cuadrilla(cuadrilla), dia.isoformat())
-    sec = re.sub(r'[<>:"/\\|?*]+', " ", str(secuencia or "").strip()).strip().rstrip(".")
-    if not sec:
-        return base
-    return os.path.join(base, sec)
-
-
-def imagenes_baul_actividad(
-    cuadrilla: str,
-    dia: date,
-    secuencia: str,
-    registro_id: str = "",
-) -> list[dict]:
-    clave = clave_baul_actividad(cuadrilla, dia, secuencia)
-    rid = str(registro_id or "").strip()
-    vistos: set[str] = set()
-    salida = []
-    for img in cargar_baul()["imagenes"]:
-        imagen_id = str(img.get("id") or "")
-        coincide_registro = bool(rid) and str(img.get("registro_id") or "") == rid
-        coincide_clave = img.get("baul_clave") == clave
-        if not coincide_registro and not coincide_clave:
-            continue
-        if imagen_id in vistos:
-            continue
-        vistos.add(imagen_id)
-        salida.append(img)
-    return salida
-
-
-def _extension_imagen(nombre: str) -> str:
-    extension = os.path.splitext(nombre or "")[1].lower()
-    if extension not in EXTENSIONES_BAUL:
-        return ".jpg"
-    return extension
-
-
-def depositar_en_baul(
-    cuadrilla: str,
-    dia: date,
-    archivos: list | None,
-    nota: str = "",
-    *,
-    secuencia: str = "",
-    actividad: str = "",
-    turno: str = "",
-    registro_id: str = "",
-) -> dict:
-    pendientes = list(archivos or [])
-    if not pendientes:
-        return {"ok": False, "agregadas": 0, "mensaje": "Selecciona al menos una imagen.", "carpeta": ""}
-    baul_clave = clave_baul_actividad(cuadrilla, dia, secuencia)
-    carpeta = carpeta_baul(cuadrilla, dia, secuencia)
-    os.makedirs(carpeta, exist_ok=True)
-    datos = cargar_baul()
-    nota_txt = str(nota or "").strip()
-    ahora = datetime.now().strftime("%Y-%m-%d %H:%M")
-    etiqueta = etiqueta_cuadrilla_historial(cuadrilla)
-    clave = clave_hist_cuadrilla(cuadrilla)
-    actividad_txt = str(actividad or "").strip()
-    turno_txt = str(turno or "").strip()
-    if turno_txt == "—":
-        turno_txt = ""
-    agregadas = 0
-    for archivo in pendientes:
-        nombre = os.path.basename(getattr(archivo, "name", "") or "foto.jpg")
-        if os.path.splitext(nombre)[1].lower() not in EXTENSIONES_BAUL:
-            continue
-        extension = _extension_imagen(nombre)
-        seguro = re.sub(r"[^A-Za-z0-9._-]+", "_", os.path.splitext(nombre)[0])[:40] or "foto"
-        imagen_id = uuid.uuid4().hex[:10]
-        destino = os.path.join(carpeta, f"{imagen_id}_{seguro}{extension}")
-        with open(destino, "wb") as salida:
-            salida.write(archivo.getvalue())
-        datos["imagenes"].append(
-            {
-                "id": imagen_id,
-                "cuadrilla": etiqueta,
-                "cuadrilla_clave": clave,
-                "fecha": dia.isoformat(),
-                "nota": nota_txt,
-                "ruta": destino.replace("\\", "/"),
-                "nombre": nombre,
-                "subido": ahora,
-                "estado": "en_baul",
-                "orden_oficial": None,
-                "destino": "",
-                "destino_etiqueta": "",
-                "baul_clave": baul_clave,
-                "secuencia": str(secuencia or "").strip(),
-                "actividad": actividad_txt,
-                "turno": turno_txt,
-                "registro_id": str(registro_id or "").strip(),
-            }
-        )
-        agregadas += 1
-    if not agregadas:
-        return {
-            "ok": False,
-            "agregadas": 0,
-            "mensaje": "Ningún archivo tenía formato jpg, png o webp.",
-            "carpeta": carpeta.replace("\\", "/"),
-        }
-    guardar_baul(datos)
-    persistencia.marcar_evidencia_nueva(
-        [str(item.get("ruta") or "") for item in datos["imagenes"][-agregadas:]]
-    )
-    persistencia.respaldar_cambios("Evidencias del baúl de la cuadrilla")
-    return {
-        "ok": True,
-        "agregadas": agregadas,
-        "mensaje": "",
-        "carpeta": carpeta.replace("\\", "/"),
-    }
-
-
-def vincular_baul_actividad(
-    cuadrilla: str,
-    dia: date,
-    secuencia: str,
-    registro_id: str,
-    actividad: str = "",
-    turno: str = "",
-) -> None:
-    clave = clave_baul_actividad(cuadrilla, dia, secuencia)
-    rid = str(registro_id or "").strip()
-    datos = cargar_baul()
-    cambio = False
-    for img in datos["imagenes"]:
-        if img.get("baul_clave") != clave and str(img.get("registro_id") or "") != rid:
-            continue
-        img["baul_clave"] = clave
-        img["secuencia"] = str(secuencia or "").strip()
-        if rid:
-            img["registro_id"] = rid
-        if str(actividad or "").strip():
-            img["actividad"] = str(actividad).strip()
-        turno_txt = str(turno or "").strip()
-        if turno_txt and turno_txt != "—":
-            img["turno"] = turno_txt
-        cambio = True
-    if cambio:
-        guardar_baul(datos)
-
-
-def quitar_imagen_baul(imagen_id: str) -> str | None:
-    datos = cargar_baul()
-    quedan = []
-    encontrada = False
-    for img in datos["imagenes"]:
-        if img.get("id") != imagen_id:
-            quedan.append(img)
-            continue
-        encontrada = True
-        if img.get("estado") == "oficial":
-            return "Esa foto ya está en el reporte oficial. Cámbiala desde administración antes de quitarla."
-        ruta = str(img.get("ruta") or "")
-        if ruta and os.path.isfile(ruta):
-            try:
-                os.remove(ruta)
-            except OSError:
-                return "No se pudo borrar el archivo de la carpeta del baúl."
-    if not encontrada:
-        return "No se encontró la imagen en el baúl."
-    datos["imagenes"] = quedan
-    guardar_baul(datos)
-    return None
-
-
-def _copiar_foto_oficial(origen: str, carpeta: str, nombre: str) -> str:
-    os.makedirs(carpeta, exist_ok=True)
-    destino = os.path.join(carpeta, nombre)
-    shutil.copy2(origen, destino)
-    return destino.replace("\\", "/")
-
-
-def fijar_fotos_oficiales_cuadrilla(cuadrilla: str, dia: date, rutas: list[str]) -> None:
-    datos = cargar_evidencia_fotografica()
-    clave = clave_evidencia_cuadrilla(cuadrilla, dia)
-    carpeta = carpeta_evidencia_cuadrilla_dia(cuadrilla, dia)
-    celdas = list(rutas)[:MAX_FOTOS]
-    while len(celdas) < MAX_FOTOS:
-        celdas.append("")
-    datos["registros"][clave] = {
-        "cuadrilla": etiqueta_cuadrilla_historial(cuadrilla),
-        "fecha": dia.isoformat(),
-        "dia": f"{dia.day:02d}",
-        "carpeta": carpeta.replace("\\", "/"),
-        "fotos": celdas,
-        "actualizado": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "origen": "baul",
-    }
-    guardar_evidencia_fotografica(datos)
-
-
 def slots_evidencia_cuadrilla(cuadrilla: str, dia: date) -> list[str]:
     item = cargar_evidencia_fotografica()["registros"].get(clave_evidencia_cuadrilla(cuadrilla, dia))
     if not isinstance(item, dict) or item.get("origen") != "baul":
@@ -13266,378 +13149,6 @@ def slots_fotos_fila(fila) -> list[str]:
         else:
             celdas.append(ruta)
     return celdas
-
-
-def escribir_fotos_definitivas(df: pd.DataFrame, idx, rutas: list[str]) -> None:
-    fila = df.loc[idx]
-    rid = id_registro_fila(fila)
-    celdas = list(rutas)[:MAX_FOTOS]
-    while len(celdas) < MAX_FOTOS:
-        celdas.append("")
-    for i, col in enumerate(COLUMNAS_FOTOS):
-        df.at[idx, col] = celdas[i]
-    presentes = [ruta for ruta in celdas if ruta]
-    df.at[idx, "FOTOS"] = " | ".join(presentes)
-    df.at[idx, "ID_REGISTRO"] = rid
-    df.at[idx, "EVIDENCIA"] = EVIDENCIA_COMPLETA if len(presentes) >= MIN_FOTOS_COMPLETO else EVIDENCIA_PENDIENTE
-
-
-def integrar_baul_al_reporte(
-    cuadrilla: str,
-    dia: date,
-    asignacion: dict[int, str],
-    destino: str,
-    destino_etiqueta: str,
-    baul_clave: str = "",
-) -> dict:
-    if not asignacion:
-        return {"ok": False, "mensaje": "Elige al menos una foto para el reporte.", "total": 0, "carpeta": ""}
-    if any(slot < 1 or slot > MAX_FOTOS for slot in asignacion):
-        return {
-            "ok": False,
-            "mensaje": "Las posiciones del reporte van de la foto 1 a la foto 9.",
-            "total": 0,
-            "carpeta": "",
-        }
-    datos = cargar_baul()
-    por_id = {img["id"]: img for img in datos["imagenes"]}
-    fuentes: dict[int, dict] = {}
-    for slot, imagen_id in asignacion.items():
-        img = por_id.get(imagen_id)
-        ruta = str((img or {}).get("ruta") or "")
-        if not img or not os.path.isfile(ruta):
-            return {
-                "ok": False,
-                "mensaje": f"No se encontró el archivo de la foto {slot} en el baúl.",
-                "total": 0,
-                "carpeta": "",
-            }
-        fuentes[slot] = img
-
-    rutas = [""] * MAX_FOTOS
-    if destino == "dia":
-        carpeta = carpeta_evidencia_cuadrilla_dia(cuadrilla, dia)
-        for slot, img in fuentes.items():
-            extension = _extension_imagen(img["ruta"])
-            nombre = f"oficial_{slot:02d}{extension}"
-            rutas[slot - 1] = _copiar_foto_oficial(img["ruta"], carpeta, nombre)
-        fijar_fotos_oficiales_cuadrilla(cuadrilla, dia, rutas)
-    elif destino.startswith("reg:"):
-        idx_txt = destino.split(":", 1)[1]
-        df = cargar_bitacora()
-        indice = next((candidato for candidato in df.index if str(candidato) == idx_txt), None)
-        if indice is None:
-            return {
-                "ok": False,
-                "mensaje": "Ya no está el registro de bitácora elegido.",
-                "total": 0,
-                "carpeta": "",
-            }
-        carpeta = carpeta_evidencia_registro(df.loc[indice])
-        for slot, img in fuentes.items():
-            extension = _extension_imagen(img["ruta"])
-            nombre = f"oficial_{slot:02d}{extension}"
-            rutas[slot - 1] = _copiar_foto_oficial(img["ruta"], carpeta, nombre)
-        escribir_fotos_definitivas(df, indice, rutas)
-        guardar_en_excel(df)
-    else:
-        return {"ok": False, "mensaje": "Elige el reporte donde se integran las fotos.", "total": 0, "carpeta": ""}
-
-    clave = clave_hist_cuadrilla(cuadrilla)
-    fecha = dia.isoformat()
-    elegidos = set(asignacion.values())
-    for img in datos["imagenes"]:
-        mismo_baul = img.get("baul_clave") == baul_clave if baul_clave else (
-            img.get("cuadrilla_clave") == clave and img.get("fecha") == fecha
-        )
-        if mismo_baul and img.get("destino") == destino and img.get("id") not in elegidos:
-            img["estado"] = "en_baul"
-            img["orden_oficial"] = None
-            img["destino"] = ""
-            img["destino_etiqueta"] = ""
-    for slot, img in fuentes.items():
-        img["estado"] = "oficial"
-        img["orden_oficial"] = slot
-        img["destino"] = destino
-        img["destino_etiqueta"] = destino_etiqueta
-    guardar_baul(datos)
-    return {
-        "ok": True,
-        "total": len([ruta for ruta in rutas if ruta]),
-        "mensaje": "",
-        "carpeta": carpeta.replace("\\", "/"),
-    }
-
-
-def _aviso_baul() -> None:
-    aviso = st.session_state.pop("baul_aviso", None)
-    if aviso:
-        st.success(aviso)
-
-
-def _chip_baul(img: dict) -> None:
-    if img.get("estado") == "oficial":
-        orden = int(img.get("orden_oficial") or 0)
-        texto = f"Oficial · Foto {orden}" if orden else "Oficial"
-        clase = "oficial"
-    else:
-        texto = "En el baúl"
-        clase = "lista"
-    st.markdown(
-        f'<span class="baul-chip {clase}">{html.escape(texto)}</span>',
-        unsafe_allow_html=True,
-    )
-
-
-def _mostrar_foto_baul(img: dict) -> None:
-    ruta = str(img.get("ruta") or "")
-    if ruta and os.path.isfile(ruta):
-        st.image(ruta, use_container_width=True)
-    else:
-        st.caption("No se encontró el archivo de esta foto.")
-    nombre = str(img.get("nombre") or os.path.basename(ruta) or "Foto")
-    nota = str(img.get("nota") or "").strip()
-    st.caption(f"{nombre} — {nota}" if nota else nombre)
-
-
-def _grilla_baul(imagenes: list[dict], *, permitir_quitar: bool, key_prefix: str) -> None:
-    for inicio in range(0, len(imagenes), 3):
-        columnas = st.columns(3, gap="small")
-        for col, img in zip(columnas, imagenes[inicio : inicio + 3]):
-            with col:
-                _chip_baul(img)
-                _mostrar_foto_baul(img)
-                if not permitir_quitar or img.get("estado") == "oficial":
-                    continue
-                if st.button(
-                    "Quitar del baúl",
-                    key=f"{key_prefix}_quitar_{img['id']}",
-                    use_container_width=True,
-                ):
-                    error = quitar_imagen_baul(img["id"])
-                    if error:
-                        st.warning(error)
-                    else:
-                        st.session_state.baul_aviso = "La foto se quitó del baúl de esta actividad."
-                        st.rerun()
-
-
-def _encabezado_baul(
-    cuadrilla: str,
-    dia: date,
-    secuencia: str,
-    actividad: str,
-    turno: str,
-    total: int,
-) -> None:
-    actividad_txt = str(actividad or "").strip() or "Por capturar en esta actividad"
-    turno_txt = str(turno or "").strip()
-    if not turno_txt or turno_txt == "—":
-        turno_txt = "Sin personal en turno"
-    st.markdown(
-        f"""
-        <div class="baul-cofre">
-            <p class="tapa">Cofre de evidencias de esta actividad</p>
-            <h3>&#x1F5C4;&#xFE0F; Baúl de la Cuadrilla</h3>
-            <p><b>{html.escape(etiqueta_cuadrilla_historial(cuadrilla))}</b>
-            · {html.escape(dia.strftime("%d/%m/%Y"))}
-            · {html.escape(str(secuencia or "Sin secuencia"))}</p>
-            <p>Actividad: {html.escape(actividad_txt)}</p>
-            <p>Turno: {html.escape(turno_txt)}</p>
-            <p class="cuenta">{total} foto(s) en este baúl. La carga es libre: no hace falta cerrar las 9 ahora.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_baul_actividad(
-    *,
-    cuadrilla: str,
-    dia: date,
-    secuencia: str,
-    actividad: str = "",
-    turno: str = "",
-    registro_id: str = "",
-    registro_idx=None,
-    key_prefix: str = "baul_act",
-    permitir_seleccion: bool = False,
-) -> None:
-    _aviso_baul()
-    pref = re.sub(r"[^a-z0-9_]+", "_", _sin_acentos(key_prefix).casefold())[:90] or "baul_act"
-    baul_clave = clave_baul_actividad(cuadrilla, dia, secuencia)
-    existentes = imagenes_baul_actividad(cuadrilla, dia, secuencia, registro_id)
-    _encabezado_baul(cuadrilla, dia, secuencia, actividad, turno, len(existentes))
-    nota = st.text_input(
-        "Nota de estas fotos",
-        placeholder="Ej. Antes del ajuste, tablero, fuga en brida…",
-        key=f"{pref}_nota",
-    )
-    carga_id = int(st.session_state.get(f"{pref}_carga") or 0)
-    archivos = st.file_uploader(
-        "Fotografías de esta actividad",
-        type=["png", "jpg", "jpeg", "webp"],
-        accept_multiple_files=True,
-        key=f"{pref}_archivos_{carga_id}",
-        help="Este baúl pertenece solo a esta fecha, cuadrilla, secuencia y turno.",
-    )
-    if archivos:
-        st.info(f"{len(archivos)} imagen(es) listas para el baúl de esta actividad.")
-    if st.button(
-        "Guardar en el baúl de la cuadrilla",
-        type="primary",
-        use_container_width=True,
-        key=f"{pref}_guardar",
-    ):
-        resultado = depositar_en_baul(
-            cuadrilla,
-            dia,
-            archivos,
-            nota,
-            secuencia=secuencia,
-            actividad=actividad,
-            turno=turno,
-            registro_id=registro_id,
-        )
-        if not resultado.get("ok"):
-            st.warning(resultado.get("mensaje") or "No se guardaron fotografías.")
-        else:
-            st.session_state[f"{pref}_carga"] = carga_id + 1
-            st.session_state[f"{pref}_nota"] = ""
-            st.session_state.baul_aviso = (
-                f"Se guardaron {resultado['agregadas']} foto(s) en el baúl de "
-                f"{etiqueta_cuadrilla_historial(cuadrilla)} · {dia.strftime('%d/%m/%Y')} · {secuencia}."
-            )
-            st.rerun()
-
-    if not existentes:
-        st.caption(
-            "Este baúl todavía está vacío. "
-            f"Las fotos quedarán en `{carpeta_baul(cuadrilla, dia, secuencia).replace(chr(92), '/')}`."
-        )
-        if permitir_seleccion:
-            st.caption(
-                "Cuando haya fotos aquí, administración elige las 9 del reporte de "
-                f"{etiqueta_cuadrilla_historial(cuadrilla)} · {dia.strftime('%d/%m/%Y')} · {secuencia}."
-            )
-        return
-
-    if not permitir_seleccion:
-        _grilla_baul(existentes, permitir_quitar=True, key_prefix=pref)
-        return
-
-    st.markdown("#### Las 9 del reporte de esta actividad")
-    st.caption(
-        f"{dia.strftime('%d/%m/%Y')} · {etiqueta_cuadrilla_historial(cuadrilla)} · {secuencia}. "
-        f"Actividad: {actividad or 'sin nombre'}. Turno: {turno or 'sin personal en turno'}."
-    )
-    opciones_slot = ["No incluir"] + [f"Foto {i}" for i in range(1, MAX_FOTOS + 1)]
-    eleccion: dict[str, str] = {}
-    for inicio_img in range(0, len(existentes), 3):
-        columnas = st.columns(3, gap="small")
-        for col, img in zip(columnas, existentes[inicio_img : inicio_img + 3]):
-            with col:
-                _chip_baul(img)
-                _mostrar_foto_baul(img)
-                orden = int(img.get("orden_oficial") or 0)
-                indice = orden if img.get("estado") == "oficial" and 1 <= orden <= MAX_FOTOS else 0
-                eleccion[img["id"]] = st.selectbox(
-                    "Espacio en el reporte",
-                    opciones_slot,
-                    index=indice,
-                    key=f"{pref}_slot_{img['id']}",
-                )
-                if img.get("estado") != "oficial" and st.button(
-                    "Quitar del baúl",
-                    key=f"{pref}_adm_quitar_{img['id']}",
-                    use_container_width=True,
-                ):
-                    error = quitar_imagen_baul(img["id"])
-                    if error:
-                        st.warning(error)
-                    else:
-                        st.session_state.baul_aviso = "La foto se quitó del baúl de esta actividad."
-                        st.rerun()
-
-    asignadas: dict[int, dict] = {}
-    duplicados: list[int] = []
-    for img in existentes:
-        texto_slot = eleccion.get(img["id"], "No incluir")
-        if texto_slot == "No incluir":
-            continue
-        slot = int(texto_slot.rsplit(" ", 1)[-1])
-        if slot in asignadas:
-            duplicados.append(slot)
-        asignadas[slot] = img
-
-    celdas = []
-    for numero in range(1, MAX_FOTOS + 1):
-        img = asignadas.get(numero)
-        celdas.append(
-            {
-                "ruta": str(img.get("ruta") or "") if img else "",
-                "descripcion": f"Foto {numero}" + (f" · {img.get('nombre')}" if img else ""),
-            }
-        )
-    render_galeria_reporte(celdas)
-    if duplicados:
-        nombres = ", ".join(f"Foto {numero}" for numero in sorted(set(duplicados)))
-        st.error(f"Hay más de una imagen en el mismo espacio: {nombres}.")
-    elif not asignadas:
-        st.info("Asigna al menos una foto de este baúl a un espacio del reporte.")
-    elif len(asignadas) < MAX_FOTOS:
-        st.warning(f"Hay {len(asignadas)} de {MAX_FOTOS} espacios ocupados en el reporte de esta actividad.")
-    else:
-        st.success("Las 9 fotos del reporte de esta actividad están elegidas.")
-
-    if len(asignadas) == MAX_FOTOS:
-        etiqueta_integrar = "Integrar las 9 fotos al reporte oficial"
-    elif len(asignadas) == 1:
-        etiqueta_integrar = "Integrar 1 foto al reporte oficial"
-    elif asignadas:
-        etiqueta_integrar = f"Integrar {len(asignadas)} fotos al reporte oficial"
-    else:
-        etiqueta_integrar = "Integrar selección al reporte oficial"
-    if registro_idx is None:
-        st.caption("Esta actividad todavía no está guardada en la bitácora, así que las 9 se eligen cuando el registro exista.")
-        return
-    if st.button(
-        etiqueta_integrar,
-        type="primary",
-        use_container_width=True,
-        disabled=not asignadas or bool(duplicados),
-        key=f"{pref}_integrar",
-    ):
-        etiqueta_destino = " · ".join(
-            parte
-            for parte in [
-                dia.strftime("%d/%m/%Y"),
-                etiqueta_cuadrilla_historial(cuadrilla),
-                str(secuencia or "").strip(),
-                str(actividad or "").strip(),
-            ]
-            if parte
-        )
-        try:
-            resultado = integrar_baul_al_reporte(
-                cuadrilla,
-                dia,
-                {slot: img["id"] for slot, img in asignadas.items()},
-                f"reg:{registro_idx}",
-                etiqueta_destino,
-                baul_clave,
-            )
-        except Exception as exc:
-            st.error(f"No se pudo integrar la selección: {exc}")
-            return
-        if not resultado.get("ok"):
-            st.warning(resultado.get("mensaje") or "No se integraron las fotografías.")
-        else:
-            st.session_state.baul_aviso = (
-                f"Quedaron {resultado['total']} foto(s) en el reporte de "
-                f"{etiqueta_cuadrilla_historial(cuadrilla)} · {dia.strftime('%d/%m/%Y')} · {secuencia}."
-            )
-            st.rerun()
 
 
 def resumen_fechas_cuadrilla(df: pd.DataFrame, cuadrilla: str) -> list[dict]:
@@ -13893,30 +13404,6 @@ def render_reporte_cuadrilla(dia: date, cuadrilla: str, df_dia: pd.DataFrame) ->
                 st.warning("Aún no hay fotografías cargadas para esta secuencia.")
         df_base = cargar_bitacora()
         idx_reg = fila.name
-        rid_baul = id_registro_fila(fila)
-        secuencia_baul = str(fila.get("SECUENCIA") or "").strip()
-        if not secuencia_baul or secuencia_baul.lower() in {"nan", "none", "—"}:
-            secuencia_baul = f"Secuencia #{indice + 1:02d}"
-            if rid_baul:
-                secuencia_baul = f"{secuencia_baul} · {rid_baul}"
-        actividad_baul = str(fila.get("TIPO DE ACTIVIDAD") or fila.get("ACTIVIDAD CORTA") or "").strip()
-        if not actividad_baul or actividad_baul.lower() in {"nan", "none", "—", "actividad de campo", "actividad"}:
-            descripcion_baul = str(
-                fila.get("DESCRIPCIÓN DE LA ACTIVIDAD") or fila.get("DESCRIPCION DE LA ACTIVIDAD") or ""
-            ).strip()
-            if descripcion_baul and descripcion_baul.lower() not in {"nan", "none", "sin descripción capturada."}:
-                actividad_baul = descripcion_baul
-        render_baul_actividad(
-            cuadrilla=str(fila.get("CUADRILLA") or cuadrilla),
-            dia=dia,
-            secuencia=secuencia_baul,
-            actividad=actividad_baul,
-            turno=texto_par_personal(gente["mecanico_real"], gente["ayudante_real"]),
-            registro_id=rid_baul,
-            registro_idx=idx_reg if idx_reg in df_base.index else None,
-            key_prefix=f"baul_sec_{rid_baul or indice}",
-            permitir_seleccion=st.session_state.get("rol_seleccionado") == ROL_ADMIN and idx_reg in df_base.index,
-        )
         if idx_reg in df_base.index:
             st.markdown("##### Completar o actualizar evidencia")
             render_panel_evidencia_posterior(df_base, idx_reg, clave=f"hc_{id_registro_fila(fila)}")
@@ -13977,7 +13464,7 @@ def render_subida_evidencia_cuadrilla(*, cuadrilla_fija: str = "", key_prefix: s
     st.caption(
         "Elige la cuadrilla y el día (01, 02…). Se guardan hasta 9 fotos en "
         f"`{EVIDENCIA_FOTOGRAFICA_DIR}/[Cuadrilla]/[Día]/` y el calendario marca ese día. "
-        "Las fotos sueltas de una actividad van en el Baúl de la Cuadrilla, dentro de esa secuencia."
+        "Las fotos de una actividad se cargan directo en su registro."
     )
     catalogo = catalogo_cuadrillas_historial(bitacora_con_fechas(cargar_bitacora()))
     if cuadrilla_fija:

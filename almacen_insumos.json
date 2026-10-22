@@ -5,6 +5,7 @@
       "nombre": "Aceite SAE 50",
       "unidad": "L",
       "columna_excel": "ACEITE (LTS)",
+      "tipo": "Consumible",
       "precargado": true,
       "activo": true
     },
@@ -13,6 +14,7 @@
       "nombre": "Refrigerante",
       "unidad": "L",
       "columna_excel": "REFRIGERANTE (LTS)",
+      "tipo": "Consumible",
       "precargado": true,
       "activo": true
     },
@@ -21,6 +23,7 @@
       "nombre": "Grasa",
       "unidad": "Kg",
       "columna_excel": "GRASA (KG)",
+      "tipo": "Consumible",
       "precargado": true,
       "activo": true
     },
@@ -29,6 +32,7 @@
       "nombre": "Filtro de aceite",
       "unidad": "Pzas",
       "columna_excel": "FILTROS (PZAS)",
+      "tipo": "Consumible",
       "precargado": true,
       "activo": true
     },
@@ -37,6 +41,70 @@
       "nombre": "Bujías",
       "unidad": "Pzas",
       "columna_excel": "BUJÍAS (PZAS)",
+      "tipo": "Consumible",
+      "precargado": true,
+      "activo": true
+    },
+    {
+      "id": "banda-c-115",
+      "nombre": "Banda C-115",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Consumible",
+      "precargado": true,
+      "activo": true
+    },
+    {
+      "id": "banda-c-112",
+      "nombre": "Banda C-112",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Consumible",
+      "precargado": true,
+      "activo": true
+    },
+    {
+      "id": "banda-c-240",
+      "nombre": "Banda C-240",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Consumible",
+      "precargado": true,
+      "activo": true
+    },
+    {
+      "id": "banda-micro-v",
+      "nombre": "Banda Micro V",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Consumible",
+      "precargado": true,
+      "activo": true
+    },
+    {
+      "id": "bomba-de-agua",
+      "nombre": "Bomba de agua",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Componente Rotativo / Reparable",
+      "precargado": true,
+      "activo": true
+    },
+    {
+      "id": "alternador",
+      "nombre": "Alternador",
+      "unidad": "Pzas",
+      "columna_excel": "ALTERNADOR CANTIDAD",
+      "tipo": "Componente Rotativo / Reparable",
+      "precargado": true,
+      "activo": true
+    },
+    {
+      "id": "marcha-motor-arranque",
+      "nombre": "Marcha / Motor de arranque",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Componente Rotativo / Reparable",
       "precargado": true,
       "activo": true
     }
