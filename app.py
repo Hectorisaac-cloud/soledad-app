@@ -20091,168 +20091,202 @@ def _guardar_edicion_dia_admin(dia: pd.DataFrame, editada: pd.DataFrame) -> None
         st.info("La tabla ya coincide con lo guardado.")
 
 
-def render_entrada_datos_admin() -> None:
-    tarjeta = st.popover(
-        "ENTRADA DE DATOS",
-        width="stretch",
-        on_change="rerun",
-        key="adm_pop_entrada",
-    )
-    with tarjeta:
-        if not tarjeta.open:
-            return
-        if st.button(
-            "Registrar o editar actividad de bitácora",
-            use_container_width=True,
-            key="adm_m_registro",
-        ):
-            abrir_modulo_admin("registro_bitacora")
-        archivo_programa = st.file_uploader(
-            "Excel de mantenimientos programados",
-            type=["xlsx", "xls", "xlsm"],
-            key="adm_m_excel_prog",
-        )
-        if st.button("Cargar Excel al programa", use_container_width=True, key="adm_m_cargar_excel"):
-            _guardar_excel_programa_admin(archivo_programa)
-        alta_ubic, alta_eq, alta_ins = st.columns(3)
-        with alta_ubic:
-            if st.button("Ubicación", use_container_width=True, key="adm_m_alta_ub"):
-                abrir_modulo_admin(
-                    "auditoria",
-                    admin_sub_auditoria="catalogos",
-                    admin_sub_catalogos="ubicaciones",
+def render_barra_herramientas_admin() -> None:
+    aviso = st.session_state.pop("adm_barra_aviso", None)
+    if isinstance(aviso, dict):
+        if aviso.get("ok"):
+            st.success(aviso.get("mensaje") or "Respaldo enviado a GitHub.")
+        else:
+            st.warning(aviso.get("mensaje") or "No se pudo respaldar.")
+    estado = persistencia.leer_estado()
+    filas = persistencia.contar_filas_bitacora(persistencia.resolver_ruta(persistencia.ARCHIVO_BITACORA))
+    if not persistencia.credenciales_github():
+        marca = "Sin token"
+    elif estado.get("ok"):
+        marca = "Sincronizado"
+    else:
+        marca = "Pendiente"
+    detalle = str(estado.get("mensaje") or "Todavía no hay un respaldo en esta ejecución.")
+    with st.container(border=True):
+        estado_col, respaldo_col, copia_col, recuperar_col = st.columns([2.4, 1.5, 1.35, 1.35], vertical_alignment="center")
+        with estado_col:
+            st.markdown(
+                f'<p class="adm-sync"><b>{html.escape(marca)}</b> · {filas} registros<br>{html.escape(detalle)}</p>',
+                unsafe_allow_html=True,
+            )
+        with respaldo_col:
+            if st.button("Respaldar datos en GitHub", type="primary", use_container_width=True, key="adm_barra_subir"):
+                st.session_state.adm_barra_aviso = persistencia.respaldar_cambios(
+                    "Respaldo manual desde administración"
                 )
-        with alta_eq:
-            if st.button("Equipo", use_container_width=True, key="adm_m_alta_eq"):
-                abrir_modulo_admin("auditoria", admin_sub_auditoria="catalogos")
-        with alta_ins:
-            if st.button("Insumos", use_container_width=True, key="adm_m_alta_ins"):
-                abrir_modulo_admin("almacen", admin_sub_almacen="gestion")
+                st.rerun()
+        with copia_col:
+            _boton_descarga_respaldo_admin()
+        with recuperar_col:
+            if st.button("Recuperar respaldo", use_container_width=True, key="adm_barra_bajar"):
+                resultado = persistencia.restaurar_desde_github()
+                for llave in ("catalogos", "catalogo_actividades", "permisos"):
+                    st.session_state.pop(llave, None)
+                st.session_state.pop("adm_barra_zip", None)
+                st.session_state.adm_barra_aviso = resultado
+                st.rerun()
+
+
+def _boton_descarga_respaldo_admin() -> None:
+    ruta = persistencia.resolver_ruta(persistencia.ARCHIVO_BITACORA)
+    firma = "vacio"
+    if os.path.exists(ruta):
+        firma = f"{os.path.getmtime(ruta)}:{os.path.getsize(ruta)}"
+    if st.session_state.get("adm_barra_firma") != firma or "adm_barra_zip" not in st.session_state:
+        datos, nombre = persistencia.construir_copia_seguridad()
+        st.session_state.adm_barra_firma = firma
+        st.session_state.adm_barra_zip = datos
+        st.session_state.adm_barra_nombre = nombre
+    st.download_button(
+        "Descargar copia",
+        data=st.session_state.adm_barra_zip,
+        file_name=st.session_state.adm_barra_nombre,
+        mime="application/zip",
+        key="adm_barra_descarga",
+        use_container_width=True,
+    )
+
+
+def render_entrada_datos_admin() -> None:
+    if st.button(
+        "Registrar o editar actividad de bitácora",
+        use_container_width=True,
+        key="adm_m_registro",
+    ):
+        abrir_modulo_admin("registro_bitacora")
+    archivo_programa = st.file_uploader(
+        "Excel de mantenimientos programados",
+        type=["xlsx", "xls", "xlsm"],
+        key="adm_m_excel_prog",
+    )
+    if st.button("Cargar Excel al programa", use_container_width=True, key="adm_m_cargar_excel"):
+        _guardar_excel_programa_admin(archivo_programa)
+    alta_ubic, alta_eq, alta_ins = st.columns(3)
+    with alta_ubic:
+        if st.button("Ubicación", use_container_width=True, key="adm_m_alta_ub"):
+            abrir_modulo_admin(
+                "auditoria",
+                admin_sub_auditoria="catalogos",
+                admin_sub_catalogos="ubicaciones",
+            )
+    with alta_eq:
+        if st.button("Equipo", use_container_width=True, key="adm_m_alta_eq"):
+            abrir_modulo_admin("auditoria", admin_sub_auditoria="catalogos")
+    with alta_ins:
+        if st.button("Insumos", use_container_width=True, key="adm_m_alta_ins"):
+            abrir_modulo_admin("almacen", admin_sub_almacen="gestion")
 
 
 def render_edicion_captura_admin(jornada: date) -> None:
-    tarjeta = st.popover(
-        "EDICION DE CAPTURA",
-        width="stretch",
-        on_change="rerun",
-        key="adm_pop_edicion",
-    )
-    with tarjeta:
-        if not tarjeta.open:
-            return
-        aviso = st.session_state.pop("adm_m_edicion_ok", None)
-        if aviso:
-            st.success(f"Se actualizaron {aviso} actividad(es). El cambio quedó en la bitácora y en la rama datos.")
-        dia = bitacora_del_dia(bitacora_con_fechas(cargar_bitacora()), jornada)
-        if dia.empty:
-            st.info(f"No hay actividades cargadas el {jornada.strftime('%d/%m/%Y')}.")
-        else:
-            tabla = pd.DataFrame(
-                {
-                    "_idx": list(dia.index),
-                    "OT": [
-                        str(numero_secuencia_actividad(fila.get("SECUENCIA")) or _texto_celda_admin(fila.get("SECUENCIA")))
-                        for _, fila in dia.iterrows()
-                    ],
-                    "Cuadrilla": [_cuadrilla_fila_admin(fila) for _, fila in dia.iterrows()],
-                    "Ubicación": [_ubicacion_fila_admin(fila) for _, fila in dia.iterrows()],
-                    "Descripción": [_descripcion_fila_admin(fila) for _, fila in dia.iterrows()],
-                }
-            )
-            editada = st.data_editor(
-                tabla,
-                num_rows="fixed",
-                hide_index=True,
-                use_container_width=True,
-                key=f"adm_m_editor_{jornada.isoformat()}",
-                disabled=["_idx", "OT", "Cuadrilla"],
-                column_config={
-                    "_idx": None,
-                    "Descripción": st.column_config.TextColumn("Descripción", width="large"),
-                },
-            )
-            if st.button(
-                "Guardar actividades del día",
-                type="primary",
-                use_container_width=True,
-                key="adm_m_guardar_dia",
-            ):
-                _guardar_edicion_dia_admin(dia, editada)
-        ed_cat, ed_ins = st.columns(2)
-        with ed_cat:
-            if st.button("Editar equipos y ubicaciones", use_container_width=True, key="adm_m_edit_cat"):
-                abrir_modulo_admin("auditoria", admin_sub_auditoria="catalogos")
-        with ed_ins:
-            if st.button("Editar insumos", use_container_width=True, key="adm_m_edit_ins"):
-                abrir_modulo_admin("almacen", admin_sub_almacen="gestion")
+    aviso = st.session_state.pop("adm_m_edicion_ok", None)
+    if aviso:
+        st.success(f"Se actualizaron {aviso} actividad(es). El cambio quedó en la bitácora y en la rama datos.")
+    dia = bitacora_del_dia(bitacora_con_fechas(cargar_bitacora()), jornada)
+    if dia.empty:
+        st.info(f"No hay actividades cargadas el {jornada.strftime('%d/%m/%Y')}.")
+    else:
+        tabla = pd.DataFrame(
+            {
+                "_idx": list(dia.index),
+                "OT": [
+                    str(numero_secuencia_actividad(fila.get("SECUENCIA")) or _texto_celda_admin(fila.get("SECUENCIA")))
+                    for _, fila in dia.iterrows()
+                ],
+                "Cuadrilla": [_cuadrilla_fila_admin(fila) for _, fila in dia.iterrows()],
+                "Ubicación": [_ubicacion_fila_admin(fila) for _, fila in dia.iterrows()],
+                "Descripción": [_descripcion_fila_admin(fila) for _, fila in dia.iterrows()],
+            }
+        )
+        editada = st.data_editor(
+            tabla,
+            num_rows="fixed",
+            hide_index=True,
+            use_container_width=True,
+            key=f"adm_m_editor_{jornada.isoformat()}",
+            disabled=["_idx", "OT", "Cuadrilla"],
+            column_config={
+                "_idx": None,
+                "Descripción": st.column_config.TextColumn("Descripción", width="large"),
+            },
+        )
+        if st.button(
+            "Guardar actividades del día",
+            type="primary",
+            use_container_width=True,
+            key="adm_m_guardar_dia",
+        ):
+            _guardar_edicion_dia_admin(dia, editada)
+    ed_cat, ed_ins = st.columns(2)
+    with ed_cat:
+        if st.button("Editar equipos y ubicaciones", use_container_width=True, key="adm_m_edit_cat"):
+            abrir_modulo_admin("auditoria", admin_sub_auditoria="catalogos")
+    with ed_ins:
+        if st.button("Editar insumos", use_container_width=True, key="adm_m_edit_ins"):
+            abrir_modulo_admin("almacen", admin_sub_almacen="gestion")
 
 
 def render_vista_previa_admin(jornada: date) -> None:
-    tarjeta = st.popover(
-        "VISTA PREVIA",
-        width="stretch",
-        on_change="rerun",
-        key="adm_pop_previa",
-    )
-    with tarjeta:
-        if not tarjeta.open:
-            return
-        mes = _bitacora_mes_admin(jornada)
-        filtros = st.columns(2)
-        with filtros[0]:
-            ot = st.text_input("OT", key="adm_m_f_ot", placeholder="Secuencia")
-            pozo = st.selectbox("Pozo", _opciones_admin(mes, _pozo_fila_admin), key="adm_m_f_pozo")
-            estatus = st.selectbox("Estatus", _opciones_admin(mes, _estatus_fila_admin), key="adm_m_f_estatus")
-        with filtros[1]:
-            sector = st.selectbox("Sector", _opciones_admin(mes, _sector_fila_admin), key="adm_m_f_sector")
-            cuadrilla = st.selectbox("Cuadrilla", _opciones_admin(mes, _cuadrilla_fila_admin), key="adm_m_f_cuadrilla")
-        filtrada = _filtrar_vista_admin(mes, ot, sector, pozo, cuadrilla, estatus)
-        programados, imprevistos, total = _contar_avance_admin(filtrada)
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Programados", programados)
-        m2.metric("No programados", imprevistos)
-        m3.metric("Total", total)
-        avance = go.Figure(
-            go.Bar(
-                x=["Programados", "No programados", "Total"],
-                y=[programados, imprevistos, total],
-                marker_color=["#86efac", "#fbbf24", "#93c5fd"],
-            )
+    mes = _bitacora_mes_admin(jornada)
+    filtros = st.columns(2)
+    with filtros[0]:
+        ot = st.text_input("OT", key="adm_m_f_ot", placeholder="Secuencia")
+        pozo = st.selectbox("Pozo", _opciones_admin(mes, _pozo_fila_admin), key="adm_m_f_pozo")
+        estatus = st.selectbox("Estatus", _opciones_admin(mes, _estatus_fila_admin), key="adm_m_f_estatus")
+    with filtros[1]:
+        sector = st.selectbox("Sector", _opciones_admin(mes, _sector_fila_admin), key="adm_m_f_sector")
+        cuadrilla = st.selectbox("Cuadrilla", _opciones_admin(mes, _cuadrilla_fila_admin), key="adm_m_f_cuadrilla")
+    filtrada = _filtrar_vista_admin(mes, ot, sector, pozo, cuadrilla, estatus)
+    programados, imprevistos, total = _contar_avance_admin(filtrada)
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Programados", programados)
+    m2.metric("No programados", imprevistos)
+    m3.metric("Total", total)
+    avance = go.Figure(
+        go.Bar(
+            x=["Programados", "No programados", "Total"],
+            y=[programados, imprevistos, total],
+            marker_color=["#86efac", "#fbbf24", "#93c5fd"],
         )
-        avance.update_layout(
-            height=190,
+    )
+    avance.update_layout(
+        height=190,
+        margin=dict(l=8, r=8, t=28, b=8),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font_color="#e2e8f0",
+        title="Avance de mantenimientos",
+    )
+    st.plotly_chart(avance, use_container_width=True, key="adm_m_chart_avance")
+    detalle = detalle_insumos_suministrados(filtrada)
+    if detalle.empty:
+        st.caption("Sin insumos consumidos para el filtro de este mes.")
+    else:
+        resumen = (
+            detalle.groupby("refaccion", as_index=False)["cantidad"]
+            .sum()
+            .sort_values("cantidad", ascending=False)
+            .head(8)
+        )
+        figura = px.bar(
+            resumen,
+            x="refaccion",
+            y="cantidad",
+            labels={"refaccion": "Insumo", "cantidad": "Cantidad"},
+        )
+        figura.update_layout(
+            height=220,
             margin=dict(l=8, r=8, t=28, b=8),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             font_color="#e2e8f0",
-            title="Avance de mantenimientos",
+            title="Insumos consumidos",
         )
-        st.plotly_chart(avance, use_container_width=True, key="adm_m_chart_avance")
-        detalle = detalle_insumos_suministrados(filtrada)
-        if detalle.empty:
-            st.caption("Sin insumos consumidos para el filtro de este mes.")
-        else:
-            resumen = (
-                detalle.groupby("refaccion", as_index=False)["cantidad"]
-                .sum()
-                .sort_values("cantidad", ascending=False)
-                .head(8)
-            )
-            figura = px.bar(
-                resumen,
-                x="refaccion",
-                y="cantidad",
-                labels={"refaccion": "Insumo", "cantidad": "Cantidad"},
-            )
-            figura.update_layout(
-                height=220,
-                margin=dict(l=8, r=8, t=28, b=8),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font_color="#e2e8f0",
-                title="Insumos consumidos",
-            )
-            st.plotly_chart(figura, use_container_width=True, key="adm_m_chart_insumos")
+        st.plotly_chart(figura, use_container_width=True, key="adm_m_chart_insumos")
 
 
 def _insumos_rango_admin(desde: date, hasta: date) -> pd.DataFrame:
@@ -20274,61 +20308,52 @@ def _insumos_rango_admin(desde: date, hasta: date) -> pd.DataFrame:
 
 
 def render_extraccion_evidencia_admin(jornada: date) -> None:
-    tarjeta = st.popover(
-        "EXTRACCION DE EVIDENCIA",
-        width="stretch",
-        on_change="rerun",
-        key="adm_pop_extraccion",
-    )
-    with tarjeta:
-        if not tarjeta.open:
-            return
-        desde_col, hasta_col = st.columns(2)
-        with desde_col:
-            desde = st.date_input(
-                "Desde",
-                value=date(jornada.year, jornada.month, 1),
-                format="DD/MM/YYYY",
-                key="adm_m_ins_desde",
+    desde_col, hasta_col = st.columns(2)
+    with desde_col:
+        desde = st.date_input(
+            "Desde",
+            value=date(jornada.year, jornada.month, 1),
+            format="DD/MM/YYYY",
+            key="adm_m_ins_desde",
+        )
+    with hasta_col:
+        hasta = st.date_input(
+            "Hasta",
+            value=jornada,
+            format="DD/MM/YYYY",
+            key="adm_m_ins_hasta",
+        )
+    if st.button("Generar reporte de insumos", use_container_width=True, key="adm_m_gen_insumos"):
+        detalle = _insumos_rango_admin(desde, hasta)
+        st.session_state.adm_m_ins_xlsx = _excel_tabla_admin(detalle)
+        st.session_state.adm_m_ins_csv = detalle.to_csv(index=False).encode("utf-8-sig")
+        st.session_state.adm_m_ins_marca = f"{min(desde, hasta).strftime('%Y%m%d')}_{max(desde, hasta).strftime('%Y%m%d')}"
+        st.session_state.adm_m_ins_filas = int(len(detalle))
+    if st.session_state.get("adm_m_ins_xlsx"):
+        filas = int(st.session_state.get("adm_m_ins_filas") or 0)
+        st.caption(f"{filas} movimiento(s) de insumo en el rango.")
+        marca = st.session_state.get("adm_m_ins_marca") or "insumos"
+        baja_xls, baja_csv = st.columns(2)
+        with baja_xls:
+            st.download_button(
+                "Descargar Excel",
+                data=st.session_state.adm_m_ins_xlsx,
+                file_name=f"insumos_{marca}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="adm_m_dl_xlsx",
             )
-        with hasta_col:
-            hasta = st.date_input(
-                "Hasta",
-                value=jornada,
-                format="DD/MM/YYYY",
-                key="adm_m_ins_hasta",
+        with baja_csv:
+            st.download_button(
+                "Descargar CSV",
+                data=st.session_state.adm_m_ins_csv,
+                file_name=f"insumos_{marca}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key="adm_m_dl_csv",
             )
-        if st.button("Generar reporte de insumos", use_container_width=True, key="adm_m_gen_insumos"):
-            detalle = _insumos_rango_admin(desde, hasta)
-            st.session_state.adm_m_ins_xlsx = _excel_tabla_admin(detalle)
-            st.session_state.adm_m_ins_csv = detalle.to_csv(index=False).encode("utf-8-sig")
-            st.session_state.adm_m_ins_marca = f"{min(desde, hasta).strftime('%Y%m%d')}_{max(desde, hasta).strftime('%Y%m%d')}"
-            st.session_state.adm_m_ins_filas = int(len(detalle))
-        if st.session_state.get("adm_m_ins_xlsx"):
-            filas = int(st.session_state.get("adm_m_ins_filas") or 0)
-            st.caption(f"{filas} movimiento(s) de insumo en el rango.")
-            marca = st.session_state.get("adm_m_ins_marca") or "insumos"
-            baja_xls, baja_csv = st.columns(2)
-            with baja_xls:
-                st.download_button(
-                    "Descargar Excel",
-                    data=st.session_state.adm_m_ins_xlsx,
-                    file_name=f"insumos_{marca}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    key="adm_m_dl_xlsx",
-                )
-            with baja_csv:
-                st.download_button(
-                    "Descargar CSV",
-                    data=st.session_state.adm_m_ins_csv,
-                    file_name=f"insumos_{marca}.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                    key="adm_m_dl_csv",
-                )
-        with st.expander("Reporte fotográfico PDF", expanded=False):
-            render_generador_reporte_fotografico(key_prefix="adm_matriz_foto")
+    with st.expander("Reporte fotográfico PDF", expanded=False):
+        render_generador_reporte_fotografico(key_prefix="adm_matriz_foto")
 
 
 def _desplazar_mes_admin(jornada: date, delta: int) -> date:
@@ -20359,18 +20384,50 @@ def render_calendario_jornada_admin(jornada: date, metricas: dict) -> None:
         render_mini_calendario_admin(jornada, metricas["fechas_bit"], metricas["fechas_ot"])
 
 
+def render_seccion_completa_admin(vista: str, jornada: date) -> None:
+    titulos = {
+        "entrada": "ENTRADA DE DATOS",
+        "edicion": "EDICION DE CAPTURA",
+        "previa": "VISTA PREVIA",
+        "extraccion": "EXTRACCION DE EVIDENCIA",
+    }
+    if st.button(
+        "← Volver al Menú Administrativo",
+        type="primary",
+        use_container_width=True,
+        key="adm_volver_menu",
+    ):
+        st.session_state.admin_vista = None
+        st.rerun()
+    st.markdown(
+        f'<h2 class="adm-seccion-titulo">{html.escape(titulos.get(vista, vista))}</h2>',
+        unsafe_allow_html=True,
+    )
+    if vista == "entrada":
+        render_entrada_datos_admin()
+    elif vista == "edicion":
+        render_edicion_captura_admin(jornada)
+    elif vista == "previa":
+        render_vista_previa_admin(jornada)
+    elif vista == "extraccion":
+        render_extraccion_evidencia_admin(jornada)
+
+
 def render_explorador_admin() -> None:
     st.markdown(
         """
         <style>
-            [data-testid="stPopover"] > div > button,
-            [data-testid="stPopover"] button {
-                min-height: 4.6rem;
+            [class*="st-key-adm_card_"] button {
+                min-height: 4.75rem;
                 border-radius: 14px;
-                border: 1px solid #334155;
-                background: #0f172a;
+                border: 1px solid #334155 !important;
+                background: #0f172a !important;
+                color: #f8fafc !important;
                 font-weight: 700;
                 letter-spacing: 0.08em;
+            }
+            [data-testid="stHorizontalBlock"]:has(.cal-mes-admin) {
+                align-items: center;
             }
             .cal-mes-admin {
                 margin: 0.35rem 0 0.15rem;
@@ -20379,8 +20436,20 @@ def render_explorador_admin() -> None:
                 font-weight: 700;
                 font-size: 1.05rem;
             }
+            .adm-seccion-titulo {
+                margin: 0.2rem 0 1rem;
+                text-align: center;
+                color: #f8fafc;
+                letter-spacing: 0.08em;
+            }
+            .adm-sync {
+                margin: 0;
+                color: #e2e8f0;
+                font-size: 0.92rem;
+                line-height: 1.35;
+            }
             [data-testid="stAppViewContainer"] .block-container {
-                padding-top: 1.25rem;
+                padding-top: 1.1rem;
                 padding-bottom: 0.6rem;
             }
         </style>
@@ -20393,16 +20462,32 @@ def render_explorador_admin() -> None:
     if "admin_jornada" not in st.session_state or not isinstance(st.session_state.admin_jornada, date):
         st.session_state.admin_jornada = parsear_fecha_valor(st.session_state.get("admin_jornada")) or date.today()
     jornada = st.session_state.admin_jornada
+    vista = st.session_state.get("admin_vista")
+    if vista in {"entrada", "edicion", "previa", "extraccion"}:
+        render_seccion_completa_admin(vista, jornada)
+        return
     metricas = metricas_nucleo_admin(jornada)
-    col_izq, col_centro, col_der = st.columns([1.12, 1.35, 1.12], gap="medium")
+    col_izq, col_centro, col_der = st.columns(
+        [1.12, 1.35, 1.12],
+        gap="medium",
+        vertical_alignment="center",
+    )
     with col_izq:
-        render_entrada_datos_admin()
-        render_edicion_captura_admin(jornada)
+        if st.button("ENTRADA DE DATOS", use_container_width=True, key="adm_card_entrada"):
+            st.session_state.admin_vista = "entrada"
+            st.rerun()
+        if st.button("EDICION DE CAPTURA", use_container_width=True, key="adm_card_edicion"):
+            st.session_state.admin_vista = "edicion"
+            st.rerun()
     with col_centro:
         render_calendario_jornada_admin(jornada, metricas)
     with col_der:
-        render_vista_previa_admin(jornada)
-        render_extraccion_evidencia_admin(jornada)
+        if st.button("VISTA PREVIA", use_container_width=True, key="adm_card_previa"):
+            st.session_state.admin_vista = "previa"
+            st.rerun()
+        if st.button("EXTRACCION DE EVIDENCIA", use_container_width=True, key="adm_card_extraccion"):
+            st.session_state.admin_vista = "extraccion"
+            st.rerun()
 
     pie_ub, pie_hist = st.columns(2)
     with pie_ub:
@@ -20473,6 +20558,7 @@ def render_panel_administrativo() -> None:
     if modulo_id == "combustible":
         modulo_id = "vehiculos"
         st.session_state.admin_modulo = "vehiculos"
+    render_barra_herramientas_admin()
     if not modulo_id:
         render_explorador_admin()
         return
