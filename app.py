@@ -19369,7 +19369,6 @@ def render_mini_calendario_admin(jornada: date, fechas_bit: set, fechas_ot: set)
                 ):
                     st.session_state.admin_jornada_pendiente = dia
                     st.rerun()
-    st.caption("Verde: bitácora · Azul: PDF de OT · Marco: jornada seleccionada.")
 
 
 def render_respaldo_base_datos(clave: str = "respaldo") -> None:
@@ -20093,12 +20092,15 @@ def _guardar_edicion_dia_admin(dia: pd.DataFrame, editada: pd.DataFrame) -> None
 
 
 def render_entrada_datos_admin() -> None:
-    with st.container(border=True):
-        render_seccion_admin(
-            "Superior izquierda",
-            "Entrada de Datos",
-            "Registra actividades, carga el Excel de mantenimientos programados y da de alta el catálogo.",
-        )
+    tarjeta = st.popover(
+        "ENTRADA DE DATOS",
+        width="stretch",
+        on_change="rerun",
+        key="adm_pop_entrada",
+    )
+    with tarjeta:
+        if not tarjeta.open:
+            return
         if st.button(
             "Registrar o editar actividad de bitácora",
             use_container_width=True,
@@ -20126,16 +20128,18 @@ def render_entrada_datos_admin() -> None:
         with alta_ins:
             if st.button("Insumos", use_container_width=True, key="adm_m_alta_ins"):
                 abrir_modulo_admin("almacen", admin_sub_almacen="gestion")
-        st.caption("Altas rápidas de ubicación, equipo (MCI y UB) e insumos del catálogo.")
 
 
 def render_edicion_captura_admin(jornada: date) -> None:
-    with st.container(border=True):
-        render_seccion_admin(
-            "Inferior izquierda",
-            "Edición de Captura",
-            "Corrige las actividades de la jornada y edita equipos, ubicaciones o insumos.",
-        )
+    tarjeta = st.popover(
+        "EDICION DE CAPTURA",
+        width="stretch",
+        on_change="rerun",
+        key="adm_pop_edicion",
+    )
+    with tarjeta:
+        if not tarjeta.open:
+            return
         aviso = st.session_state.pop("adm_m_edicion_ok", None)
         if aviso:
             st.success(f"Se actualizaron {aviso} actividad(es). El cambio quedó en la bitácora y en la rama datos.")
@@ -20184,12 +20188,15 @@ def render_edicion_captura_admin(jornada: date) -> None:
 
 
 def render_vista_previa_admin(jornada: date) -> None:
-    with st.container(border=True):
-        render_seccion_admin(
-            "Superior derecha",
-            "Vista Previa",
-            "Insumos consumidos y avance de mantenimientos del mes de la jornada.",
-        )
+    tarjeta = st.popover(
+        "VISTA PREVIA",
+        width="stretch",
+        on_change="rerun",
+        key="adm_pop_previa",
+    )
+    with tarjeta:
+        if not tarjeta.open:
+            return
         mes = _bitacora_mes_admin(jornada)
         filtros = st.columns(2)
         with filtros[0]:
@@ -20267,12 +20274,15 @@ def _insumos_rango_admin(desde: date, hasta: date) -> pd.DataFrame:
 
 
 def render_extraccion_evidencia_admin(jornada: date) -> None:
-    with st.container(border=True):
-        render_seccion_admin(
-            "Inferior derecha",
-            "Extracción de Evidencia",
-            "Reporte de insumos por rango de fechas y reporte fotográfico en PDF.",
-        )
+    tarjeta = st.popover(
+        "EXTRACCION DE EVIDENCIA",
+        width="stretch",
+        on_change="rerun",
+        key="adm_pop_extraccion",
+    )
+    with tarjeta:
+        if not tarjeta.open:
+            return
         desde_col, hasta_col = st.columns(2)
         with desde_col:
             desde = st.date_input(
@@ -20321,39 +20331,62 @@ def render_extraccion_evidencia_admin(jornada: date) -> None:
             render_generador_reporte_fotografico(key_prefix="adm_matriz_foto")
 
 
+def _desplazar_mes_admin(jornada: date, delta: int) -> date:
+    indice = jornada.month - 1 + delta
+    anio = jornada.year + indice // 12
+    mes = indice % 12 + 1
+    ultimo = calendar.monthrange(anio, mes)[1]
+    return date(anio, mes, min(jornada.day, ultimo))
+
+
 def render_calendario_jornada_admin(jornada: date, metricas: dict) -> None:
     with st.container(border=True):
         mes_txt = NOMBRES_MES[jornada.month - 1]
-        dia_txt = NOMBRES_DIA[jornada.weekday()]
-        st.markdown(f"#### Calendario de Jornada · {mes_txt} {jornada.year}")
-        st.markdown(
-            f"""
-            <div class="nucleo-dia">
-                <div class="kicker">Día activo</div>
-                <h3>{html.escape(dia_txt)}, {jornada.day} de {html.escape(mes_txt.lower())} de {jornada.year}</h3>
-                <p>{metricas['bitacoras']} registro(s) de bitácora en esta jornada.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.date_input("Consultar jornada específica", format="DD/MM/YYYY", key="admin_jornada")
+        anterior, titulo, siguiente = st.columns([1, 4, 1])
+        with anterior:
+            if st.button("‹", key="adm_mes_ant", use_container_width=True):
+                st.session_state.admin_jornada_pendiente = _desplazar_mes_admin(jornada, -1)
+                st.rerun()
+        with titulo:
+            st.markdown(
+                f'<p class="cal-mes-admin">{html.escape(mes_txt)} {jornada.year}</p>',
+                unsafe_allow_html=True,
+            )
+        with siguiente:
+            if st.button("›", key="adm_mes_sig", use_container_width=True):
+                st.session_state.admin_jornada_pendiente = _desplazar_mes_admin(jornada, 1)
+                st.rerun()
         render_mini_calendario_admin(jornada, metricas["fechas_bit"], metricas["fechas_ot"])
-        if metricas.get("alertas"):
-            st.caption(f"Insumos críticos sin existencia: {metricas['alertas']}.")
-        ot_col, asig_col = st.columns(2)
-        with ot_col:
-            if st.button("OT de esta jornada", use_container_width=True, key="adm_m_ot_dia"):
-                if metricas.get("ot"):
-                    st.session_state.ot_hist_sel = metricas["ot"]["etiqueta"]
-                abrir_modulo_admin("ot_diario")
-        with asig_col:
-            if st.button("Asignaciones del día", use_container_width=True, key="adm_m_asig_dia"):
-                st.session_state.fecha_asignacion_admin = jornada
-                abrir_modulo_admin("asignaciones")
 
 
 def render_explorador_admin() -> None:
-    st.caption("Calendario de jornada al centro, con entrada, edición, vista previa y extracción alrededor.")
+    st.markdown(
+        """
+        <style>
+            [data-testid="stPopover"] > div > button,
+            [data-testid="stPopover"] button {
+                min-height: 4.6rem;
+                border-radius: 14px;
+                border: 1px solid #334155;
+                background: #0f172a;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+            }
+            .cal-mes-admin {
+                margin: 0.35rem 0 0.15rem;
+                text-align: center;
+                color: #f8fafc;
+                font-weight: 700;
+                font-size: 1.05rem;
+            }
+            [data-testid="stAppViewContainer"] .block-container {
+                padding-top: 1.25rem;
+                padding-bottom: 0.6rem;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     pendiente = st.session_state.pop("admin_jornada_pendiente", None)
     if isinstance(pendiente, date):
         st.session_state.admin_jornada = pendiente
@@ -20371,39 +20404,13 @@ def render_explorador_admin() -> None:
         render_vista_previa_admin(jornada)
         render_extraccion_evidencia_admin(jornada)
 
-    st.markdown("#### Módulos base")
-    pie_hist, pie_ub = st.columns(2)
-    with pie_hist:
-        if st.button("Historial", type="primary", use_container_width=True, key="adm_pie_historial"):
-            abrir_modulo_admin("historial_base")
-        st.caption("Historial de OTs · Bitácora general · Calendario de asistencia de cuadrillas.")
+    pie_ub, pie_hist = st.columns(2)
     with pie_ub:
-        if st.button("Ubicación y Equipos", type="primary", use_container_width=True, key="adm_pie_ubicaciones"):
+        if st.button("UBICACION Y EQUIPOS", use_container_width=True, key="adm_pie_ubicaciones"):
             abrir_modulo_admin("ubicaciones")
-        st.caption("Catálogo de activos, sectores y fichas de pozo.")
-
-    with st.expander("Otros módulos del centro de control", expanded=False):
-        extra = st.columns(4)
-        with extra[0]:
-            if st.button("Dashboard", use_container_width=True, key="adm_m_dash"):
-                abrir_modulo_admin("dashboard")
-            if st.button("Programas mensuales", use_container_width=True, key="adm_m_prog"):
-                abrir_modulo_admin("programas")
-        with extra[1]:
-            if st.button("Vehículos y taller", use_container_width=True, key="adm_m_veh"):
-                abrir_modulo_admin("vehiculos")
-            if st.button("Programa de octubre", use_container_width=True, key="adm_m_octubre"):
-                abrir_modulo_admin("programa_octubre")
-        with extra[2]:
-            if st.button("Soporte de refacciones", use_container_width=True, key="adm_m_sop"):
-                abrir_modulo_admin("soporte")
-            if st.button("Permisos", use_container_width=True, key="adm_m_perm"):
-                abrir_modulo_admin("auditoria", admin_sub_auditoria="permisos")
-        with extra[3]:
-            if st.button("Historial de cuadrillas", use_container_width=True, key="adm_m_cuad"):
-                abrir_modulo_admin("cuadrillas")
-            if st.button("Programados vs paros", use_container_width=True, key="adm_m_paros"):
-                abrir_modulo_admin("programados")
+    with pie_hist:
+        if st.button("HISTORIAL", use_container_width=True, key="adm_pie_historial"):
+            abrir_modulo_admin("historial_base")
 
 
 def render_historial_base_admin() -> None:
@@ -20463,16 +20470,6 @@ def render_auditoria_accesos() -> None:
 
 def render_panel_administrativo() -> None:
     modulo_id = st.session_state.get("admin_modulo")
-    if not modulo_id:
-        render_encabezado(
-            "🗂️ Centro de Comando Administrativo",
-            "Soledad · Base Álamo — calendario de jornada al centro",
-        )
-    else:
-        render_encabezado(
-            "🗂️ Panel Administrativo",
-            "Centro de control — Soledad · Base Álamo",
-        )
     if modulo_id == "combustible":
         modulo_id = "vehiculos"
         st.session_state.admin_modulo = "vehiculos"
@@ -20486,6 +20483,10 @@ def render_panel_administrativo() -> None:
         render_explorador_admin()
         return
 
+    render_encabezado(
+        "🗂️ Panel Administrativo",
+        "Centro de control — Soledad · Base Álamo",
+    )
     render_barra_modulo_admin(modulo["titulo"])
     if modulo_id == "registro_bitacora":
         render_captura_bitacora_admin()
