@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import os
 import re
+import unicodedata
 import warnings
 import zipfile
 from datetime import date, datetime
@@ -32,7 +33,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, Table, TableStyle
 
-VERSION_DISENO_PDF = 4
+VERSION_DISENO_PDF = 5
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -509,7 +510,7 @@ def _hoja_a_pdf(
     ]
     fila_valores = [
         _parrafo_ajustado(
-            _texto_celda(ws[celda].value),
+            _valor_tabla_pdf(celda, ws[celda].value),
             fuente_negrita if celda == "E3" else fuente,
             7 if celda == "E3" else 8,
             ancho - 2 * padding,
@@ -615,6 +616,65 @@ def _texto_celda(valor) -> str:
     if isinstance(valor, date):
         return valor.strftime("%d/%m/%Y")
     return str(valor).strip()
+
+
+def _sin_acentos(texto: str) -> str:
+    normal = unicodedata.normalize("NFD", str(texto or ""))
+    return "".join(c for c in normal if unicodedata.category(c) != "Mn")
+
+
+_TAGS_CUADRILLA_PDF = {
+    "electricos": "ELECT",
+    "electrico": "ELECT",
+    "instrumentos": "INSTR",
+    "instrumentista": "INSTR",
+    "mecanico 1": "MECA-1",
+    "mecanico 2": "MECA-2",
+    "montaje": "MONTA",
+    "soldadura": "SOLD",
+    "retro": "RETRO",
+    "retroexcavadora": "RETRO",
+    "retro excavadora": "RETRO",
+}
+
+
+def _es_sector_zona(texto: str) -> bool:
+    """El primer tramo de la ubicación de campo es el sector, no el pozo."""
+    limpio = str(texto or "").strip()
+    if not limpio:
+        return False
+    if "(" in limpio and ")" in limpio:
+        return True
+    clave = re.sub(r"\s+", " ", _sin_acentos(limpio).casefold()).strip()
+    return clave in {"base pjp4"} or clave.startswith(("almacen ", "bateria ", "estacion ", "sector "))
+
+
+def _ubicacion_tabla_pdf(valor) -> str:
+    """Deja el pozo, o pozo y equipo, sin el sector o la zona delante."""
+    texto = _texto_celda(valor)
+    partes = [parte.strip() for parte in texto.split("·") if parte.strip()]
+    if len(partes) >= 2 and _es_sector_zona(partes[0]):
+        partes = partes[1:]
+    return " · ".join(partes) if partes else texto
+
+
+def _tag_cuadrilla_pdf(valor) -> str:
+    texto = _texto_celda(valor)
+    clave = re.sub(r"\s+", " ", _sin_acentos(texto).casefold()).strip()
+    if clave in _TAGS_CUADRILLA_PDF:
+        return _TAGS_CUADRILLA_PDF[clave]
+    compacta = clave.replace(" ", "")
+    if compacta in _TAGS_CUADRILLA_PDF:
+        return _TAGS_CUADRILLA_PDF[compacta]
+    return texto.upper()
+
+
+def _valor_tabla_pdf(celda: str, valor) -> str:
+    if celda == "C4":
+        return _ubicacion_tabla_pdf(valor)
+    if celda == "L4":
+        return _tag_cuadrilla_pdf(valor)
+    return _texto_celda(valor)
 
 
 def _parrafo_ajustado(texto: str, fuente: str, tamano: float, ancho: float, alto: float) -> Paragraph:
