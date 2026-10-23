@@ -109,22 +109,5 @@
       "activo": true
     }
   ],
-  "movimientos": [
-    {
-      "tipo": "consumo",
-      "fecha": "2026-10-21",
-      "secuencia": "Act. 1",
-      "cuadrilla": "Mecanico 1",
-      "sector": "Soledad Norte (SN)",
-      "insumo_id": "aceite-sae-50",
-      "insumo": "Aceite SAE 50",
-      "cantidad": 2.0,
-      "unidad": "L",
-      "origen": "PJP4 (Propio)",
-      "origen_registro": "campo",
-      "tipo_insumo": "Consumible",
-      "id": "8ee850b4d1",
-      "registrado": "2026-10-22 15:06"
-    }
-  ]
+  "movimientos": []
 }
