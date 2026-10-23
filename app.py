@@ -20436,13 +20436,27 @@ def _actividades_programadas_suministros() -> set[str]:
     return nombres
 
 
-def _destino_hoja_suministros(actividad, programadas: set[str]) -> str:
-    clave = _clave_actividad_oficial(actividad)
-    if clave == _ACTIVIDAD_RELLENO_SUMINISTROS:
+def _destino_por_descripcion(descripcion: str) -> str:
+    """Respaldo para bitácoras antiguas sin Actividad oficial."""
+    clave = _clave_actividad_oficial(descripcion)
+    if not clave:
+        return ""
+    if _ACTIVIDAD_RELLENO_SUMINISTROS in clave:
         return "relleno"
-    if clave in programadas:
+    if any(token in clave for token in ("bimestral", "semestral", "habilitado", "puesta en marcha", "preventiv")):
         return "programado"
     return ""
+
+
+def _destino_hoja_suministros(actividad, programadas: set[str], descripcion: str = "") -> str:
+    clave = _clave_actividad_oficial(actividad)
+    if clave:
+        if clave == _ACTIVIDAD_RELLENO_SUMINISTROS:
+            return "relleno"
+        if clave in programadas:
+            return "programado"
+        return ""
+    return _destino_por_descripcion(descripcion)
 
 
 def _aceite_en_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[str, str], dict[int, float]]]:
@@ -20463,7 +20477,11 @@ def _aceite_en_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[s
         dia = fila.get("_fecha")
         if not isinstance(dia, date):
             continue
-        destino = _destino_hoja_suministros(fila.get("TIPO DE ACTIVIDAD"), programadas)
+        destino = _destino_hoja_suministros(
+            fila.get("TIPO DE ACTIVIDAD"),
+            programadas,
+            _descripcion_fila_admin(fila),
+        )
         if not destino:
             continue
         pozo = _pozo_fila_admin(fila) or "Sin pozo"
@@ -20564,8 +20582,8 @@ def _insumos_rango_admin(desde: date, hasta: date) -> pd.DataFrame:
 
 def render_extraccion_evidencia_admin(jornada: date) -> None:
     st.caption(
-        "El Excel usa la Actividad oficial: «Inspección y suministro» va a relleno; "
-        "bimestrales, semestrales, habilitados, puestas en marcha y mantenimientos preventivos del catálogo van a programados."
+        "El Excel usa la Actividad oficial. Si el registro antiguo no la trae, lee la descripción: "
+        "«Inspección y suministro» va a relleno; bimestral, semestral, habilitado, puesta en marcha o preventivo va a programados."
     )
     desde_col, hasta_col = st.columns(2)
     with desde_col:
