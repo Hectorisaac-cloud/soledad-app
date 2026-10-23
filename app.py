@@ -2294,6 +2294,11 @@ def clave_ubicacion(nombre: str) -> str:
     return re.sub(r"\s*-\s*", "-", texto).strip("-")
 
 
+def clave_pozo_plana(nombre: str) -> str:
+    """PA67, PA-67 y pa 67 quedan en la misma clave."""
+    return re.sub(r"[^A-Z0-9]", "", _sin_acentos(str(nombre or "")).upper())
+
+
 def coincide_prefijo(nombre: str, prefijo: str) -> bool:
     clave = clave_ubicacion(nombre).replace(" ", "")
     pref = str(prefijo or "").upper().strip()
@@ -2733,10 +2738,13 @@ def encontrar_ficha(datos: dict, nombre: str) -> dict | None:
     fid = clave_ubicacion(nombre)
     if fid in datos["fichas"]:
         return datos["fichas"][fid]
+    plana = clave_pozo_plana(nombre)
     for ficha in datos["fichas"].values():
         if str(ficha.get("nombre", "")).casefold() == nombre.casefold():
             return ficha
         if clave_ubicacion(ficha.get("nombre", "")) == fid:
+            return ficha
+        if plana and plana in _claves_pozo(ficha.get("nombre"), ficha.get("id")):
             return ficha
     return None
 
@@ -2904,16 +2912,20 @@ def registrar_cambio_equipo(
     return None
 
 
+def _claves_pozo(*valores) -> set[str]:
+    return {clave_pozo_plana(valor) for valor in valores if clave_pozo_plana(valor)}
+
+
 def cambios_de_pozo(datos: dict, ficha: dict) -> list[dict]:
-    nombres = {clave_ubicacion(ficha["nombre"]), ficha["id"]}
+    nombres = _claves_pozo(ficha.get("nombre"), ficha.get("id"))
     historial = []
     for cambio in datos.get("cambios_equipo", []):
-        ids = {
-            clave_ubicacion(cambio.get("pozo", "")),
-            str(cambio.get("pozo_id", "")),
-            clave_ubicacion(cambio.get("origen", "")),
-            str(cambio.get("origen_id", "")),
-        }
+        ids = _claves_pozo(
+            cambio.get("pozo"),
+            cambio.get("pozo_id"),
+            cambio.get("origen"),
+            cambio.get("origen_id"),
+        )
         if nombres & ids:
             historial.append(cambio)
     return sorted(historial, key=lambda c: str(c.get("fecha", "")), reverse=True)
@@ -2921,28 +2933,39 @@ def cambios_de_pozo(datos: dict, ficha: dict) -> list[dict]:
 
 def _texto_coincide_pozo(valor: str, ficha: dict) -> bool:
     texto = str(valor or "").strip()
-    if not texto:
+    if not texto or texto.lower() in {"nan", "none"}:
         return False
-    clave = clave_ubicacion(ficha["nombre"])
-    cand = clave_ubicacion(texto)
-    if cand == clave or cand == ficha["id"]:
+    claves = _claves_pozo(ficha.get("nombre"), ficha.get("id"))
+    if not claves:
+        return False
+    if clave_pozo_plana(texto) in claves:
         return True
-    clave_plana = clave.replace("-", "")
-    cand_plana = cand.replace("-", "")
-    if cand_plana.isdigit() and len(cand_plana) >= 2 and clave_plana.endswith(cand_plana):
-        return True
-    if clave_plana.isdigit() and len(clave_plana) >= 2 and cand_plana.endswith(clave_plana):
-        return True
-    nombre = ficha["nombre"].casefold()
-    return nombre in texto.casefold() and len(nombre) >= 3
+    unido = re.sub(
+        r"\b(PSN|PGA|PPB|PS|PA|PB|PC)[\s\-_.]+(\d+[A-Za-z]?)\b",
+        r"\1\2",
+        texto,
+        flags=re.IGNORECASE,
+    )
+    for trozo in re.split(r"[^A-Za-z0-9]+", unido):
+        if clave_pozo_plana(trozo) in claves:
+            return True
+    plana = clave_pozo_plana(texto)
+    if plana.isdigit() and len(plana) >= 2:
+        return any(clave.endswith(plana) and clave[: -len(plana)].isalpha() for clave in claves)
+    return False
 
 
 def bitacora_de_pozo(df: pd.DataFrame, ficha: dict) -> pd.DataFrame:
     if df.empty:
         return df
-    mask_pozo = df["POZO"].map(lambda v: _texto_coincide_pozo(v, ficha))
-    if mask_pozo.any():
-        return df.loc[mask_pozo].copy()
+    columnas = [col for col in ("POZO", "UBICACIÓN", "EQUIPO/UBICACIÓN", "SECTOR") if col in df.columns]
+    if columnas:
+        mask_pozo = df.apply(
+            lambda fila: any(_texto_coincide_pozo(fila.get(col), ficha) for col in columnas),
+            axis=1,
+        )
+        if mask_pozo.any():
+            return df.loc[mask_pozo].copy()
     sector = str(ficha.get("sector") or "").strip()
     if sector:
         mask_sec = df["SECTOR"].astype(str).str.strip() == sector
@@ -12120,13 +12143,11 @@ def ficha_por_ubicacion(datos: dict, ubicacion: str) -> dict | None:
     ficha = encontrar_ficha(datos, ubicacion)
     if ficha:
         return ficha
-    plana = clave_ubicacion(ubicacion).replace("-", "")
+    plana = clave_pozo_plana(ubicacion)
     if not plana:
         return None
     for item in datos.get("fichas", {}).values():
-        if clave_ubicacion(item.get("id", "")).replace("-", "") == plana:
-            return item
-        if clave_ubicacion(item.get("nombre", "")).replace("-", "") == plana:
+        if plana in _claves_pozo(item.get("id"), item.get("nombre")):
             return item
     return None
 
@@ -19965,15 +19986,42 @@ def _texto_celda_admin(valor) -> str:
     return texto_visible(valor, "")
 
 
+def _indice_pozos_planos() -> dict[str, dict]:
+    ruta = UBICACIONES_FILE
+    firma = os.path.getmtime(ruta) if os.path.exists(ruta) else 0
+    cache = getattr(_indice_pozos_planos, "cache", None)
+    if cache and cache[0] == firma:
+        return cache[1]
+    indice: dict[str, dict] = {}
+    for ficha in (cargar_ubicaciones().get("fichas") or {}).values():
+        if not isinstance(ficha, dict):
+            continue
+        for plana in _claves_pozo(ficha.get("id"), ficha.get("nombre")):
+            indice.setdefault(plana, ficha)
+    _indice_pozos_planos.cache = (firma, indice)
+    return indice
+
+
+def _nombre_pozo_canonico(texto: str) -> str:
+    bruto = str(texto or "").strip()
+    if not bruto or bruto.lower() in {"nan", "none"}:
+        return ""
+    plana = clave_pozo_plana(bruto)
+    ficha = _indice_pozos_planos().get(plana)
+    if ficha:
+        return etiqueta_codigo_ubicacion(ficha.get("nombre")) or bruto
+    if plana and re.search(r"\d", plana) and re.match(r"^[A-Z]+\d", plana):
+        return plana
+    return bruto
+
+
 def _pozo_fila_admin(fila) -> str:
     pozo = _texto_celda_admin(fila.get("POZO"))
-    if pozo:
-        return pozo
-    ubicacion = _texto_celda_admin(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN"))
-    partes = [parte.strip() for parte in ubicacion.split("·") if parte.strip()]
-    if len(partes) >= 2:
-        return partes[1]
-    return partes[0] if partes else ""
+    if not pozo:
+        ubicacion = _texto_celda_admin(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN"))
+        partes = [parte.strip() for parte in ubicacion.split("·") if parte.strip()]
+        pozo = partes[1] if len(partes) >= 2 else (partes[0] if partes else "")
+    return _nombre_pozo_canonico(pozo)
 
 
 def _sector_fila_admin(fila) -> str:
