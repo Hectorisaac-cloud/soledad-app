@@ -19996,11 +19996,29 @@ def _opciones_admin(df: pd.DataFrame, extractor) -> list[str]:
     return ["Todos"] + sorted(valores, key=str.casefold)
 
 
+def _clase_avance_admin(fila, programadas: set[str]) -> str:
+    """Una actividad del filtro: programada o no programada, nunca un tercer residuo."""
+    actividad = fila.get("TIPO DE ACTIVIDAD")
+    if _clave_actividad_oficial(actividad) in {"", "otra", "nan", "none"}:
+        actividad = ""
+    destino = _destino_hoja_suministros(actividad, programadas, _descripcion_fila_admin(fila))
+    if destino == "programado":
+        return "Programado"
+    if destino == "relleno":
+        return "No programado"
+    if clasificar_mantenimiento(fila) == "Programado":
+        return "Programado"
+    return "No programado"
+
+
 def _contar_avance_admin(df: pd.DataFrame) -> tuple[int, int, int]:
     if df is None or df.empty:
         return 0, 0, 0
-    clases = df.apply(clasificar_mantenimiento, axis=1)
-    return int((clases == "Programado").sum()), int((clases == "No programado").sum()), int(len(df))
+    programadas = _actividades_programadas_suministros()
+    clases = [_clase_avance_admin(fila, programadas) for _, fila in df.iterrows()]
+    programados = clases.count("Programado")
+    no_programados = clases.count("No programado")
+    return programados, no_programados, programados + no_programados
 
 
 def _nombre_excel_programa(nombre: str) -> str:
