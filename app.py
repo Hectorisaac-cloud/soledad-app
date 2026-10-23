@@ -20405,6 +20405,46 @@ def _litros_celda(valor: float):
     return redondo
 
 
+_ACTIVIDAD_RELLENO_SUMINISTROS = "inspeccion y suministro"
+
+
+def _clave_actividad_oficial(valor) -> str:
+    return " ".join(_sin_acentos(str(valor or "")).casefold().split())
+
+
+def _es_mantenimiento_preventivo_catalogo(nombre: str) -> bool:
+    """Bimestral, semestral, habilitado, puesta en marcha o mantenimiento preventivo."""
+    clave = _clave_actividad_oficial(nombre)
+    if not clave or clave in {"otra", _ACTIVIDAD_RELLENO_SUMINISTROS}:
+        return False
+    if any(token in clave for token in ("bimestral", "semestral", "habilitado", "puesta en marcha", "preventiv")):
+        return True
+    if "mantenimiento" in clave and not any(token in clave for token in ("restablec", "recuper", "correctiv")):
+        return True
+    return False
+
+
+def _actividades_programadas_suministros() -> set[str]:
+    datos = leer_json(ACTIVIDADES_FILE, catalogo_actividades_default())
+    catalogo = normalizar_catalogo_actividades(datos)
+    nombres: set[str] = set()
+    for items in catalogo.values():
+        for item in items or []:
+            nombre = str((item or {}).get("nombre") or "")
+            if _es_mantenimiento_preventivo_catalogo(nombre):
+                nombres.add(_clave_actividad_oficial(nombre))
+    return nombres
+
+
+def _destino_hoja_suministros(actividad, programadas: set[str]) -> str:
+    clave = _clave_actividad_oficial(actividad)
+    if clave == _ACTIVIDAD_RELLENO_SUMINISTROS:
+        return "relleno"
+    if clave in programadas:
+        return "programado"
+    return ""
+
+
 def _aceite_en_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[str, str], dict[int, float]]]:
     inicio, fin = min(desde, hasta), max(desde, hasta)
     base = bitacora_con_fechas(cargar_bitacora())
@@ -20412,6 +20452,7 @@ def _aceite_en_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[s
     relleno: dict[tuple[str, str], dict[int, float]] = {}
     if base.empty or "_fecha" not in base.columns:
         return programados, relleno
+    programadas = _actividades_programadas_suministros()
     periodo = base.loc[
         base["_fecha"].map(lambda dia: isinstance(dia, date) and inicio <= dia <= fin)
     ]
@@ -20422,15 +20463,18 @@ def _aceite_en_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[s
         dia = fila.get("_fecha")
         if not isinstance(dia, date):
             continue
+        destino = _destino_hoja_suministros(fila.get("TIPO DE ACTIVIDAD"), programadas)
+        if not destino:
+            continue
         pozo = _pozo_fila_admin(fila) or "Sin pozo"
         cuadrilla = _cuadrilla_plantilla_suministros(fila.get("CUADRILLA"))
-        if clasificar_mantenimiento(fila) == "Programado":
+        if destino == "programado":
             ubm, motor = _ubm_y_motor(_equipo_fila_suministros(fila))
             programados.append(
                 {
                     "pozo": pozo,
                     "ot": numero_secuencia_actividad(fila.get("SECUENCIA")) or _texto_celda_admin(fila.get("SECUENCIA")),
-                    "trabajo": _descripcion_fila_admin(fila),
+                    "trabajo": _descripcion_fila_admin(fila) or _texto_celda_admin(fila.get("TIPO DE ACTIVIDAD")),
                     "fecha": datetime(dia.year, dia.month, dia.day),
                     "cuadrilla": cuadrilla,
                     "ubm": ubm,
@@ -20519,6 +20563,10 @@ def _insumos_rango_admin(desde: date, hasta: date) -> pd.DataFrame:
 
 
 def render_extraccion_evidencia_admin(jornada: date) -> None:
+    st.caption(
+        "El Excel usa la Actividad oficial: «Inspección y suministro» va a relleno; "
+        "bimestrales, semestrales, habilitados, puestas en marcha y mantenimientos preventivos del catálogo van a programados."
+    )
     desde_col, hasta_col = st.columns(2)
     with desde_col:
         desde = st.date_input(
