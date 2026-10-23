@@ -20003,13 +20003,6 @@ def _contar_avance_admin(df: pd.DataFrame) -> tuple[int, int, int]:
     return int((clases == "Programado").sum()), int((clases == "No programado").sum()), int(len(df))
 
 
-def _excel_tabla_admin(df: pd.DataFrame) -> bytes:
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="Insumos")
-    return buffer.getvalue()
-
-
 def _nombre_excel_programa(nombre: str) -> str:
     base = os.path.basename(str(nombre or "").replace("\\", "/"))
     if not base or base.startswith("~$") or ".." in base:
@@ -20289,6 +20282,224 @@ def render_vista_previa_admin(jornada: date) -> None:
         st.plotly_chart(figura, use_container_width=True, key="adm_m_chart_insumos")
 
 
+PLANTILLA_SUMINISTROS = os.path.join("assets", "plantilla_suministros.xlsm")
+
+
+def _ruta_plantilla_suministros() -> str:
+    if os.path.isfile(PLANTILLA_SUMINISTROS):
+        return PLANTILLA_SUMINISTROS
+    alternativa = PLANTILLA_SUMINISTROS + ".xlsm"
+    if os.path.isfile(alternativa):
+        return alternativa
+    raise FileNotFoundError(
+        "No está la plantilla de suministros en assets/plantilla_suministros.xlsm."
+    )
+
+
+def _hoja_programados_suministros(wb):
+    for nombre in wb.sheetnames:
+        hoja = wb[nombre]
+        pozo = str(hoja.cell(2, 1).value or "").strip().casefold()
+        trabajo = str(hoja.cell(2, 3).value or "").strip().casefold()
+        if pozo.startswith("pozo") and trabajo.startswith("trabajo"):
+            return hoja
+    return None
+
+
+def _hoja_relleno_suministros(wb):
+    for nombre in wb.sheetnames:
+        hoja = wb[nombre]
+        mecanico = str(hoja.cell(1, 1).value or "").strip().casefold()
+        pozo = str(hoja.cell(1, 2).value or "").strip().casefold()
+        if mecanico.startswith("mecan") and pozo.startswith("pozo"):
+            return hoja
+    return None
+
+
+def _rango_datos_formula(formula: str) -> tuple[int, int] | None:
+    coincidencia = re.search(r"SUM\(\s*J(\d+)\s*:\s*J(\d+)\s*\)", str(formula or ""), re.IGNORECASE)
+    if not coincidencia:
+        return None
+    return int(coincidencia.group(1)), int(coincidencia.group(2))
+
+
+def _fila_datos_programados(hoja) -> tuple[int, int]:
+    limite = min(hoja.max_row or 1, 2500)
+    for fila in range(3, limite + 1):
+        rango = _rango_datos_formula(hoja.cell(fila, 10).value)
+        if rango:
+            return rango
+    return 3, 1278
+
+
+def _fila_cierre_relleno(hoja) -> int:
+    limite = min(hoja.max_row or 1, 800)
+    for fila in range(2, limite + 1):
+        texto = str(hoja.cell(fila, 1).value or "").strip().casefold()
+        if texto.startswith("total"):
+            return fila
+    return 400
+
+
+def _desunir_area(hoja, fila_ini: int, fila_fin: int, col_fin: int) -> None:
+    quitar = [
+        str(rango)
+        for rango in hoja.merged_cells.ranges
+        if rango.min_row >= fila_ini and rango.max_row <= fila_fin and rango.max_col <= col_fin
+    ]
+    for referencia in quitar:
+        hoja.unmerge_cells(referencia)
+
+
+def _limpiar_valores(hoja, fila_ini: int, fila_fin: int, col_fin: int) -> None:
+    for fila in range(fila_ini, fila_fin + 1):
+        for col in range(1, col_fin + 1):
+            celda = hoja.cell(fila, col)
+            valor = celda.value
+            if isinstance(valor, str) and valor.startswith("="):
+                continue
+            if valor is not None:
+                celda.value = None
+
+
+def _cuadrilla_plantilla_suministros(nombre: str) -> str:
+    clave = clave_cuadrilla_oficial(nombre)
+    if clave.startswith("mecanico "):
+        numero = clave.rsplit(" ", 1)[-1]
+        if numero.isdigit():
+            return f"MEC-{numero}"
+    etiquetas = {
+        "electricos": "ELECT",
+        "instrumentos": "INSTR",
+        "montaje": "MONTA",
+        "soldadura": "SOLD",
+        "retro excavadora": "RETRO",
+    }
+    return etiquetas.get(clave) or etiqueta_cuadrilla_historial(nombre)
+
+
+def _equipo_fila_suministros(fila) -> str:
+    equipo = _texto_celda_admin(fila.get("EQUIPO"))
+    if equipo:
+        return equipo
+    ubicacion = _texto_celda_admin(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN"))
+    partes = [parte.strip() for parte in ubicacion.split("·") if parte.strip()]
+    if len(partes) >= 3:
+        return partes[2]
+    return ""
+
+
+def _ubm_y_motor(equipo: str) -> tuple[str, str]:
+    texto = _sin_acentos(equipo).casefold()
+    if any(token in texto for token in ("ubm", "lufkin", "wfo", "ici", "bomba")):
+        return equipo, ""
+    if any(token in texto for token in ("arrow", "vortec", "mci", "motor")):
+        return "", equipo
+    return "", ""
+
+
+def _litros_celda(valor: float):
+    redondo = round(float(valor), 2)
+    if abs(redondo - round(redondo)) < 0.001:
+        return int(round(redondo))
+    return redondo
+
+
+def _aceite_en_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[str, str], dict[int, float]]]:
+    inicio, fin = min(desde, hasta), max(desde, hasta)
+    base = bitacora_con_fechas(cargar_bitacora())
+    programados: list[dict] = []
+    relleno: dict[tuple[str, str], dict[int, float]] = {}
+    if base.empty or "_fecha" not in base.columns:
+        return programados, relleno
+    periodo = base.loc[
+        base["_fecha"].map(lambda dia: isinstance(dia, date) and inicio <= dia <= fin)
+    ]
+    for _, fila in periodo.iterrows():
+        litros = _numero_insumo(fila.get("ACEITE (LTS)"))
+        if litros <= 0:
+            continue
+        dia = fila.get("_fecha")
+        if not isinstance(dia, date):
+            continue
+        pozo = _pozo_fila_admin(fila) or "Sin pozo"
+        cuadrilla = _cuadrilla_plantilla_suministros(fila.get("CUADRILLA"))
+        if clasificar_mantenimiento(fila) == "Programado":
+            ubm, motor = _ubm_y_motor(_equipo_fila_suministros(fila))
+            programados.append(
+                {
+                    "pozo": pozo,
+                    "ot": numero_secuencia_actividad(fila.get("SECUENCIA")) or _texto_celda_admin(fila.get("SECUENCIA")),
+                    "trabajo": _descripcion_fila_admin(fila),
+                    "fecha": datetime(dia.year, dia.month, dia.day),
+                    "cuadrilla": cuadrilla,
+                    "ubm": ubm,
+                    "motor": motor,
+                    "litros": litros,
+                }
+            )
+            continue
+        clave = (cuadrilla, pozo)
+        dias = relleno.setdefault(clave, {})
+        dias[dia.day] = dias.get(dia.day, 0) + litros
+    programados.sort(key=lambda item: (item["fecha"], item["pozo"], str(item["ot"])))
+    return programados, relleno
+
+
+def generar_reporte_suministros_xlsm(desde: date, hasta: date) -> dict:
+    """Llena la plantilla oficial sin tocar macros, fórmulas ni el formato maestro."""
+    from openpyxl import load_workbook
+
+    ruta = _ruta_plantilla_suministros()
+    wb = load_workbook(ruta, keep_vba=True)
+    try:
+        programados_hoja = _hoja_programados_suministros(wb)
+        relleno_hoja = _hoja_relleno_suministros(wb)
+        if programados_hoja is None or relleno_hoja is None:
+            raise ValueError("La plantilla no tiene las hojas de mantenimientos programados y de relleno.")
+        programados, relleno = _aceite_en_rango(desde, hasta)
+        fila_ini, fila_fin = _fila_datos_programados(programados_hoja)
+        _desunir_area(programados_hoja, fila_ini, fila_fin, 10)
+        _limpiar_valores(programados_hoja, fila_ini, fila_fin, 10)
+        for desplazamiento, item in enumerate(programados):
+            fila = fila_ini + desplazamiento
+            if fila > fila_fin:
+                break
+            programados_hoja.cell(fila, 1).value = item["pozo"]
+            programados_hoja.cell(fila, 2).value = item["ot"] or None
+            programados_hoja.cell(fila, 3).value = item["trabajo"] or None
+            programados_hoja.cell(fila, 5).value = item["fecha"]
+            programados_hoja.cell(fila, 5).number_format = "DD/MM/YYYY"
+            programados_hoja.cell(fila, 6).value = item["cuadrilla"] or None
+            if item["ubm"]:
+                programados_hoja.cell(fila, 8).value = item["ubm"]
+            if item["motor"]:
+                programados_hoja.cell(fila, 9).value = item["motor"]
+            programados_hoja.cell(fila, 10).value = _litros_celda(item["litros"])
+        cierre = _fila_cierre_relleno(relleno_hoja)
+        _limpiar_valores(relleno_hoja, 2, cierre - 1, 33)
+        for desplazamiento, ((cuadrilla, pozo), dias) in enumerate(sorted(relleno.items(), key=lambda par: (par[0][1], par[0][0]))):
+            fila = 2 + desplazamiento
+            if fila >= cierre:
+                break
+            relleno_hoja.cell(fila, 1).value = cuadrilla or None
+            relleno_hoja.cell(fila, 2).value = pozo
+            for dia, litros in dias.items():
+                if 1 <= int(dia) <= 31:
+                    relleno_hoja.cell(fila, 2 + int(dia)).value = _litros_celda(litros)
+        buffer = io.BytesIO()
+        wb.save(buffer)
+    finally:
+        wb.close()
+    inicio, fin = min(desde, hasta), max(desde, hasta)
+    return {
+        "contenido": buffer.getvalue(),
+        "nombre": f"suministros_{inicio.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.xlsm",
+        "programados": min(len(programados), max(0, fila_fin - fila_ini + 1)),
+        "relleno": min(len(relleno), max(0, cierre - 2)),
+    }
+
+
 def _insumos_rango_admin(desde: date, hasta: date) -> pd.DataFrame:
     if not isinstance(desde, date) or not isinstance(hasta, date):
         return pd.DataFrame(columns=["fecha", "ubicacion", "rubro", "refaccion", "cantidad"])
@@ -20324,30 +20535,39 @@ def render_extraccion_evidencia_admin(jornada: date) -> None:
             key="adm_m_ins_hasta",
         )
     if st.button("Generar reporte de insumos", use_container_width=True, key="adm_m_gen_insumos"):
-        detalle = _insumos_rango_admin(desde, hasta)
-        st.session_state.adm_m_ins_xlsx = _excel_tabla_admin(detalle)
-        st.session_state.adm_m_ins_csv = detalle.to_csv(index=False).encode("utf-8-sig")
-        st.session_state.adm_m_ins_marca = f"{min(desde, hasta).strftime('%Y%m%d')}_{max(desde, hasta).strftime('%Y%m%d')}"
-        st.session_state.adm_m_ins_filas = int(len(detalle))
+        try:
+            paquete = generar_reporte_suministros_xlsm(desde, hasta)
+        except Exception as exc:
+            st.error(f"No se pudo llenar la plantilla de suministros: {exc}")
+        else:
+            detalle = _insumos_rango_admin(desde, hasta)
+            st.session_state.adm_m_ins_xlsx = paquete["contenido"]
+            st.session_state.adm_m_ins_nombre = paquete["nombre"]
+            st.session_state.adm_m_ins_csv = detalle.to_csv(index=False).encode("utf-8-sig")
+            st.session_state.adm_m_ins_filas = int(paquete["programados"] + paquete["relleno"])
+            st.session_state.adm_m_ins_resumen = (
+                f"{paquete['programados']} mantenimiento(s) programado(s) · "
+                f"{paquete['relleno']} pozo(s) de relleno."
+            )
     if st.session_state.get("adm_m_ins_xlsx"):
-        filas = int(st.session_state.get("adm_m_ins_filas") or 0)
-        st.caption(f"{filas} movimiento(s) de insumo en el rango.")
-        marca = st.session_state.get("adm_m_ins_marca") or "insumos"
+        st.caption(st.session_state.get("adm_m_ins_resumen") or "Plantilla de suministros lista.")
+        marca = st.session_state.get("adm_m_ins_nombre") or "suministros.xlsm"
         baja_xls, baja_csv = st.columns(2)
         with baja_xls:
             st.download_button(
                 "Descargar Excel",
                 data=st.session_state.adm_m_ins_xlsx,
-                file_name=f"insumos_{marca}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                file_name=marca,
+                mime="application/vnd.ms-excel.sheet.macroEnabled.12",
                 use_container_width=True,
                 key="adm_m_dl_xlsx",
             )
         with baja_csv:
+            nombre_csv = marca[:-5] + ".csv" if str(marca).endswith(".xlsm") else "insumos.csv"
             st.download_button(
                 "Descargar CSV",
                 data=st.session_state.adm_m_ins_csv,
-                file_name=f"insumos_{marca}.csv",
+                file_name=nombre_csv,
                 mime="text/csv",
                 use_container_width=True,
                 key="adm_m_dl_csv",
