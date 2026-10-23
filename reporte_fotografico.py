@@ -33,7 +33,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, Table, TableStyle
 
-VERSION_DISENO_PDF = 8
+VERSION_DISENO_PDF = 9
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -649,15 +649,36 @@ def _es_sector_zona(texto: str) -> bool:
     return clave in {"base pjp4"} or clave.startswith(("almacen ", "bateria ", "estacion ", "sector "))
 
 
-def _ubicacion_tabla_pdf(valor) -> str:
-    """Deja solo el pozo. Quita el sector o la zona y el equipo que vengan pegados."""
-    texto = _texto_celda(valor)
+def _pozo_tabla_pdf(valor) -> str:
+    """Solo el pozo, para el sufijo de la descripción."""
+    texto = _texto_celda(valor).replace('"', "").replace("'", "").strip()
+    if " - " in texto:
+        derecha = texto.split(" - ")[-1].strip()
+        if derecha:
+            return derecha
     partes = [parte.strip() for parte in texto.split("·") if parte.strip()]
     if not partes:
         return texto
     if len(partes) >= 2 and _es_sector_zona(partes[0]):
         return partes[1]
     return partes[0]
+
+
+def _ubicacion_tabla_pdf(valor) -> str:
+    """Encabezado limpio: ARAGON (A) - PA67. Sin comillas ni marco."""
+    texto = _texto_celda(valor).replace('"', "").replace("'", "").strip()
+    if not texto:
+        return ""
+    if " - " in texto:
+        izquierda, derecha = [parte.strip() for parte in texto.split(" - ", 1)]
+        if izquierda and derecha:
+            return f"{izquierda.upper()} - {derecha.upper()}"
+    partes = [parte.strip() for parte in texto.split("·") if parte.strip()]
+    pozo = _pozo_tabla_pdf(texto)
+    sector = partes[0] if partes and _es_sector_zona(partes[0]) else ""
+    if sector and pozo and sector.casefold() != pozo.casefold():
+        return f"{sector.upper()} - {pozo.upper()}"
+    return (pozo or sector or texto).upper()
 
 
 def _tag_cuadrilla_pdf(valor) -> str:
@@ -674,7 +695,7 @@ def _tag_cuadrilla_pdf(valor) -> str:
 def _descripcion_tabla_pdf(descripcion, ubicacion) -> str:
     """Agrega el pozo al final de la descripción. Solo se usa al dibujar el PDF."""
     texto = _texto_celda(descripcion)
-    pozo = _ubicacion_tabla_pdf(ubicacion)
+    pozo = _pozo_tabla_pdf(ubicacion)
     if not pozo:
         return texto
     sufijo = f"EN {pozo}"

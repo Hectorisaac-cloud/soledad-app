@@ -1898,6 +1898,57 @@ def opciones_ubicacion_estandar() -> list[str]:
     return list(UBICACIONES_ESTANDAR) + [OPCION_UBICACION_NUEVA]
 
 
+def resolver_ubicacion_catalogo(seleccion: str) -> tuple[str, str]:
+    """Parte una opción del catálogo en sector y pozo para guardarla en la bitácora."""
+    texto = str(seleccion or "").strip()
+    if not texto or texto == OPCION_UBICACION_NUEVA:
+        return "", ""
+    ficha = encontrar_ficha(cargar_ubicaciones(), texto)
+    if ficha is None:
+        compacto = clave_ubicacion(texto).replace(" ", "")
+        if _PATRON_CODIGO_POZO.match(compacto):
+            return "", etiqueta_codigo_ubicacion(texto)
+        return texto, ""
+    nombre = etiqueta_codigo_ubicacion(ficha.get("nombre")) or texto
+    sector = str(ficha.get("sector") or "").strip()
+    if not sector:
+        zona = mapa_zonas().get(str(ficha.get("zona_id") or ""), {})
+        sector = str(zona.get("sector") or "").strip()
+    compacto = clave_ubicacion(nombre).replace(" ", "")
+    if _PATRON_CODIGO_POZO.match(compacto):
+        return sector, nombre
+    instalacion = INSTALACIONES_SECTOR.get(nombre) or INSTALACIONES_SECTOR.get(str(ficha.get("nombre") or "").strip())
+    if instalacion:
+        return instalacion, ""
+    if sector and sector.casefold() != nombre.casefold():
+        return sector, ""
+    return nombre, ""
+
+
+def formato_ubicacion_reporte(fila) -> str:
+    """Encabezado limpio: ARAGON (A) - PA67. Sin comillas."""
+    sector = texto_visible(fila.get("SECTOR"), "")
+    pozo = texto_visible(fila.get("POZO"), "")
+    ubicacion = texto_visible(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN"), "")
+    partes = [parte.strip() for parte in ubicacion.split("·") if parte.strip()]
+    if not sector and partes:
+        sector = partes[0]
+    if not pozo and len(partes) >= 2:
+        pozo = partes[1]
+    if sector and _PATRON_CODIGO_POZO.match(clave_ubicacion(sector).replace(" ", "")) and not pozo:
+        pozo, sector = sector, ""
+    if pozo and (not sector or sector.casefold() == pozo.casefold()):
+        ficha = encontrar_ficha(cargar_ubicaciones(), pozo)
+        if ficha:
+            sector = str(ficha.get("sector") or "").strip() or sector
+            pozo = etiqueta_codigo_ubicacion(ficha.get("nombre")) or pozo
+    sector = sector.replace('"', "").replace("'", "").strip()
+    pozo = pozo.replace('"', "").replace("'", "").strip()
+    if sector and pozo and sector.casefold() != pozo.casefold():
+        return f"{sector.upper()} - {pozo.upper()}"
+    return (pozo or sector or ubicacion).replace('"', "").replace("'", "").strip().upper()
+
+
 def opciones_ubicacion_equipo(df: pd.DataFrame | None = None) -> list[str]:
     """Ubicaciones y equipos únicos del catálogo, las fichas y la bitácora."""
     opciones: list[str] = []
@@ -7551,8 +7602,8 @@ def render_historial_operativo() -> None:
 
 def render_captura_actividades_campo() -> None:
     form_id = st.session_state.form_id
-    sectores = sectores_actuales()
     equipos = equipos_actuales()
+    opciones_ubi = opciones_ubicacion_catalogo()
     origen = str(st.session_state.get("op_origen") or "")
     unidad_sel = str(st.session_state.get("hangar_unidad") or "")
     if origen == "evidencia":
@@ -7580,23 +7631,26 @@ def render_captura_actividades_campo() -> None:
                 format="DD/MM/YYYY",
                 key=f"fecha_{form_id}",
             )
-            sector_sel = st.selectbox("Sector / Zona", sectores, key=f"sector_{form_id}")
-            sector_otro = ""
-            if sector_sel == SECTOR_OTRO:
-                sector_otro = st.text_input(
-                    "Especificar sector / zona",
-                    placeholder="Escribe el nombre del sector o zona",
-                    key=f"sector_otro_{form_id}",
+            ubicacion_sel = st.selectbox(
+                "Ubicación / Equipo",
+                opciones_ubi,
+                index=None,
+                placeholder="Escribe pozo o ubicación, ej. 272 o PSN",
+                key=f"ubicacion_{form_id}",
+                filter_mode="contains",
+                help=(
+                    "Catálogo completo de pozos y ubicaciones. "
+                    "Escribe un número o letras (272, PSN, PA) para filtrar. "
+                    "Otra / Nuevo equipo sirve para una ubicación que no esté en la lista."
+                ),
+            )
+            ubicacion_nueva = ""
+            if ubicacion_sel == OPCION_UBICACION_NUEVA:
+                ubicacion_nueva = st.text_input(
+                    "Nueva ubicación / equipo",
+                    placeholder="Escribe la ubicación o el equipo",
+                    key=f"ubicacion_nueva_{form_id}",
                 )
-            pozo = ""
-            if sector_requiere_pozo(sector_sel):
-                pozo = st.text_input(
-                    "Pozo",
-                    placeholder="Ej. Pozo 12-A",
-                    key=f"pozo_{form_id}",
-                )
-            else:
-                st.caption("Esta zona no requiere registro de pozo.")
 
         with col_o:
             st.markdown('<div class="section-title">🔧 Operación</div>', unsafe_allow_html=True)
@@ -7715,11 +7769,15 @@ def render_captura_actividades_campo() -> None:
         return
 
     equipo_final = resolver_equipo(equipo_sel)
-    sector_final = resolver_sector(sector_sel, sector_otro)
+    if ubicacion_sel == OPCION_UBICACION_NUEVA:
+        sector_final, pozo_final = resolver_ubicacion_catalogo(ubicacion_nueva)
+        if not sector_final and not pozo_final:
+            sector_final = ubicacion_nueva.strip()
+    else:
+        sector_final, pozo_final = resolver_ubicacion_catalogo(str(ubicacion_sel or ""))
     tipo_actividad_final, actividad_corta_final = resolver_actividad_catalogo(
         cuadrilla, tipo_actividad, tipo_actividad_otro, actividad_corta_otro
     )
-    pozo_final = pozo.strip() if sector_requiere_pozo(sector_sel) else ""
     secuencia_final = formatear_secuencia(secuencia_n)
     consumos = list(insumos.get("_consumos") or [])
     error_consumo = validar_consumos_campo(consumos)
@@ -7728,8 +7786,11 @@ def render_captura_actividades_campo() -> None:
         st.warning("Por favor escribe una descripción de la actividad antes de guardar.")
     elif not equipo_final:
         st.warning("Por favor selecciona un equipo o especifica cuál es.")
-    elif sector_sel == SECTOR_OTRO and not sector_final:
-        st.warning("Por favor especifica el sector o zona.")
+    elif not sector_final and not pozo_final:
+        if ubicacion_sel == OPCION_UBICACION_NUEVA:
+            st.warning("Por favor escribe la nueva ubicación o el equipo.")
+        else:
+            st.warning("Por favor selecciona la ubicación del catálogo.")
     elif opciones_act and tipo_actividad == "Otra" and not tipo_actividad_final:
         st.warning("Por favor escribe el nombre de la actividad.")
     elif opciones_act and not tipo_actividad_final:
@@ -13570,13 +13631,7 @@ def actividades_reporte_fotografico(inicio: date, fin: date) -> list[dict]:
         cuadrilla_bruta = str(fila.get("CUADRILLA") or "").strip()
         cuadrilla = etiqueta_cuadrilla_historial(cuadrilla_bruta)
         secuencia = numero_secuencia_actividad(fila.get("SECUENCIA")) or 0
-        pozo = texto_visible(fila.get("POZO"), "")
-        ubicacion = pozo or texto_visible(
-            fila.get("UBICACIÓN")
-            or fila.get("EQUIPO/UBICACIÓN")
-            or fila.get("SECTOR"),
-            "",
-        )
+        ubicacion = formato_ubicacion_reporte(fila)
         descripcion = texto_visible(
             fila.get("DESCRIPCION DE LA ACTIVIDAD")
             or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD")
@@ -20316,6 +20371,9 @@ def _ruta_plantilla_suministros() -> str:
 
 def _hoja_programados_suministros(wb):
     for nombre in wb.sheetnames:
+        if "aceite de manttos" in nombre.casefold():
+            return wb[nombre]
+    for nombre in wb.sheetnames:
         hoja = wb[nombre]
         pozo = str(hoja.cell(2, 1).value or "").strip().casefold()
         trabajo = str(hoja.cell(2, 3).value or "").strip().casefold()
@@ -20325,6 +20383,9 @@ def _hoja_programados_suministros(wb):
 
 
 def _hoja_relleno_suministros(wb):
+    for nombre in wb.sheetnames:
+        if "aceite de relleno" in nombre.casefold():
+            return wb[nombre]
     for nombre in wb.sheetnames:
         hoja = wb[nombre]
         mecanico = str(hoja.cell(1, 1).value or "").strip().casefold()
@@ -20527,7 +20588,10 @@ def _aceite_en_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[s
 
 
 def generar_reporte_suministros_xlsm(desde: date, hasta: date) -> dict:
-    """Llena la plantilla oficial sin tocar macros, fórmulas ni el formato maestro."""
+    """Llena la plantilla oficial sin tocar macros ni fórmulas.
+
+    Incluye cada consumo del rango, tenga o no fotografías.
+    """
     from openpyxl import load_workbook
 
     ruta = _ruta_plantilla_suministros()
@@ -20567,6 +20631,18 @@ def generar_reporte_suministros_xlsm(desde: date, hasta: date) -> dict:
             for dia, litros in dias.items():
                 if 1 <= int(dia) <= 31:
                     relleno_hoja.cell(fila, 2 + int(dia)).value = _litros_celda(litros)
+        detalle = _insumos_rango_admin(desde, hasta)
+        if "Detalle de insumos" in wb.sheetnames:
+            del wb["Detalle de insumos"]
+        detalle_hoja = wb.create_sheet("Detalle de insumos")
+        for columna, titulo in enumerate(("Fecha", "Ubicación", "Rubro", "Insumo", "Cantidad"), start=1):
+            detalle_hoja.cell(1, columna).value = titulo
+        for desplazamiento, fila in enumerate(detalle.itertuples(index=False), start=2):
+            detalle_hoja.cell(desplazamiento, 1).value = fila.fecha
+            detalle_hoja.cell(desplazamiento, 2).value = fila.ubicacion
+            detalle_hoja.cell(desplazamiento, 3).value = fila.rubro
+            detalle_hoja.cell(desplazamiento, 4).value = fila.refaccion
+            detalle_hoja.cell(desplazamiento, 5).value = fila.cantidad
         buffer = io.BytesIO()
         wb.save(buffer)
     finally:
@@ -20577,6 +20653,7 @@ def generar_reporte_suministros_xlsm(desde: date, hasta: date) -> dict:
         "nombre": f"suministros_{inicio.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.xlsm",
         "programados": min(len(programados), max(0, fila_fin - fila_ini + 1)),
         "relleno": min(len(relleno), max(0, cierre - 2)),
+        "insumos": int(len(detalle)),
     }
 
 
@@ -20631,7 +20708,8 @@ def render_extraccion_evidencia_admin(jornada: date) -> None:
             st.session_state.adm_m_ins_filas = int(paquete["programados"] + paquete["relleno"])
             st.session_state.adm_m_ins_resumen = (
                 f"{paquete['programados']} mantenimiento(s) programado(s) · "
-                f"{paquete['relleno']} pozo(s) de relleno."
+                f"{paquete['relleno']} pozo(s) de relleno · "
+                f"{paquete.get('insumos', 0)} consumo(s) de insumos."
             )
     if st.session_state.get("adm_m_ins_xlsx"):
         st.caption(st.session_state.get("adm_m_ins_resumen") or "Plantilla de suministros lista.")
