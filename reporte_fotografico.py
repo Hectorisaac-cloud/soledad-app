@@ -33,7 +33,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, Table, TableStyle
 
-VERSION_DISENO_PDF = 7
+VERSION_DISENO_PDF = 8
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -455,7 +455,7 @@ def _hoja_a_pdf(
     recursos: list[tuple[bytes, TwoCellAnchor]],
 ) -> None:
     ancho_hoja, alto_hoja = letter
-    margen = 18
+    margen = 8
     ancho_contenido = sum(_ancho_columna_px(ws, c) for c in range(1, 15)) * 72 / 96
     alto_contenido = sum((ws.row_dimensions[r].height or 15) for r in range(1, 70))
     escala = min(
@@ -477,10 +477,8 @@ def _hoja_a_pdf(
     def ancho_pt(col_ini: int, col_fin: int) -> float:
         return sum(_ancho_columna_px(ws, c) for c in range(col_ini, col_fin + 1)) * 72 / 96 * escala
 
-    pdf.setFillColorRGB(0.05, 0.16, 0.12)
-    pdf.rect(0, 0, ancho_hoja, alto_hoja, stroke=0, fill=1)
     pdf.setFillColorRGB(1, 1, 1)
-    pdf.rect(margen - 6, margen - 6, ancho_hoja - 2 * margen + 12, alto_hoja - 2 * margen + 12, stroke=0, fill=1)
+    pdf.rect(0, 0, ancho_hoja, alto_hoja, stroke=0, fill=1)
 
     for datos, ancla in recursos:
         try:
@@ -679,7 +677,7 @@ def _descripcion_tabla_pdf(descripcion, ubicacion) -> str:
     pozo = _ubicacion_tabla_pdf(ubicacion)
     if not pozo:
         return texto
-    sufijo = f'"EN {pozo}"'
+    sufijo = f"EN {pozo}"
     if texto.endswith(sufijo):
         return texto
     if not texto:
