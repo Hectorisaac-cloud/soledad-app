@@ -1878,9 +1878,11 @@ def etiqueta_codigo_ubicacion(nombre: str) -> str:
 
 
 def opciones_ubicacion_catalogo() -> list[str]:
-    """Pozos y ubicaciones de ubicaciones_equipos.json, ordenados por código."""
+    """Pozos y ubicaciones del catálogo oficial, ordenados por código."""
     opciones: list[str] = []
     vistos: set[str] = set()
+    for nombre in nombres_cortos_oficiales():
+        _agregar_opcion_unica(opciones, vistos, etiqueta_codigo_ubicacion(nombre))
     fichas = (cargar_ubicaciones().get("fichas") or {})
     origen = fichas.values() if isinstance(fichas, dict) else fichas
     for ficha in origen:
@@ -1892,6 +1894,31 @@ def opciones_ubicacion_catalogo() -> list[str]:
     opciones.sort(key=orden_natural_pozo)
     opciones.append(OPCION_UBICACION_NUEVA)
     return opciones
+
+
+def selector_ubicacion_oficial(key: str, etiqueta: str = "Ubicación / Equipo"):
+    """Desplegable con búsqueda del catálogo oficial. El mismo en campo y en administración."""
+    seleccion = st.selectbox(
+        etiqueta,
+        opciones_ubicacion_catalogo(),
+        index=None,
+        placeholder="Escribe pozo o ubicación, ej. 272 o PSN",
+        key=key,
+        filter_mode="contains",
+        help=(
+            "Catálogo oficial de pozos y ubicaciones. "
+            "Escribe un número o letras (272, PSN, PA) para filtrar. "
+            "Otra / Nuevo equipo sirve para una ubicación que no esté en la lista."
+        ),
+    )
+    nueva = ""
+    if seleccion == OPCION_UBICACION_NUEVA:
+        nueva = st.text_input(
+            "Nueva ubicación / equipo",
+            placeholder="Escribe la ubicación o el equipo",
+            key=f"{key}_nueva",
+        )
+    return seleccion, nueva
 
 
 def opciones_ubicacion_estandar() -> list[str]:
@@ -7626,7 +7653,6 @@ def render_historial_operativo() -> None:
 def render_captura_actividades_campo() -> None:
     form_id = st.session_state.form_id
     equipos = equipos_actuales()
-    opciones_ubi = opciones_ubicacion_catalogo()
     origen = str(st.session_state.get("op_origen") or "")
     unidad_sel = str(st.session_state.get("hangar_unidad") or "")
     if origen == "evidencia":
@@ -7654,26 +7680,7 @@ def render_captura_actividades_campo() -> None:
                 format="DD/MM/YYYY",
                 key=f"fecha_{form_id}",
             )
-            ubicacion_sel = st.selectbox(
-                "Ubicación / Equipo",
-                opciones_ubi,
-                index=None,
-                placeholder="Escribe pozo o ubicación, ej. 272 o PSN",
-                key=f"ubicacion_{form_id}",
-                filter_mode="contains",
-                help=(
-                    "Catálogo completo de pozos y ubicaciones. "
-                    "Escribe un número o letras (272, PSN, PA) para filtrar. "
-                    "Otra / Nuevo equipo sirve para una ubicación que no esté en la lista."
-                ),
-            )
-            ubicacion_nueva = ""
-            if ubicacion_sel == OPCION_UBICACION_NUEVA:
-                ubicacion_nueva = st.text_input(
-                    "Nueva ubicación / equipo",
-                    placeholder="Escribe la ubicación o el equipo",
-                    key=f"ubicacion_nueva_{form_id}",
-                )
+            ubicacion_sel, ubicacion_nueva = selector_ubicacion_oficial(f"ubicacion_{form_id}")
 
         with col_o:
             st.markdown('<div class="section-title">🔧 Operación</div>', unsafe_allow_html=True)
@@ -9654,7 +9661,6 @@ def render_registro_actividad_bitacora() -> None:
     epoch = int(st.session_state.get("bitacora_form_epoch") or 0)
     df_bitacora = bitacora_con_fechas(cargar_bitacora())
     opciones = catalogo_cuadrillas_historial(df_bitacora)
-    opciones_ubi = opciones_ubicacion_catalogo()
     otra = "Otra (escribir)"
     st.markdown('<div class="section-title">➕ Registrar Actividad en Bitácora</div>', unsafe_allow_html=True)
     st.caption(
@@ -9672,26 +9678,7 @@ def render_registro_actividad_bitacora() -> None:
                 format="DD/MM/YYYY",
                 key=f"bit_reg_fecha_{epoch}",
             )
-            ubicacion_sel = st.selectbox(
-                "Ubicación / Equipo",
-                opciones_ubi,
-                index=None,
-                placeholder="Escribe pozo o ubicación, ej. 272 o PSN",
-                key=f"bit_reg_equipo_{epoch}",
-                filter_mode="contains",
-                help=(
-                    "Catálogo completo de pozos y ubicaciones. "
-                    "Escribe un número o letras (272, PSN, PA) para filtrar. "
-                    "Otra / Nuevo equipo sirve para una ubicación que no esté en la lista."
-                ),
-            )
-            ubicacion_nueva = ""
-            if ubicacion_sel == OPCION_UBICACION_NUEVA:
-                ubicacion_nueva = st.text_input(
-                    "Nueva ubicación / equipo",
-                    placeholder="Escribe la ubicación o el equipo",
-                    key=f"bit_reg_ubicacion_nueva_{epoch}",
-                )
+            ubicacion_sel, ubicacion_nueva = selector_ubicacion_oficial(f"bit_reg_equipo_{epoch}")
 
     with col_o:
         with st.container(border=True):
@@ -20459,36 +20446,6 @@ def _fila_datos_programados(hoja) -> tuple[int, int]:
     return 3, 1278
 
 
-def _fila_cierre_relleno(hoja) -> int:
-    limite = min(hoja.max_row or 1, 800)
-    for fila in range(2, limite + 1):
-        texto = str(hoja.cell(fila, 1).value or "").strip().casefold()
-        if texto.startswith("total"):
-            return fila
-    return 400
-
-
-def _desunir_area(hoja, fila_ini: int, fila_fin: int, col_fin: int) -> None:
-    quitar = [
-        str(rango)
-        for rango in hoja.merged_cells.ranges
-        if rango.min_row >= fila_ini and rango.max_row <= fila_fin and rango.max_col <= col_fin
-    ]
-    for referencia in quitar:
-        hoja.unmerge_cells(referencia)
-
-
-def _limpiar_valores(hoja, fila_ini: int, fila_fin: int, col_fin: int) -> None:
-    for fila in range(fila_ini, fila_fin + 1):
-        for col in range(1, col_fin + 1):
-            celda = hoja.cell(fila, col)
-            valor = celda.value
-            if isinstance(valor, str) and valor.startswith("="):
-                continue
-            if valor is not None:
-                celda.value = None
-
-
 def _cuadrilla_plantilla_suministros(nombre: str) -> str:
     clave = clave_cuadrilla_oficial(nombre)
     if clave.startswith("mecanico "):
@@ -20586,6 +20543,429 @@ def _destino_hoja_suministros(actividad, programadas: set[str], descripcion: str
     return _destino_por_descripcion(descripcion)
 
 
+_PREFIJOS_NOMBRE_LARGO = (
+    ("PSN", "SOLEDAD NORTE"),
+    ("PGA", "GALLO"),
+    ("PPB", "PALO BLANCO"),
+    ("PB", "PALO BLANCO"),
+    ("PA", "ARAGON"),
+    ("PS", "SOLEDAD"),
+    ("PC", "COYOTE"),
+)
+
+
+def _norm_etiqueta_equivalencia(valor) -> str:
+    return " ".join(_sin_acentos(_texto_celda(valor)).upper().split())
+
+
+def _es_encabezado_corto(valor) -> bool:
+    return "NOMBRE CORTO" in _norm_etiqueta_equivalencia(valor)
+
+
+def _es_encabezado_largo(valor) -> bool:
+    return "NOMBRE LARGO" in _norm_etiqueta_equivalencia(valor)
+
+
+def _claves_nombre_excel(nombre: str) -> set[str]:
+    texto = _norm_etiqueta_equivalencia(nombre)
+    compacto = re.sub(r"[^A-Z0-9]", "", texto)
+    claves = set()
+    if texto:
+        claves.add(texto)
+    if compacto:
+        claves.add(compacto)
+    return claves
+
+
+def _absorber_equivalencia(mapa: dict[str, str], cortos: list[str], corto, largo) -> None:
+    corto_txt = " ".join(str(corto or "").split())
+    largo_txt = " ".join(str(largo or "").split())
+    if not corto_txt or not largo_txt:
+        return
+    if _es_encabezado_corto(corto_txt) or _es_encabezado_largo(largo_txt):
+        return
+    plana = clave_pozo_plana(corto_txt)
+    if not plana or plana in mapa:
+        return
+    mapa[plana] = largo_txt
+    cortos.append(corto_txt)
+
+
+def _absorber_json_equivalencias(datos, mapa: dict[str, str], cortos: list[str]) -> None:
+    if isinstance(datos, list):
+        for item in datos:
+            if isinstance(item, dict):
+                corto = item.get("corto") or item.get("nombre_corto") or item.get("app") or item.get("codigo")
+                largo = item.get("largo") or item.get("nombre_largo") or item.get("excel")
+                _absorber_equivalencia(mapa, cortos, corto, largo)
+            elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                _absorber_equivalencia(mapa, cortos, item[0], item[1])
+        return
+    if not isinstance(datos, dict):
+        return
+    for clave in ("equivalencias", "pares", "mapeo", "diccionario"):
+        if clave in datos:
+            _absorber_json_equivalencias(datos[clave], mapa, cortos)
+            return
+    for corto, largo in datos.items():
+        if isinstance(largo, str):
+            _absorber_equivalencia(mapa, cortos, corto, largo)
+
+
+def _rejilla_hoja_equivalencias(ruta: str) -> list[list]:
+    from openpyxl import load_workbook
+
+    kwargs = {"read_only": True, "data_only": True}
+    if str(ruta).lower().endswith(".xlsm"):
+        kwargs["keep_vba"] = True
+    wb = load_workbook(ruta, **kwargs)
+    try:
+        hoja = None
+        for nombre in wb.sheetnames:
+            if "UBICACION" in _norm_titulo(nombre):
+                hoja = wb[nombre]
+                break
+        if hoja is None:
+            return []
+        return [list(fila) for fila in hoja.iter_rows(values_only=True)]
+    finally:
+        wb.close()
+
+
+def _absorber_rejilla_equivalencias(grid: list[list], mapa: dict[str, str], cortos: list[str]) -> None:
+    encabezados = [
+        indice
+        for indice, fila in enumerate(grid)
+        if any(_es_encabezado_corto(valor) or _es_encabezado_largo(valor) for valor in fila)
+    ]
+    for posicion, fila_header in enumerate(encabezados):
+        fila = grid[fila_header]
+        cortos_col = [col for col, valor in enumerate(fila) if _es_encabezado_corto(valor)]
+        largos_col = [col for col, valor in enumerate(fila) if _es_encabezado_largo(valor)]
+        fin = encabezados[posicion + 1] if posicion + 1 < len(encabezados) else len(grid)
+        for col_corto in cortos_col:
+            if not largos_col:
+                continue
+            col_largo = min(largos_col, key=lambda col: (abs(col - col_corto), col))
+            for fila_datos in range(fila_header + 1, fin):
+                renglon = grid[fila_datos]
+                corto = renglon[col_corto] if col_corto < len(renglon) else ""
+                largo = renglon[col_largo] if col_largo < len(renglon) else ""
+                _absorber_equivalencia(mapa, cortos, corto, largo)
+
+
+def _rutas_catalogo_equivalencias() -> list[str]:
+    rutas = []
+    if os.path.isdir(UBICACIONES_EXCEL_DIR):
+        for nombre in sorted(os.listdir(UBICACIONES_EXCEL_DIR)):
+            if nombre.startswith("~$"):
+                continue
+            bajo = nombre.casefold()
+            if "ubicacion" not in bajo or not bajo.endswith((".json", ".xlsx", ".xlsm")):
+                continue
+            rutas.append(os.path.join(UBICACIONES_EXCEL_DIR, nombre))
+    if os.path.isfile(PLANTILLA_SUMINISTROS):
+        rutas.append(PLANTILLA_SUMINISTROS)
+    return rutas
+
+
+def _equivalencias_pozo() -> tuple[dict[str, str], list[str]]:
+    firmas = []
+    rutas = _rutas_catalogo_equivalencias()
+    for ruta in rutas:
+        try:
+            firmas.append((os.path.abspath(ruta), os.path.getmtime(ruta)))
+        except OSError:
+            continue
+    firma = tuple(firmas)
+    cache = getattr(_equivalencias_pozo, "cache", None)
+    if cache and cache[0] == firma:
+        return cache[1], cache[2]
+    mapa: dict[str, str] = {}
+    cortos: list[str] = []
+    plantilla = os.path.abspath(PLANTILLA_SUMINISTROS) if os.path.isfile(PLANTILLA_SUMINISTROS) else ""
+    for ruta in rutas:
+        try:
+            if os.path.abspath(ruta) == plantilla and mapa:
+                continue
+            if ruta.casefold().endswith(".json"):
+                _absorber_json_equivalencias(leer_json(ruta, {}), mapa, cortos)
+            else:
+                _absorber_rejilla_equivalencias(_rejilla_hoja_equivalencias(ruta), mapa, cortos)
+        except Exception:
+            continue
+    _equivalencias_pozo.cache = (firma, mapa, cortos)
+    return mapa, cortos
+
+
+def diccionario_equivalencias_pozo() -> dict[str, str]:
+    """Nombre corto plano (PSN334, PA67) → nombre largo de la matriz."""
+    return _equivalencias_pozo()[0]
+
+
+def nombres_cortos_oficiales() -> list[str]:
+    """Nombres cortos del catálogo oficial, en el orden del archivo."""
+    return list(_equivalencias_pozo()[1])
+
+
+def nombre_largo_excel(corto: str, diccionario: dict[str, str] | None = None) -> str:
+    """Traduce el pozo de la bitácora al nombre largo con el que la matriz identifica la fila."""
+    bruto = " ".join(str(corto or "").split())
+    if not bruto:
+        return ""
+    if diccionario is None:
+        diccionario = diccionario_equivalencias_pozo()
+    plana = clave_pozo_plana(bruto)
+    if plana in diccionario:
+        return diccionario[plana]
+    compacto = re.sub(r"[^A-Z0-9]", "", _norm_etiqueta_equivalencia(bruto))
+    for largo in diccionario.values():
+        if compacto and compacto == re.sub(r"[^A-Z0-9]", "", _norm_etiqueta_equivalencia(largo)):
+            return largo
+    for prefijo, zona in _PREFIJOS_NOMBRE_LARGO:
+        if plana.startswith(prefijo) and len(plana) > len(prefijo) and plana[len(prefijo)].isdigit():
+            return f"{zona} {plana[len(prefijo):]}"
+    return bruto
+
+
+def _matriz_dias(hoja) -> tuple[int, int, dict[int, int]] | None:
+    """Encabezado, columna del pozo y columna de cada día. Con el pozo en B, el día 1 queda en C y el 10 en L."""
+    limite_fila = min(int(hoja.max_row or 1), 6)
+    limite_col = min(int(hoja.max_column or 1), 45)
+    for fila in range(1, limite_fila + 1):
+        dias: dict[int, int] = {}
+        pozo_col = None
+        for col in range(1, limite_col + 1):
+            valor = hoja.cell(fila, col).value
+            if isinstance(valor, (int, float)) and not isinstance(valor, bool) and float(valor).is_integer():
+                dia = int(valor)
+                if 1 <= dia <= 31:
+                    dias[dia] = col
+                continue
+            if _norm_etiqueta_equivalencia(valor).startswith("POZO"):
+                pozo_col = col
+        if pozo_col and len(dias) >= 28 and dias.get(1) and dias.get(10):
+            return fila, pozo_col, dias
+    return None
+
+
+def _indice_filas_pozo(hoja, col_pozo: int, fila_ini: int, fila_fin: int) -> dict[str, int]:
+    indice: dict[str, int] = {}
+    for fila in range(fila_ini, fila_fin + 1):
+        valor = hoja.cell(fila, col_pozo).value
+        if not isinstance(valor, str) or not valor.strip() or valor.startswith("="):
+            continue
+        if _norm_etiqueta_equivalencia(valor).startswith("TOTAL"):
+            break
+        for clave in _claves_nombre_excel(valor):
+            indice.setdefault(clave, fila)
+    return indice
+
+
+def _claves_busqueda_excel(nombre: str) -> set[str]:
+    """La matriz de relleno escribe COYOTES y el catálogo, COYOTE. Las dos formas localizan la misma fila."""
+    texto = _norm_etiqueta_equivalencia(nombre)
+    variantes = {texto} if texto else set()
+    if "COYOTES" in texto:
+        variantes.add(texto.replace("COYOTES", "COYOTE"))
+    elif "COYOTE" in texto:
+        variantes.add(texto.replace("COYOTE", "COYOTES"))
+    claves: set[str] = set()
+    for variante in variantes:
+        claves |= _claves_nombre_excel(variante)
+    return claves
+
+
+def _buscar_fila_pozo(indice: dict[str, int], nombre: str) -> int | None:
+    for clave in _claves_busqueda_excel(nombre):
+        fila = indice.get(clave)
+        if fila:
+            return fila
+    return None
+
+
+def _celda_escribible(celda) -> bool:
+    valor = celda.value
+    return not (isinstance(valor, str) and valor.startswith("="))
+
+
+def _sumar_litros(hoja, fila: int, col: int, litros: float) -> bool:
+    celda = hoja.cell(fila, col)
+    if not _celda_escribible(celda):
+        return False
+    actual = celda.value
+    base = float(actual) if isinstance(actual, (int, float)) and not isinstance(actual, bool) else 0.0
+    celda.value = _litros_celda(base + float(litros))
+    return True
+
+
+def _limpiar_columnas_datos(hoja, fila_ini: int, fila_fin: int, columnas: list[int]) -> None:
+    for fila in range(fila_ini, fila_fin + 1):
+        for col in columnas:
+            celda = hoja.cell(fila, col)
+            if _celda_escribible(celda) and celda.value is not None:
+                celda.value = None
+
+
+def _desunir_columnas(hoja, fila_ini: int, fila_fin: int, columnas: list[int]) -> None:
+    buscadas = set(columnas)
+    quitar = []
+    for rango in hoja.merged_cells.ranges:
+        if rango.min_row < fila_ini or rango.max_row > fila_fin:
+            continue
+        cols = set(range(rango.min_col, rango.max_col + 1))
+        if cols and cols <= buscadas:
+            quitar.append(str(rango))
+    for referencia in quitar:
+        hoja.unmerge_cells(referencia)
+
+
+def _limite_matriz_dias(hoja, col_dia: int, fila_ini: int) -> int:
+    tope = min(int(hoja.max_row or fila_ini), fila_ini + 800)
+    for fila in range(fila_ini, tope + 1):
+        valor = hoja.cell(fila, col_dia).value
+        if isinstance(valor, str) and valor.startswith("="):
+            return fila - 1
+    return tope
+
+
+def _agrupar_litros_por_dia(items: list[dict]) -> dict[str, dict[int, float]]:
+    acumulado: dict[str, dict[int, float]] = {}
+    for item in items:
+        fecha = item.get("fecha")
+        if not isinstance(fecha, datetime):
+            continue
+        pozo = str(item.get("pozo") or "").strip()
+        if not pozo:
+            continue
+        dias = acumulado.setdefault(pozo, {})
+        dias[int(fecha.day)] = dias.get(int(fecha.day), 0) + float(item.get("litros") or 0)
+    return acumulado
+
+
+def _relleno_por_pozo(relleno: dict[tuple[str, str], dict[int, float]]) -> dict[str, dict[int, float]]:
+    acumulado: dict[str, dict[int, float]] = {}
+    for (_cuadrilla, pozo), dias in relleno.items():
+        destino = acumulado.setdefault(str(pozo), {})
+        for dia, litros in dias.items():
+            destino[int(dia)] = destino.get(int(dia), 0) + float(litros)
+    return acumulado
+
+
+def _vaciar_matriz_dias(hoja, consumos: dict[str, dict[int, float]]) -> tuple[int, list[str]]:
+    layout = _matriz_dias(hoja)
+    if layout is None:
+        return 0, list(consumos)
+    _fila_header, col_pozo, dias = layout
+    fila_ini = _fila_header + 1
+    fila_fin = _limite_matriz_dias(hoja, dias[1], fila_ini)
+    columnas = list(dias.values())
+    _desunir_columnas(hoja, fila_ini, fila_fin, columnas)
+    _limpiar_columnas_datos(hoja, fila_ini, fila_fin, columnas)
+    indice = _indice_filas_pozo(hoja, col_pozo, fila_ini, fila_fin)
+    puestos = 0
+    faltantes: list[str] = []
+    for pozo, por_dia in consumos.items():
+        fila = _buscar_fila_pozo(indice, pozo)
+        if not fila:
+            faltantes.append(pozo)
+            continue
+        escribio = False
+        for dia, litros in por_dia.items():
+            columna = dias.get(int(dia))
+            if not columna or litros <= 0:
+                continue
+            if _sumar_litros(hoja, fila, columna, litros):
+                escribio = True
+        if escribio:
+            puestos += 1
+    return puestos, faltantes
+
+
+def _columna_aceite_lista(hoja) -> int:
+    limite = min(int(hoja.max_column or 1), 40)
+    for col in range(1, limite + 1):
+        texto = _norm_etiqueta_equivalencia(hoja.cell(2, col).value)
+        if "ACEITE SAE" in texto or texto.startswith("ACEITE "):
+            return col
+    return 10
+
+
+def _grupos_filas_lista(hoja, fila_ini: int, fila_fin: int) -> dict[str, list[int]]:
+    grupos: dict[str, list[int]] = {}
+    for fila in range(fila_ini, fila_fin + 1):
+        valor = hoja.cell(fila, 1).value
+        if not isinstance(valor, str) or not valor.strip() or valor.startswith("="):
+            continue
+        nombre = _norm_etiqueta_equivalencia(valor)
+        if nombre in {"MXN", "USD"} or nombre.startswith("TOTAL"):
+            continue
+        for clave in _claves_nombre_excel(valor):
+            filas = grupos.setdefault(clave, [])
+            if fila not in filas:
+                filas.append(fila)
+    return grupos
+
+
+def _vaciar_lista_mantenimiento(hoja, programados: list[dict]) -> tuple[int, list[str]]:
+    """Escribe el aceite de mantenimiento en la fila del nombre largo, sin borrar el esqueleto ni las sumas."""
+    fila_ini, fila_fin = _fila_datos_programados(hoja)
+    col_aceite = _columna_aceite_lista(hoja)
+    columnas = [2, 3, 4, 5, 6, 7, col_aceite]
+    _desunir_columnas(hoja, fila_ini, fila_fin, columnas)
+    _limpiar_columnas_datos(hoja, fila_ini, fila_fin, columnas)
+    grupos = _grupos_filas_lista(hoja, fila_ini, fila_fin)
+    usados: set[int] = set()
+    puestos = 0
+    faltantes: list[str] = []
+    for item in programados:
+        pozo = str(item.get("pozo") or "").strip()
+        fila = None
+        for clave in _claves_busqueda_excel(pozo):
+            for candidata in grupos.get(clave, []):
+                if candidata not in usados:
+                    fila = candidata
+                    break
+            if fila:
+                break
+        if fila is None:
+            ultima = None
+            for clave in _claves_busqueda_excel(pozo):
+                if grupos.get(clave):
+                    ultima = grupos[clave][-1]
+                    break
+            if ultima is None:
+                faltantes.append(pozo)
+                continue
+            if _sumar_litros(hoja, ultima, col_aceite, item["litros"]):
+                puestos += 1
+            continue
+        usados.add(fila)
+        if item.get("ot"):
+            hoja.cell(fila, 2).value = item["ot"]
+        if item.get("trabajo"):
+            hoja.cell(fila, 3).value = item["trabajo"]
+        if item.get("fecha"):
+            hoja.cell(fila, 5).value = item["fecha"]
+            hoja.cell(fila, 5).number_format = "DD/MM/YYYY"
+        if item.get("cuadrilla"):
+            hoja.cell(fila, 6).value = item["cuadrilla"]
+        if item.get("ubm"):
+            hoja.cell(fila, 8).value = item["ubm"]
+        if item.get("motor"):
+            hoja.cell(fila, 9).value = item["motor"]
+        _sumar_litros(hoja, fila, col_aceite, item["litros"])
+        puestos += 1
+    return puestos, faltantes
+
+
+def _hoja_matriz_por_nombre(wb, fragmento: str):
+    for nombre in wb.sheetnames:
+        if fragmento in nombre.casefold() and _matriz_dias(wb[nombre]):
+            return wb[nombre]
+    return None
+
+
 def _aceite_en_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[str, str], dict[int, float]]]:
     inicio, fin = min(desde, hasta), max(desde, hasta)
     base = bitacora_con_fechas(cargar_bitacora())
@@ -20593,6 +20973,7 @@ def _aceite_en_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[s
     relleno: dict[tuple[str, str], dict[int, float]] = {}
     if base.empty or "_fecha" not in base.columns:
         return programados, relleno
+    diccionario = diccionario_equivalencias_pozo()
     programadas = _actividades_programadas_suministros()
     periodo = base.loc[
         base["_fecha"].map(lambda dia: isinstance(dia, date) and inicio <= dia <= fin)
@@ -20611,7 +20992,7 @@ def _aceite_en_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[s
         )
         if not destino:
             continue
-        pozo = _pozo_fila_admin(fila) or "Sin pozo"
+        pozo = nombre_largo_excel(_pozo_fila_admin(fila) or "Sin pozo", diccionario)
         cuadrilla = _cuadrilla_plantilla_suministros(fila.get("CUADRILLA"))
         if destino == "programado":
             ubm, motor = _ubm_y_motor(_equipo_fila_suministros(fila))
@@ -20638,6 +21019,8 @@ def _aceite_en_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[s
 def generar_reporte_suministros_xlsm(desde: date, hasta: date) -> dict:
     """Llena la plantilla oficial sin tocar macros ni fórmulas.
 
+    El nombre corto de la bitácora se traduce al nombre largo y la cantidad
+    se suma en la fila de ese pozo. En la matriz diaria, la columna C es el día 1.
     Incluye cada consumo del rango, tenga o no fotografías.
     """
     from openpyxl import load_workbook
@@ -20645,40 +21028,32 @@ def generar_reporte_suministros_xlsm(desde: date, hasta: date) -> dict:
     ruta = _ruta_plantilla_suministros()
     wb = load_workbook(ruta, keep_vba=True)
     try:
-        programados_hoja = _hoja_programados_suministros(wb)
-        relleno_hoja = _hoja_relleno_suministros(wb)
-        if programados_hoja is None or relleno_hoja is None:
-            raise ValueError("La plantilla no tiene las hojas de mantenimientos programados y de relleno.")
+        if wb.vba_archive is None:
+            raise ValueError("La plantilla perdió las macros. No se generó el archivo.")
+        hoja_manttos = _hoja_matriz_por_nombre(wb, "aceite de manttos")
+        hoja_relleno = _hoja_matriz_por_nombre(wb, "aceite de relleno")
+        if hoja_relleno is None:
+            candidata = _hoja_relleno_suministros(wb)
+            if candidata is not None and _matriz_dias(candidata):
+                hoja_relleno = candidata
+        hoja_lista = None if hoja_manttos is not None else _hoja_programados_suministros(wb)
+        if hoja_manttos is None and hoja_relleno is None and hoja_lista is None:
+            raise ValueError("La plantilla no tiene las hojas de aceite de manttos y de relleno.")
         programados, relleno = _aceite_en_rango(desde, hasta)
-        fila_ini, fila_fin = _fila_datos_programados(programados_hoja)
-        _desunir_area(programados_hoja, fila_ini, fila_fin, 10)
-        _limpiar_valores(programados_hoja, fila_ini, fila_fin, 10)
-        for desplazamiento, item in enumerate(programados):
-            fila = fila_ini + desplazamiento
-            if fila > fila_fin:
-                break
-            programados_hoja.cell(fila, 1).value = item["pozo"]
-            programados_hoja.cell(fila, 2).value = item["ot"] or None
-            programados_hoja.cell(fila, 3).value = item["trabajo"] or None
-            programados_hoja.cell(fila, 5).value = item["fecha"]
-            programados_hoja.cell(fila, 5).number_format = "DD/MM/YYYY"
-            programados_hoja.cell(fila, 6).value = item["cuadrilla"] or None
-            if item["ubm"]:
-                programados_hoja.cell(fila, 8).value = item["ubm"]
-            if item["motor"]:
-                programados_hoja.cell(fila, 9).value = item["motor"]
-            programados_hoja.cell(fila, 10).value = _litros_celda(item["litros"])
-        cierre = _fila_cierre_relleno(relleno_hoja)
-        _limpiar_valores(relleno_hoja, 2, cierre - 1, 33)
-        for desplazamiento, ((cuadrilla, pozo), dias) in enumerate(sorted(relleno.items(), key=lambda par: (par[0][1], par[0][0]))):
-            fila = 2 + desplazamiento
-            if fila >= cierre:
-                break
-            relleno_hoja.cell(fila, 1).value = cuadrilla or None
-            relleno_hoja.cell(fila, 2).value = pozo
-            for dia, litros in dias.items():
-                if 1 <= int(dia) <= 31:
-                    relleno_hoja.cell(fila, 2 + int(dia)).value = _litros_celda(litros)
+        sin_fila: list[str] = []
+        if hoja_manttos is not None:
+            puestos_programados, faltan = _vaciar_matriz_dias(hoja_manttos, _agrupar_litros_por_dia(programados))
+            sin_fila.extend(faltan)
+        elif hoja_lista is not None:
+            puestos_programados, faltan = _vaciar_lista_mantenimiento(hoja_lista, programados)
+            sin_fila.extend(faltan)
+        else:
+            puestos_programados = 0
+        if hoja_relleno is not None:
+            puestos_relleno, faltan = _vaciar_matriz_dias(hoja_relleno, _relleno_por_pozo(relleno))
+            sin_fila.extend(faltan)
+        else:
+            puestos_relleno = 0
         detalle = _insumos_rango_admin(desde, hasta)
         if "Detalle de insumos" in wb.sheetnames:
             del wb["Detalle de insumos"]
@@ -20699,9 +21074,10 @@ def generar_reporte_suministros_xlsm(desde: date, hasta: date) -> dict:
     return {
         "contenido": buffer.getvalue(),
         "nombre": f"suministros_{inicio.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.xlsm",
-        "programados": min(len(programados), max(0, fila_fin - fila_ini + 1)),
-        "relleno": min(len(relleno), max(0, cierre - 2)),
+        "programados": puestos_programados,
+        "relleno": puestos_relleno,
         "insumos": int(len(detalle)),
+        "sin_fila": len(list(dict.fromkeys(sin_fila))),
     }
 
 
@@ -20726,7 +21102,9 @@ def _insumos_rango_admin(desde: date, hasta: date) -> pd.DataFrame:
 def render_extraccion_evidencia_admin(jornada: date) -> None:
     st.caption(
         "El Excel usa la Actividad oficial. Si el registro antiguo no la trae, lee la descripción: "
-        "«Inspección y suministro» va a relleno; bimestral, semestral, habilitado, puesta en marcha o preventivo va a programados."
+        "«Inspección y suministro» va a relleno; bimestral, semestral, habilitado, puesta en marcha o preventivo va a programados. "
+        "El nombre corto (PSN334, PA67) se traduce al nombre largo de la matriz (SOLEDAD NORTE 334, ARAGON 67) "
+        "y la cantidad se suma en la fila de ese pozo. En la matriz diaria, C es el día 1 y L es el día 10."
     )
     desde_col, hasta_col = st.columns(2)
     with desde_col:
@@ -20759,6 +21137,10 @@ def render_extraccion_evidencia_admin(jornada: date) -> None:
                 f"{paquete['relleno']} pozo(s) de relleno · "
                 f"{paquete.get('insumos', 0)} consumo(s) de insumos."
             )
+            if paquete.get("sin_fila"):
+                st.session_state.adm_m_ins_resumen += (
+                    f" {paquete['sin_fila']} pozo(s) no están en la matriz."
+                )
     if st.session_state.get("adm_m_ins_xlsx"):
         st.caption(st.session_state.get("adm_m_ins_resumen") or "Plantilla de suministros lista.")
         marca = st.session_state.get("adm_m_ins_nombre") or "suministros.xlsm"
