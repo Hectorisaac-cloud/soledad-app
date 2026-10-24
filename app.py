@@ -21065,11 +21065,99 @@ def _aceite_en_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[s
     return programados, relleno
 
 
+_MESES_EN_HOJA = (
+    "SEPTIEMBRE",
+    "NOVIEMBRE",
+    "DICIEMBRE",
+    "FEBRERO",
+    "OCTUBRE",
+    "AGOSTO",
+    "ENERO",
+    "MARZO",
+    "ABRIL",
+    "JUNIO",
+    "JULIO",
+    "MAYO",
+)
+
+
+def _mes_anio_reporte(desde: date, hasta: date) -> tuple[int, int]:
+    """Mes del rango. Si cruza dos meses, se queda el que tiene más días."""
+    inicio, fin = min(desde, hasta), max(desde, hasta)
+    conteo: dict[tuple[int, int], int] = {}
+    dia = inicio
+    while dia <= fin:
+        clave = (dia.year, dia.month)
+        conteo[clave] = conteo.get(clave, 0) + 1
+        dia += timedelta(days=1)
+    anio, mes = max(conteo, key=lambda clave: (conteo[clave], clave[0], clave[1]))
+    return mes, anio
+
+
+def _etiqueta_mes_hoja(mes: int, anio: int) -> str:
+    return f"{_sin_acentos(NOMBRES_MES[mes - 1]).upper()} {anio}"
+
+
+def _acortar_nombre_hoja(nombre: str) -> str:
+    limpio = re.sub(r"\s+", " ", nombre).strip()
+    while len(limpio) > 31 and " DE " in limpio:
+        limpio = limpio.replace(" DE ", " ", 1)
+    if len(limpio) > 31:
+        limpio = limpio[:31].rstrip(" .,")
+    return limpio
+
+
+def _nombre_hoja_con_mes(actual: str, mes: int, anio: int) -> str:
+    texto = _sin_acentos(str(actual or "")).upper()
+    etiqueta = _etiqueta_mes_hoja(mes, anio)
+    for nombre in _MESES_EN_HOJA:
+        coincidencia = re.search(rf"\b{nombre}\b(?:\s+\d{{4}})?", texto)
+        if not coincidencia:
+            continue
+        return _acortar_nombre_hoja(f"{texto[:coincidencia.start()]}{etiqueta}{texto[coincidencia.end():]}")
+    return _acortar_nombre_hoja(f"{texto.strip(' .')} {etiqueta}")
+
+
+def _reescribir_referencias_hoja(wb, anterior: str, nuevo: str) -> None:
+    if not anterior or anterior == nuevo:
+        return
+    for hoja in wb.worksheets:
+        for fila in hoja.iter_rows():
+            for celda in fila:
+                valor = celda.value
+                if not isinstance(valor, str) or anterior not in valor:
+                    continue
+                celda.value = valor.replace(f"'{anterior}'", f"'{nuevo}'").replace(anterior, nuevo)
+    for definicion in wb.defined_names.values():
+        texto = str(getattr(definicion, "attr_text", "") or "")
+        if anterior in texto:
+            definicion.attr_text = texto.replace(f"'{anterior}'", f"'{nuevo}'").replace(anterior, nuevo)
+
+
+def _renombrar_hojas_al_mes(wb, hojas: list, mes: int, anio: int) -> list[str]:
+    titulos = []
+    ocupados = set(wb.sheetnames)
+    for hoja in hojas:
+        if hoja is None:
+            continue
+        anterior = hoja.title
+        nuevo = _nombre_hoja_con_mes(anterior, mes, anio)
+        if nuevo in ocupados and nuevo != anterior:
+            continue
+        _reescribir_referencias_hoja(wb, anterior, nuevo)
+        hoja.title = nuevo
+        ocupados.discard(anterior)
+        ocupados.add(nuevo)
+        titulos.append(nuevo)
+    return titulos
+
+
 def generar_reporte_suministros_xlsm(desde: date, hasta: date) -> dict:
     """Llena la plantilla oficial sin tocar macros ni fórmulas.
 
     El nombre corto de la bitácora se traduce al nombre largo y la cantidad
     se suma en la fila de ese pozo. En la matriz diaria, la columna C es el día 1.
+    Las hojas de proyecto y relleno quedan con el mes del rango.
     Incluye cada consumo del rango, tenga o no fotografías.
     """
     from openpyxl import load_workbook
@@ -21103,6 +21191,12 @@ def generar_reporte_suministros_xlsm(desde: date, hasta: date) -> dict:
             sin_fila.extend(faltan)
         else:
             puestos_relleno = 0
+        mes, anio = _mes_anio_reporte(desde, hasta)
+        hojas_mes = []
+        for hoja in (hoja_manttos, hoja_lista, hoja_relleno):
+            if hoja is not None and hoja not in hojas_mes:
+                hojas_mes.append(hoja)
+        titulos_mes = _renombrar_hojas_al_mes(wb, hojas_mes, mes, anio)
         detalle = _insumos_rango_admin(desde, hasta)
         if "Detalle de insumos" in wb.sheetnames:
             del wb["Detalle de insumos"]
@@ -21127,6 +21221,8 @@ def generar_reporte_suministros_xlsm(desde: date, hasta: date) -> dict:
         "relleno": puestos_relleno,
         "insumos": int(len(detalle)),
         "sin_fila": len(list(dict.fromkeys(sin_fila))),
+        "mes": _etiqueta_mes_hoja(mes, anio),
+        "hojas": titulos_mes,
     }
 
 
@@ -21153,7 +21249,8 @@ def render_extraccion_evidencia_admin(jornada: date) -> None:
         "El Excel usa la Actividad oficial. Si el registro antiguo no la trae, lee la descripción: "
         "«Inspección y suministro» va a relleno; bimestral, semestral, habilitado, puesta en marcha o preventivo va a programados. "
         "El nombre corto (PSN334, PA67) se traduce al nombre largo de la matriz (SOLEDAD NORTE 334, ARAGON 67) "
-        "y la cantidad se suma en la fila de ese pozo. En la matriz diaria, C es el día 1 y L es el día 10."
+        "y la cantidad se suma en la fila de ese pozo. En la matriz diaria, C es el día 1 y L es el día 10. "
+        "Las pestañas de proyecto y relleno toman el mes del rango, por ejemplo NOVIEMBRE 2026."
     )
     desde_col, hasta_col = st.columns(2)
     with desde_col:
@@ -21182,10 +21279,11 @@ def render_extraccion_evidencia_admin(jornada: date) -> None:
             st.session_state.adm_m_ins_csv = detalle.to_csv(index=False).encode("utf-8-sig")
             st.session_state.adm_m_ins_filas = int(paquete["programados"] + paquete["relleno"])
             st.session_state.adm_m_ins_resumen = (
+                f"{paquete.get('mes', '')}: "
                 f"{paquete['programados']} mantenimiento(s) programado(s) · "
                 f"{paquete['relleno']} pozo(s) de relleno · "
                 f"{paquete.get('insumos', 0)} consumo(s) de insumos."
-            )
+            ).lstrip(": ")
             if paquete.get("sin_fila"):
                 st.session_state.adm_m_ins_resumen += (
                     f" {paquete['sin_fila']} pozo(s) no están en la matriz."
