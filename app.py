@@ -20784,14 +20784,62 @@ def _buscar_fila_pozo(indice: dict[str, int], nombre: str) -> int | None:
     return None
 
 
+def _anclas_combinadas(hoja) -> dict[tuple[int, int], tuple[int, int]]:
+    """Celda esclava → esquina superior izquierda del rango combinado."""
+    cache = getattr(hoja, "_pjp4_anclas", None)
+    if cache is not None:
+        return cache
+    mapa: dict[tuple[int, int], tuple[int, int]] = {}
+    for rango in hoja.merged_cells.ranges:
+        ancla = (rango.min_row, rango.min_col)
+        for fila in range(rango.min_row, rango.max_row + 1):
+            for col in range(rango.min_col, rango.max_col + 1):
+                if (fila, col) != ancla:
+                    mapa[(fila, col)] = ancla
+    hoja._pjp4_anclas = mapa
+    return mapa
+
+
 def _celda_escribible(celda) -> bool:
+    from openpyxl.cell.cell import MergedCell
+
+    if isinstance(celda, MergedCell):
+        return False
     valor = celda.value
     return not (isinstance(valor, str) and valor.startswith("="))
 
 
-def _sumar_litros(hoja, fila: int, col: int, litros: float) -> bool:
+def _destino_escritura(hoja, fila: int, col: int):
+    """Celda donde se puede asignar value. En un rango combinado, solo la superior izquierda."""
+    from openpyxl.cell.cell import MergedCell
+
     celda = hoja.cell(fila, col)
-    if not _celda_escribible(celda):
+    if not isinstance(celda, MergedCell):
+        return celda if _celda_escribible(celda) else None
+    ancla = _anclas_combinadas(hoja).get((fila, col))
+    if not ancla:
+        return None
+    principal = hoja.cell(ancla[0], ancla[1])
+    if isinstance(principal, MergedCell) or not _celda_escribible(principal):
+        return None
+    if principal.row != fila:
+        return None
+    return principal
+
+
+def _poner_valor_celda(hoja, fila: int, col: int, valor, formato: str = "") -> bool:
+    celda = _destino_escritura(hoja, fila, col)
+    if celda is None:
+        return False
+    celda.value = valor
+    if formato:
+        celda.number_format = formato
+    return True
+
+
+def _sumar_litros(hoja, fila: int, col: int, litros: float) -> bool:
+    celda = _destino_escritura(hoja, fila, col)
+    if celda is None:
         return False
     actual = celda.value
     base = float(actual) if isinstance(actual, (int, float)) and not isinstance(actual, bool) else 0.0
@@ -20802,8 +20850,8 @@ def _sumar_litros(hoja, fila: int, col: int, litros: float) -> bool:
 def _limpiar_columnas_datos(hoja, fila_ini: int, fila_fin: int, columnas: list[int]) -> None:
     for fila in range(fila_ini, fila_fin + 1):
         for col in columnas:
-            celda = hoja.cell(fila, col)
-            if _celda_escribible(celda) and celda.value is not None:
+            celda = _destino_escritura(hoja, fila, col)
+            if celda is not None and celda.value is not None:
                 celda.value = None
 
 
@@ -20818,6 +20866,8 @@ def _desunir_columnas(hoja, fila_ini: int, fila_fin: int, columnas: list[int]) -
             quitar.append(str(rango))
     for referencia in quitar:
         hoja.unmerge_cells(referencia)
+    if hasattr(hoja, "_pjp4_anclas"):
+        del hoja._pjp4_anclas
 
 
 def _limite_matriz_dias(hoja, col_dia: int, fila_ini: int) -> int:
@@ -20942,18 +20992,17 @@ def _vaciar_lista_mantenimiento(hoja, programados: list[dict]) -> tuple[int, lis
             continue
         usados.add(fila)
         if item.get("ot"):
-            hoja.cell(fila, 2).value = item["ot"]
+            _poner_valor_celda(hoja, fila, 2, item["ot"])
         if item.get("trabajo"):
-            hoja.cell(fila, 3).value = item["trabajo"]
+            _poner_valor_celda(hoja, fila, 3, item["trabajo"])
         if item.get("fecha"):
-            hoja.cell(fila, 5).value = item["fecha"]
-            hoja.cell(fila, 5).number_format = "DD/MM/YYYY"
+            _poner_valor_celda(hoja, fila, 5, item["fecha"], "DD/MM/YYYY")
         if item.get("cuadrilla"):
-            hoja.cell(fila, 6).value = item["cuadrilla"]
+            _poner_valor_celda(hoja, fila, 6, item["cuadrilla"])
         if item.get("ubm"):
-            hoja.cell(fila, 8).value = item["ubm"]
+            _poner_valor_celda(hoja, fila, 8, item["ubm"])
         if item.get("motor"):
-            hoja.cell(fila, 9).value = item["motor"]
+            _poner_valor_celda(hoja, fila, 9, item["motor"])
         _sumar_litros(hoja, fila, col_aceite, item["litros"])
         puestos += 1
     return puestos, faltantes
