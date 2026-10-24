@@ -22379,6 +22379,38 @@ def render_auditoria_accesos() -> None:
         render_control_permisos()
 
 
+def etiquetas_mes_programa(cruce: pd.DataFrame) -> list[str]:
+    if cruce is None or cruce.empty or "MES" not in cruce.columns:
+        return []
+    orden = cruce.sort_values(by="FECHA", key=lambda serie: serie.map(lambda valor: valor or date.max))
+    return [etiqueta for etiqueta in dict.fromkeys(orden["MES"].tolist()) if etiqueta]
+
+
+def mes_prioridad_programa(etiquetas: list[str], hoy: date | None = None) -> str:
+    """El mes en curso, o el cierre más reciente si ese mes todavía no está en el programa."""
+    hoy = hoy or date.today()
+    actual = _etiqueta_mes_programa(hoy)
+    if actual in etiquetas:
+        return actual
+    fechados = []
+    for etiqueta in etiquetas:
+        partes = str(etiqueta).split()
+        if len(partes) != 2 or partes[0] not in NOMBRES_MES:
+            continue
+        try:
+            anio = int(partes[1])
+        except ValueError:
+            continue
+        fechados.append((date(anio, NOMBRES_MES.index(partes[0]) + 1, 1), etiqueta))
+    if not fechados:
+        return ""
+    inicio_mes = date(hoy.year, hoy.month, 1)
+    previos = [item for item in fechados if item[0] <= inicio_mes]
+    if previos:
+        return max(previos, key=lambda item: item[0])[1]
+    return min(fechados, key=lambda item: item[0])[1]
+
+
 def _marca_archivo_programa(ruta: str) -> str:
     if not os.path.isfile(ruta):
         return "Aún no cargado"
@@ -22448,13 +22480,9 @@ def render_mantenimientos_programados() -> None:
     st.caption(f"Consolidado: {norte_n} actividades de Norte y {sur_n} de Sur.")
 
     cruce = cruce_cumplimiento_programa(programa, _bitacora_para_programa())
-    meses = ["Todos"] + [
-        etiqueta
-        for etiqueta in dict.fromkeys(
-            cruce.sort_values(by="FECHA", key=lambda serie: serie.map(lambda valor: valor or date.max))["MES"].tolist()
-        )
-        if etiqueta
-    ]
+    meses_historial = etiquetas_mes_programa(cruce)
+    mes_actual = mes_prioridad_programa(meses_historial)
+    meses = ["Todos", *meses_historial]
     zonas_filtro = ["Todas"]
     for etiqueta in ("Norte", "Sur"):
         if etiqueta in set(cruce["ZONA"].astype(str)):
@@ -22463,18 +22491,34 @@ def render_mantenimientos_programados() -> None:
     with filtro_zona:
         zona_sel = st.selectbox("Zona", zonas_filtro, key="prog_mtto_zona")
     with filtro_mes:
-        mes_sel = st.selectbox("Mes del programa", meses, key="prog_mtto_mes")
-    vista = cruce
-    if zona_sel != "Todas":
-        vista = vista[vista["ZONA"] == zona_sel]
-    if mes_sel != "Todos":
-        vista = vista[vista["MES"] == mes_sel]
+        indice_mes = meses.index(mes_actual) if mes_actual in meses else 0
+        mes_sel = st.selectbox(
+            "Mes del programa",
+            meses,
+            index=indice_mes,
+            key="prog_mtto_mes",
+            help="Abre en el mes en curso. El histórico de otros años y los meses siguientes siguen disponibles.",
+        )
+    base = cruce if zona_sel == "Todas" else cruce[cruce["ZONA"] == zona_sel]
+    if mes_sel == "Todos":
+        vista = base
+        foco = mes_actual
+    else:
+        vista = base[base["MES"] == mes_sel]
+        foco = mes_sel
     planeados = len(vista)
     realizados = int((vista["ESTATUS"] == "Realizado").sum()) if planeados else 0
     pendientes = planeados - realizados
     porcentaje = round(100.0 * realizados / planeados, 1) if planeados else 0.0
+    if mes_sel == "Todos":
+        texto_corte = "Histórico completo"
+    elif mes_sel == mes_actual:
+        texto_corte = f"Mes en curso: {mes_sel}"
+    else:
+        texto_corte = f"Consulta: {mes_sel}"
     if zona_sel == "Todas":
-        st.caption("Planeados, realizados, pendientes y cumplimiento suman Norte y Sur.")
+        texto_corte += " · Norte y Sur"
+    st.caption(texto_corte)
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Planeados", planeados)
     m2.metric("Realizados", realizados)
@@ -22483,7 +22527,7 @@ def render_mantenimientos_programados() -> None:
     st.progress(realizados / planeados if planeados else 0.0)
 
     resumen = (
-        vista.groupby("MES", dropna=False)
+        base.groupby("MES", dropna=False)
         .agg(
             Planeados=("ID", "size"),
             Realizados=("ESTATUS", lambda serie: int((serie == "Realizado").sum())),
@@ -22492,25 +22536,64 @@ def render_mantenimientos_programados() -> None:
     )
     if not resumen.empty:
         orden_mes = (
-            vista.groupby("MES")["FECHA"].min().sort_values(key=lambda serie: serie.map(lambda valor: valor or date.max))
+            base.groupby("MES")["FECHA"].min().sort_values(key=lambda serie: serie.map(lambda valor: valor or date.max))
         )
         resumen["MES"] = pd.Categorical(resumen["MES"], categories=list(orden_mes.index), ordered=True)
         resumen = resumen.sort_values("MES")
         resumen["Pendientes"] = resumen["Planeados"] - resumen["Realizados"]
+        resumen["Detalle"] = [
+            "Mes en curso" if str(mes) == mes_actual else ("En consulta" if str(mes) == foco and foco != mes_actual else "")
+            for mes in resumen["MES"]
+        ]
+        colores_realizados = ["#f59e0b" if str(mes) == foco else "#64748b" for mes in resumen["MES"]]
+        colores_pendientes = ["#fde68a" if str(mes) == foco else "#334155" for mes in resumen["MES"]]
         fig = go.Figure(
             data=[
-                go.Bar(name="Realizados", x=resumen["MES"], y=resumen["Realizados"]),
-                go.Bar(name="Pendientes", x=resumen["MES"], y=resumen["Pendientes"]),
+                go.Bar(
+                    name="Realizados",
+                    x=resumen["MES"].astype(str),
+                    y=resumen["Realizados"],
+                    marker_color=colores_realizados,
+                ),
+                go.Bar(
+                    name="Pendientes",
+                    x=resumen["MES"].astype(str),
+                    y=resumen["Pendientes"],
+                    marker_color=colores_pendientes,
+                ),
             ]
         )
+        if not foco:
+            titulo_grafica = "Histórico"
+        elif mes_sel == "Todos":
+            titulo_grafica = f"Histórico · {foco} resaltado"
+        elif foco == mes_actual:
+            titulo_grafica = f"Mes en curso: {foco}"
+        else:
+            titulo_grafica = f"Consulta: {foco}"
         fig.update_layout(
             barmode="stack",
             height=320,
-            margin=dict(l=16, r=16, t=24, b=16),
+            margin=dict(l=16, r=16, t=36, b=16),
             legend=dict(orientation="h"),
             yaxis_title="Actividades",
+            title=titulo_grafica,
         )
         st.plotly_chart(fig, use_container_width=True)
+        tabla_resumen = resumen.rename(columns={"MES": "Mes"})[
+            ["Mes", "Planeados", "Realizados", "Pendientes", "Detalle"]
+        ]
+
+        def _resaltar_mes_programa(fila: pd.Series) -> list[str]:
+            if str(fila.get("Mes")) == foco:
+                return ["background-color: #78350f; color: #fffbeb; font-weight: 700"] * len(fila)
+            return [""] * len(fila)
+
+        st.dataframe(
+            tabla_resumen.style.apply(_resaltar_mes_programa, axis=1),
+            use_container_width=True,
+            hide_index=True,
+        )
 
     tabla = vista.rename(
         columns={
