@@ -35,6 +35,8 @@ st.set_page_config(
 DATA_DIR = "data"
 DATABASE_DIR = "database"
 EXCEL_FILE = os.path.join(DATABASE_DIR, "bitacora_operativa_soledad.xlsx")
+PROGRAMA_MANTENIMIENTO_FILE = os.path.join(DATABASE_DIR, "programa_mantenimiento.xlsx")
+COLUMNA_PROGRAMADO = "PROGRAMADO"
 EXCEL_FILE_LEGACY = "bitacora_mantenimiento.xlsx"
 SHEET_NAME = "Bitacora"
 HOJAS_BITACORA = ("Bitacora", "Hoja5", "Hoja2")
@@ -647,6 +649,7 @@ COLUMNAS_EXCEL = [
     "OBSERVACIÓN REVISIÓN",
     "ID_REGISTRO",
     "EVIDENCIA",
+    COLUMNA_PROGRAMADO,
 ]
 
 COLUMNAS_NUMERICAS = set(COLUMNAS_INSUMOS) | {
@@ -5455,6 +5458,9 @@ def _alias_columna_bitacora(nombre: str) -> str:
         "avance %": "AVANCE %",
         "revision": "REVISIÓN",
         "observacion revision": "OBSERVACIÓN REVISIÓN",
+        "programado": COLUMNA_PROGRAMADO,
+        "programado si": COLUMNA_PROGRAMADO,
+        "es programado": COLUMNA_PROGRAMADO,
     }
     return aliases.get(clave, str(nombre or "").strip())
 
@@ -5757,6 +5763,8 @@ def normalizar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         else:
             df[col] = df[col].fillna("").astype(str)
             df.loc[df[col].isin(["nan", "None", "<NA>"]), col] = ""
+            if col == COLUMNA_PROGRAMADO:
+                df[col] = df[col].map(_normalizar_marca_programado)
     if "SECUENCIA" in df.columns:
         df["SECUENCIA"] = df["SECUENCIA"].map(texto_secuencia_limpio)
     for col in extras + list(COLUMNAS_BITACORA_SOLEDAD):
@@ -6380,6 +6388,602 @@ def anexar_fotos_registro_bitacora(registro, archivos: list) -> list[str]:
     return rutas
 
 
+_MESES_PROGRAMA = {
+    "enero": 1,
+    "ene": 1,
+    "febrero": 2,
+    "feb": 2,
+    "marzo": 3,
+    "mar": 3,
+    "abril": 4,
+    "abr": 4,
+    "mayo": 5,
+    "may": 5,
+    "junio": 6,
+    "jun": 6,
+    "julio": 7,
+    "jul": 7,
+    "agosto": 8,
+    "ago": 8,
+    "septiembre": 9,
+    "setiembre": 9,
+    "sept": 9,
+    "sep": 9,
+    "octubre": 10,
+    "oct": 10,
+    "noviembre": 11,
+    "nov": 11,
+    "diciembre": 12,
+    "dic": 12,
+}
+_TOKENS_ACTIVIDAD_RUIDO = {
+    "de",
+    "del",
+    "la",
+    "el",
+    "los",
+    "las",
+    "a",
+    "al",
+    "y",
+    "en",
+    "por",
+    "para",
+    "con",
+    "mantenimiento",
+    "mtto",
+    "mantto",
+    "mant",
+}
+_TOKENS_EQUIPO_PROGRAMA = {"mci", "ubm", "ici", "ub"}
+_COLUMNAS_PROGRAMA_ARCHIVO = [
+    "ID",
+    "UBICACION",
+    "TIPO DE MANTENIMIENTO",
+    "FECHA PROGRAMADA",
+    "MES",
+]
+
+
+def _normalizar_marca_programado(valor) -> str:
+    if valor is None:
+        return ""
+    try:
+        if pd.isna(valor):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    texto = _sin_acentos(str(valor)).strip()
+    if not texto or texto.casefold() in {"nan", "none", "nat", "<na>"}:
+        return ""
+    plano = texto.casefold()
+    if plano in {"si", "s", "yes", "1", "true", "cumplido", "programado"} or plano.startswith("si "):
+        return "Sí"
+    if plano in {"no", "n", "0", "false"}:
+        return "No"
+    return texto
+
+
+def _marca_programado_si(valor) -> bool:
+    return _normalizar_marca_programado(valor) == "Sí"
+
+
+def _anio_en_texto(valor, defecto: int) -> int:
+    coincidencia = re.search(r"(20\d{2})", str(valor or ""))
+    return int(coincidencia.group(1)) if coincidencia else int(defecto)
+
+
+def _mes_desde_texto(valor) -> int | None:
+    plano = _norm_encabezado(valor)
+    if not plano:
+        return None
+    for nombre, numero in sorted(_MESES_PROGRAMA.items(), key=lambda item: len(item[0]), reverse=True):
+        if re.search(rf"\b{re.escape(nombre)}\b", plano):
+            return numero
+    return None
+
+
+def _fecha_programada(valor, anio_defecto: int | None = None) -> date | None:
+    if valor is None:
+        return None
+    try:
+        if pd.isna(valor):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    texto = str(valor).strip()
+    if not texto or texto.casefold() in {"nan", "none", "nat", "<na>"}:
+        return None
+    mes_anio = re.fullmatch(r"(\d{1,2})[/-](\d{4})", texto)
+    if mes_anio:
+        mes, anio = int(mes_anio.group(1)), int(mes_anio.group(2))
+        if 1 <= mes <= 12:
+            return date(anio, mes, 1)
+    anio_mes = re.fullmatch(r"(\d{4})[/-](\d{1,2})", texto)
+    if anio_mes:
+        anio, mes = int(anio_mes.group(1)), int(anio_mes.group(2))
+        if 1 <= mes <= 12:
+            return date(anio, mes, 1)
+    mes = _mes_desde_texto(texto)
+    anio_texto = re.search(r"(20\d{2})", texto)
+    if mes and anio_texto:
+        return date(int(anio_texto.group(1)), mes, 1)
+    if mes and anio_defecto:
+        return date(int(anio_defecto), mes, 1)
+    if _norm_encabezado(texto) in {"mes", "fecha"}:
+        return None
+    return parsear_fecha_valor(valor)
+
+
+def _etiqueta_mes_programa(cuando: date | None) -> str:
+    if not cuando:
+        return ""
+    return f"{NOMBRES_MES[cuando.month - 1]} {cuando.year}"
+
+
+def _rol_columna_programa(normal: str) -> str | None:
+    if not normal or normal in {"id", "nro", "no"}:
+        return None
+    if any(token in normal for token in ("ubicacion", "pozo", "localizacion")) and "tipo" not in normal:
+        return "ubicacion"
+    if ("tipo" in normal and "mant" in normal) or normal in {
+        "tipo",
+        "actividad",
+        "mantenimiento",
+        "trabajo",
+    }:
+        return "tipo"
+    if normal.startswith("actividad") or normal.startswith("tipo "):
+        return "tipo"
+    if "fecha" in normal or normal in {"mes", "periodo"} or normal.startswith("mes "):
+        return "fecha"
+    return None
+
+
+def _fecha_marca_mes(valor, anio: int, mes: int) -> date | None:
+    if valor is None:
+        return None
+    try:
+        if pd.isna(valor):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(valor, (int, float)) and not isinstance(valor, bool):
+        dia = int(valor)
+        if dia == 0:
+            return None
+        if 1 <= dia <= 31:
+            try:
+                return date(anio, mes, dia)
+            except ValueError:
+                return date(anio, mes, 1)
+        return None
+    texto = _texto_actividad(valor)
+    plano = _sin_acentos(texto).casefold()
+    if not plano or plano in {"-", "0", "no", "n", "nan", "none"}:
+        return None
+    fecha = _fecha_programada(texto, anio)
+    if fecha:
+        return fecha
+    return date(anio, mes, 1)
+
+
+def _id_programa_mantenimiento(ubicacion: str, tipo: str, cuando: date | None) -> str:
+    base = "|".join(
+        [
+            clave_pozo_plana(ubicacion),
+            " ".join(sorted(_tokens_actividad_programa(tipo))),
+            cuando.isoformat() if cuando else "",
+        ]
+    )
+    return hashlib.sha1(_sin_acentos(base).encode("utf-8", errors="ignore")).hexdigest()[:12].upper()
+
+
+def _filas_tabla_programa(tabla: pd.DataFrame, anio_defecto: int) -> list[dict]:
+    if tabla is None or tabla.empty:
+        return []
+    mejor = None
+    mejor_puntaje = 0
+    for indice in range(min(len(tabla), 25)):
+        roles: dict[str, int] = {}
+        meses: dict[int, tuple[int, int]] = {}
+        for columna, valor in enumerate(tabla.iloc[indice].tolist()):
+            normal = _norm_encabezado(valor)
+            rol = _rol_columna_programa(normal)
+            if rol and rol not in roles:
+                roles[rol] = columna
+            mes = _mes_desde_texto(valor)
+            if mes and rol not in {"ubicacion", "tipo", "fecha"}:
+                meses[columna] = (_anio_en_texto(valor, anio_defecto), mes)
+        puntaje = 0
+        if "ubicacion" in roles:
+            puntaje += 2
+        if "tipo" in roles:
+            puntaje += 2
+        if "fecha" in roles:
+            puntaje += 2
+        if len(meses) >= 3:
+            puntaje += 2
+        if (
+            puntaje > mejor_puntaje
+            and "ubicacion" in roles
+            and "tipo" in roles
+            and ("fecha" in roles or len(meses) >= 3)
+        ):
+            mejor = (indice, roles, meses)
+            mejor_puntaje = puntaje
+    if not mejor:
+        return []
+    fila_header, roles, meses = mejor
+    filas = []
+    vistos = set()
+    for indice in range(fila_header + 1, len(tabla)):
+        renglon = tabla.iloc[indice].tolist()
+        ubicacion = _texto_actividad(renglon[roles["ubicacion"]] if roles["ubicacion"] < len(renglon) else "")
+        tipo = _texto_actividad(renglon[roles["tipo"]] if roles["tipo"] < len(renglon) else "")
+        if not ubicacion or not tipo:
+            continue
+        if _norm_encabezado(ubicacion) in {"ubicacion", "pozo", "ubicacion pozo", "total"}:
+            continue
+        fechas: list[date | None] = []
+        if "fecha" in roles and len(meses) < 3:
+            fechas.append(
+                _fecha_programada(
+                    renglon[roles["fecha"]] if roles["fecha"] < len(renglon) else None,
+                    anio_defecto,
+                )
+            )
+        elif meses:
+            for columna, (anio, mes) in meses.items():
+                marca = _fecha_marca_mes(renglon[columna] if columna < len(renglon) else None, anio, mes)
+                if marca:
+                    fechas.append(marca)
+        for cuando in fechas:
+            if cuando is None:
+                continue
+            item = {
+                "ID": _id_programa_mantenimiento(ubicacion, tipo, cuando),
+                "UBICACION": ubicacion,
+                "TIPO DE MANTENIMIENTO": tipo,
+                "FECHA PROGRAMADA": cuando.isoformat(),
+                "MES": _etiqueta_mes_programa(cuando),
+            }
+            if item["ID"] in vistos:
+                continue
+            vistos.add(item["ID"])
+            filas.append(item)
+    return filas
+
+
+def interpretar_programa_mantenimiento(contenido: bytes, nombre: str) -> list[dict]:
+    """Lee un Excel o CSV con ubicación, tipo de mantenimiento y mes o fecha."""
+    if not contenido:
+        raise ValueError("El archivo está vacío.")
+    if len(contenido) > 20 * 1024 * 1024:
+        raise ValueError("El archivo supera 20 MB.")
+    anio = _anio_en_texto(nombre, date.today().year)
+    tablas: list[pd.DataFrame] = []
+    if str(nombre or "").lower().endswith(".csv"):
+        ultimo = None
+        for codec in ("utf-8-sig", "latin-1"):
+            try:
+                tablas = [pd.read_csv(io.BytesIO(contenido), header=None, dtype=object, encoding=codec)]
+                break
+            except Exception as exc:
+                ultimo = exc
+        if not tablas:
+            raise ValueError(f"No se pudo leer el CSV: {ultimo}")
+    else:
+        try:
+            libro = pd.read_excel(io.BytesIO(contenido), sheet_name=None, header=None, dtype=object)
+        except Exception as exc:
+            raise ValueError(f"No se pudo leer el Excel: {exc}") from exc
+        tablas = [hoja for hoja in libro.values() if isinstance(hoja, pd.DataFrame)]
+    filas: list[dict] = []
+    vistos = set()
+    for tabla in tablas:
+        for item in _filas_tabla_programa(tabla, anio):
+            if item["ID"] in vistos:
+                continue
+            vistos.add(item["ID"])
+            filas.append(item)
+            if len(filas) > 20000:
+                raise ValueError("El programa tiene más de 20,000 actividades. Revisa el archivo.")
+    if not filas:
+        raise ValueError(
+            "No encontré filas con Ubicación/Pozo, Tipo de Mantenimiento y Mes/Fecha programada."
+        )
+    return filas
+
+
+def guardar_programa_mantenimiento(filas: list[dict]) -> int:
+    df = pd.DataFrame(filas, columns=_COLUMNAS_PROGRAMA_ARCHIVO)
+    os.makedirs(os.path.dirname(PROGRAMA_MANTENIMIENTO_FILE) or DATABASE_DIR, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(suffix=".xlsx")
+    os.close(fd)
+    try:
+        with pd.ExcelWriter(tmp, engine="openpyxl") as writer:
+            df.to_excel(writer, sheet_name="Programa", index=False)
+        try:
+            shutil.copy2(tmp, PROGRAMA_MANTENIMIENTO_FILE)
+        except PermissionError:
+            alt = os.path.join(os.path.dirname(PROGRAMA_MANTENIMIENTO_FILE) or DATABASE_DIR, "~pjp4_programa_write.xlsx")
+            shutil.copy2(tmp, alt)
+            os.replace(alt, PROGRAMA_MANTENIMIENTO_FILE)
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+    cargar_programa_mantenimiento._cache = None
+    return len(df)
+
+
+def importar_programa_mantenimiento(contenido: bytes, nombre: str) -> int:
+    return guardar_programa_mantenimiento(interpretar_programa_mantenimiento(contenido, nombre))
+
+
+def _programa_vacio() -> pd.DataFrame:
+    return pd.DataFrame(columns=_COLUMNAS_PROGRAMA_ARCHIVO + ["FECHA"])
+
+
+def cargar_programa_mantenimiento() -> pd.DataFrame:
+    ruta = PROGRAMA_MANTENIMIENTO_FILE
+    if not os.path.isfile(ruta):
+        return _programa_vacio()
+    firma = (os.path.getmtime(ruta), os.path.getsize(ruta))
+    cache = getattr(cargar_programa_mantenimiento, "_cache", None)
+    if cache and cache[0] == firma:
+        return cache[1].copy()
+    try:
+        crudo = pd.read_excel(ruta, sheet_name=0, dtype=object)
+    except Exception:
+        return _programa_vacio()
+    if crudo is None or crudo.empty:
+        df = _programa_vacio()
+        cargar_programa_mantenimiento._cache = (firma, df)
+        return df.copy()
+    renombre = {}
+    for col in crudo.columns:
+        normal = _norm_encabezado(col)
+        rol = _rol_columna_programa(normal)
+        if rol == "ubicacion":
+            renombre[col] = "UBICACION"
+        elif rol == "tipo":
+            renombre[col] = "TIPO DE MANTENIMIENTO"
+        elif rol == "fecha" and "FECHA PROGRAMADA" not in renombre.values():
+            renombre[col] = "FECHA PROGRAMADA"
+        elif normal == "id":
+            renombre[col] = "ID"
+        elif normal == "mes":
+            renombre[col] = "MES"
+    df = crudo.rename(columns=renombre)
+    for col in _COLUMNAS_PROGRAMA_ARCHIVO:
+        if col not in df.columns:
+            df[col] = ""
+    df["UBICACION"] = df["UBICACION"].map(_texto_actividad)
+    df["TIPO DE MANTENIMIENTO"] = df["TIPO DE MANTENIMIENTO"].map(_texto_actividad)
+    df["FECHA"] = df["FECHA PROGRAMADA"].map(lambda valor: _fecha_programada(valor, date.today().year))
+    df["MES"] = [
+        _texto_actividad(mes) or _etiqueta_mes_programa(cuando)
+        for mes, cuando in zip(df["MES"], df["FECHA"])
+    ]
+    df["ID"] = [
+        _texto_actividad(identificador) or _id_programa_mantenimiento(ubicacion, tipo, cuando)
+        for identificador, ubicacion, tipo, cuando in zip(
+            df["ID"], df["UBICACION"], df["TIPO DE MANTENIMIENTO"], df["FECHA"]
+        )
+    ]
+    df = df[df["UBICACION"].astype(bool) & df["TIPO DE MANTENIMIENTO"].astype(bool)].copy()
+    df = df[_COLUMNAS_PROGRAMA_ARCHIVO + ["FECHA"]]
+    cargar_programa_mantenimiento._cache = (firma, df)
+    return df.copy()
+
+
+def _tokens_actividad_programa(texto: str) -> set[str]:
+    plano = re.sub(r"[^a-z0-9]+", " ", _sin_acentos(texto).casefold())
+    return {token for token in plano.split() if len(token) > 1 and token not in _TOKENS_ACTIVIDAD_RUIDO}
+
+
+def actividades_programadas_coinciden(izquierda: str, derecha: str) -> bool:
+    tokens_a = _tokens_actividad_programa(izquierda)
+    tokens_b = _tokens_actividad_programa(derecha)
+    if not tokens_a or not tokens_b:
+        return False
+    equipos_a = tokens_a & _TOKENS_EQUIPO_PROGRAMA
+    equipos_b = tokens_b & _TOKENS_EQUIPO_PROGRAMA
+    if equipos_a and equipos_b and not (equipos_a & equipos_b):
+        return False
+    if not (tokens_a <= tokens_b or tokens_b <= tokens_a):
+        return False
+    corto = tokens_a if len(tokens_a) <= len(tokens_b) else tokens_b
+    return any(len(token) >= 4 for token in corto) or bool(corto & _TOKENS_EQUIPO_PROGRAMA)
+
+
+def _claves_pozo_programa(*textos: str) -> set[str]:
+    claves = set()
+    for texto in textos:
+        bruto = str(texto or "").strip()
+        if not bruto or bruto.casefold() in {"nan", "none"}:
+            continue
+        for trozo in re.split(r"[·|;,/]+", bruto):
+            trozo = trozo.strip()
+            if not trozo:
+                continue
+            plana = clave_pozo_plana(trozo)
+            if plana:
+                claves.add(plana)
+            try:
+                largo = nombre_largo_excel(trozo)
+            except Exception:
+                largo = ""
+            if largo:
+                claves.add(clave_pozo_plana(largo))
+    return {clave for clave in claves if clave}
+
+
+def _bitacora_para_programa() -> pd.DataFrame:
+    ruta = EXCEL_FILE
+    if not os.path.isfile(ruta):
+        return cargar_bitacora()
+    firma = (os.path.getmtime(ruta), os.path.getsize(ruta))
+    cache = getattr(_bitacora_para_programa, "_cache", None)
+    if cache and cache[0] == firma:
+        return cache[1]
+    df = cargar_bitacora()
+    _bitacora_para_programa._cache = (firma, df)
+    return df
+
+
+def cruce_cumplimiento_programa(programa: pd.DataFrame, bitacora: pd.DataFrame) -> pd.DataFrame:
+    """Cada actividad del programa queda Realizada cuando una bitácora con Programado = Sí la cubre."""
+    columnas = [
+        "ID",
+        "UBICACION",
+        "TIPO DE MANTENIMIENTO",
+        "FECHA",
+        "MES",
+        "ESTATUS",
+        "FECHA REALIZADA",
+    ]
+    if programa is None or programa.empty:
+        return pd.DataFrame(columns=columnas)
+    confirmados = []
+    if bitacora is not None and not bitacora.empty and COLUMNA_PROGRAMADO in bitacora.columns:
+        for idx, fila in bitacora.iterrows():
+            if not _marca_programado_si(fila.get(COLUMNA_PROGRAMADO)):
+                continue
+            textos = [
+                fila.get("POZO"),
+                fila.get("UBICACIÓN"),
+                fila.get("EQUIPO/UBICACIÓN"),
+                fila.get("SECTOR"),
+            ]
+            confirmados.append(
+                {
+                    "idx": idx,
+                    "claves": _claves_pozo_programa(*[str(texto or "") for texto in textos]),
+                    "actividad": str(fila.get("TIPO DE ACTIVIDAD") or ""),
+                    "corta": str(fila.get("ACTIVIDAD CORTA") or ""),
+                    "fecha": parsear_fecha_valor(fila.get("FECHA")),
+                }
+            )
+    usados: set = set()
+    ordenados = programa.copy()
+    if "FECHA" not in ordenados.columns:
+        ordenados["FECHA"] = ordenados["FECHA PROGRAMADA"].map(
+            lambda valor: _fecha_programada(valor, date.today().year)
+        )
+    ordenados = ordenados.sort_values(by="FECHA", key=lambda serie: serie.map(lambda valor: valor or date.max))
+    salida = []
+    for _, fila in ordenados.iterrows():
+        cuando = fila.get("FECHA")
+        if not isinstance(cuando, date):
+            cuando = _fecha_programada(fila.get("FECHA PROGRAMADA"), date.today().year)
+        claves = _claves_pozo_programa(str(fila.get("UBICACION") or ""))
+        tipo = str(fila.get("TIPO DE MANTENIMIENTO") or "")
+        candidatos = []
+        for registro in confirmados:
+            if registro["idx"] in usados:
+                continue
+            if not claves or not registro["claves"] or not (claves & registro["claves"]):
+                continue
+            if not (
+                actividades_programadas_coinciden(tipo, registro["actividad"])
+                or actividades_programadas_coinciden(tipo, registro["corta"])
+            ):
+                continue
+            mismo_mes = bool(
+                cuando
+                and registro["fecha"]
+                and cuando.year == registro["fecha"].year
+                and cuando.month == registro["fecha"].month
+            )
+            candidatos.append((0 if mismo_mes else 1, registro["fecha"] or date.max, registro["idx"], registro["fecha"]))
+        estatus = "Pendiente"
+        fecha_realizada = ""
+        if candidatos:
+            candidatos.sort(key=lambda item: (item[0], item[1], str(item[2])))
+            _, _, idx, fecha_real = candidatos[0]
+            usados.add(idx)
+            estatus = "Realizado"
+            fecha_realizada = fecha_real.strftime("%d/%m/%Y") if fecha_real else ""
+        salida.append(
+            {
+                "ID": fila.get("ID") or "",
+                "UBICACION": fila.get("UBICACION") or "",
+                "TIPO DE MANTENIMIENTO": tipo,
+                "FECHA": cuando,
+                "MES": fila.get("MES") or _etiqueta_mes_programa(cuando),
+                "ESTATUS": estatus,
+                "FECHA REALIZADA": fecha_realizada,
+            }
+        )
+    return pd.DataFrame(salida, columns=columnas)
+
+
+def coincidencias_pendientes_programa(
+    ubicacion: str,
+    actividad: str,
+    dia: date,
+    programa: pd.DataFrame,
+    bitacora: pd.DataFrame,
+    actividad_corta: str = "",
+) -> list[dict]:
+    if programa is None or programa.empty or not str(ubicacion or "").strip() or not str(actividad or "").strip():
+        return []
+    claves = _claves_pozo_programa(ubicacion)
+    if not claves:
+        return []
+    cruce = cruce_cumplimiento_programa(programa, bitacora)
+    pendientes = []
+    for _, fila in cruce.iterrows():
+        if fila.get("ESTATUS") != "Pendiente":
+            continue
+        if not (claves & _claves_pozo_programa(str(fila.get("UBICACION") or ""))):
+            continue
+        tipo = str(fila.get("TIPO DE MANTENIMIENTO") or "")
+        if not (
+            actividades_programadas_coinciden(actividad, tipo)
+            or actividades_programadas_coinciden(actividad_corta, tipo)
+        ):
+            continue
+        cuando = fila.get("FECHA") if isinstance(fila.get("FECHA"), date) else None
+        mismo_mes = bool(cuando and dia and cuando.year == dia.year and cuando.month == dia.month)
+        pendientes.append(
+            {
+                "ubicacion": str(fila.get("UBICACION") or ""),
+                "tipo": tipo,
+                "mes": str(fila.get("MES") or _etiqueta_mes_programa(cuando)),
+                "fecha": cuando,
+                "mismo_mes": mismo_mes,
+            }
+        )
+    pendientes.sort(key=lambda item: (0 if item["mismo_mes"] else 1, item["fecha"] or date.max))
+    return pendientes
+
+
+def pendientes_programa_campo(
+    ubicacion: str,
+    actividad: str,
+    dia: date,
+    actividad_corta: str = "",
+) -> list[dict]:
+    return coincidencias_pendientes_programa(
+        ubicacion,
+        actividad,
+        dia,
+        cargar_programa_mantenimiento(),
+        _bitacora_para_programa(),
+        actividad_corta,
+    )
+
+
 def construir_registro(
     fecha: date,
     secuencia: str,
@@ -6394,6 +6998,7 @@ def construir_registro(
     estatus: str = "",
     fotos: list[str] | None = None,
     cobertura: dict[str, str] | None = None,
+    programado: str = "",
 ) -> dict:
     insumos = insumos or {}
     fotos = fotos or []
@@ -6432,6 +7037,7 @@ def construir_registro(
         "AVANCE %": 1,
         "ID_REGISTRO": "",
         "EVIDENCIA": EVIDENCIA_PENDIENTE,
+        COLUMNA_PROGRAMADO: _normalizar_marca_programado(programado),
     }
     for col in COLUMNAS_INSUMOS + COLUMNAS_INSUMOS_NUEVOS:
         registro[col] = insumos.get(col, 0 if col in COLUMNAS_NUMERICAS else "")
@@ -7751,6 +8357,49 @@ def render_captura_actividades_campo() -> None:
             else:
                 st.caption("Esta cuadrilla no tiene catálogo oficial de actividades.")
 
+    confirma_programa = False
+    ubicacion_programa = str(
+        ubicacion_nueva if ubicacion_sel == OPCION_UBICACION_NUEVA else (ubicacion_sel or "")
+    ).strip()
+    if tipo_actividad and tipo_actividad != "Otra":
+        actividad_programa = str(tipo_actividad)
+        oficial_programa = buscar_actividad_catalogo(cuadrilla, tipo_actividad)
+        actividad_corta_programa = str((oficial_programa or {}).get("corto") or "")
+    else:
+        actividad_programa = str(tipo_actividad_otro or "").strip()
+        actividad_corta_programa = str(actividad_corta_otro or "").strip()
+    if ubicacion_programa and actividad_programa:
+        try:
+            coincidencias_programa = pendientes_programa_campo(
+                ubicacion_programa,
+                actividad_programa,
+                fecha,
+                actividad_corta_programa,
+            )
+        except Exception:
+            coincidencias_programa = []
+            st.caption("No se pudo consultar el programa de mantenimiento.")
+        if coincidencias_programa:
+            detalle = []
+            for item in coincidencias_programa[:6]:
+                cuando = f" · {item['mes']}" if item.get("mes") else ""
+                detalle.append(f"- **{item['tipo']}** en {item['ubicacion']}{cuando}")
+            extras = len(coincidencias_programa) - len(detalle)
+            if extras > 0:
+                detalle.append(f"- y {extras} más")
+            st.warning(
+                "Hay una actividad pendiente en el programa de mantenimiento para esta ubicación.\n\n"
+                + "\n".join(detalle)
+            )
+            confirma_programa = st.checkbox(
+                "¿Es esta una actividad del Programa de Mantenimiento?",
+                key=(
+                    f"prog_confirma_{form_id}_"
+                    f"{clave_pozo_plana(ubicacion_programa)}_"
+                    f"{clave_pozo_plana(actividad_programa)}"
+                ),
+            )
+
     st.markdown("")
     st.markdown('<div class="section-title">🛢️ Insumos utilizados</div>', unsafe_allow_html=True)
     st.caption(
@@ -7844,6 +8493,7 @@ def render_captura_actividades_campo() -> None:
             estatus=estatus,
             fotos=guardar_evidencias(fecha, secuencia_final, archivos_foto),
             cobertura=cobertura,
+            programado="Sí" if confirma_programa else "No",
         )
 
         try:
@@ -18969,6 +19619,12 @@ MODULOS_ADMIN = [
         "descripcion": "Actividades de octubre por especialidad, con control de realizado y observaciones.",
     },
     {
+        "id": "mantenimientos_programados",
+        "icono": "🗓️",
+        "titulo": "Mantenimientos Programados",
+        "descripcion": "Programa anual, confirmación en campo y avance de lo realizado contra lo planeado.",
+    },
+    {
         "id": "calendario_asistencia",
         "icono": "📅",
         "titulo": "Calendario de asistencia",
@@ -20267,6 +20923,8 @@ def render_entrada_datos_admin() -> None:
     )
     if st.button("Cargar Excel al programa", use_container_width=True, key="adm_m_cargar_excel"):
         _guardar_excel_programa_admin(archivo_programa)
+    if st.button("Mantenimientos programados", use_container_width=True, key="adm_m_programa_anual"):
+        abrir_modulo_admin("mantenimientos_programados")
     alta_ubic, alta_eq, alta_ins = st.columns(3)
     with alta_ubic:
         if st.button("Ubicación", use_container_width=True, key="adm_m_alta_ub"):
@@ -21455,6 +22113,8 @@ def render_explorador_admin() -> None:
     with pie_hist:
         if st.button("HISTORIAL", use_container_width=True, key="adm_pie_historial"):
             abrir_modulo_admin("historial_base")
+    if st.button("MANTENIMIENTOS PROGRAMADOS", use_container_width=True, key="adm_pie_programados"):
+        abrir_modulo_admin("mantenimientos_programados")
 
 
 def render_historial_base_admin() -> None:
@@ -21512,6 +22172,111 @@ def render_auditoria_accesos() -> None:
         render_control_permisos()
 
 
+def render_mantenimientos_programados() -> None:
+    st.markdown(
+        '<div class="section-title">Mantenimientos programados</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Sube el programa anual (Excel o CSV) con Ubicación/Pozo, Tipo de Mantenimiento y "
+        "Mes/Fecha programada. Queda en database/programa_mantenimiento.xlsx. "
+        "En campo, si el pozo y la actividad coinciden con una pendiente, se puede marcar "
+        "Programado = Sí en la bitácora."
+    )
+    aviso = st.session_state.pop("prog_mtto_aviso", None)
+    if aviso:
+        st.success(aviso)
+    archivo = st.file_uploader(
+        "Programa de mantenimiento",
+        type=["xlsx", "xlsm", "xls", "csv"],
+        key="prog_mtto_archivo",
+    )
+    if st.button("Actualizar programa", type="primary", key="prog_mtto_guardar"):
+        if archivo is None:
+            st.warning("Elige un archivo Excel o CSV.")
+        else:
+            try:
+                total = importar_programa_mantenimiento(archivo.getvalue(), archivo.name)
+            except Exception as exc:
+                st.error(str(exc))
+            else:
+                st.session_state.prog_mtto_aviso = (
+                    f"Programa actualizado: {total} actividad(es) en database/programa_mantenimiento.xlsx."
+                )
+                st.rerun()
+
+    programa = cargar_programa_mantenimiento()
+    if programa.empty:
+        st.info("Todavía no hay un programa cargado. El avance aparece aquí en cuanto se actualice el archivo.")
+        return
+
+    cruce = cruce_cumplimiento_programa(programa, _bitacora_para_programa())
+    meses = ["Todos"] + [
+        etiqueta
+        for etiqueta in dict.fromkeys(
+            cruce.sort_values(by="FECHA", key=lambda serie: serie.map(lambda valor: valor or date.max))["MES"].tolist()
+        )
+        if etiqueta
+    ]
+    mes_sel = st.selectbox("Mes del programa", meses, key="prog_mtto_mes")
+    vista = cruce if mes_sel == "Todos" else cruce[cruce["MES"] == mes_sel]
+    planeados = len(vista)
+    realizados = int((vista["ESTATUS"] == "Realizado").sum()) if planeados else 0
+    pendientes = planeados - realizados
+    porcentaje = round(100.0 * realizados / planeados, 1) if planeados else 0.0
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Planeados", planeados)
+    m2.metric("Realizados", realizados)
+    m3.metric("Pendientes", pendientes)
+    m4.metric("Cumplimiento", f"{porcentaje}%")
+    st.progress(realizados / planeados if planeados else 0.0)
+
+    resumen = (
+        vista.groupby("MES", dropna=False)
+        .agg(
+            Planeados=("ID", "size"),
+            Realizados=("ESTATUS", lambda serie: int((serie == "Realizado").sum())),
+        )
+        .reset_index()
+    )
+    if not resumen.empty:
+        orden_mes = (
+            vista.groupby("MES")["FECHA"].min().sort_values(key=lambda serie: serie.map(lambda valor: valor or date.max))
+        )
+        resumen["MES"] = pd.Categorical(resumen["MES"], categories=list(orden_mes.index), ordered=True)
+        resumen = resumen.sort_values("MES")
+        resumen["Pendientes"] = resumen["Planeados"] - resumen["Realizados"]
+        fig = go.Figure(
+            data=[
+                go.Bar(name="Realizados", x=resumen["MES"], y=resumen["Realizados"]),
+                go.Bar(name="Pendientes", x=resumen["MES"], y=resumen["Pendientes"]),
+            ]
+        )
+        fig.update_layout(
+            barmode="stack",
+            height=320,
+            margin=dict(l=16, r=16, t=24, b=16),
+            legend=dict(orientation="h"),
+            yaxis_title="Actividades",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    tabla = vista.rename(
+        columns={
+            "UBICACION": "Ubicación",
+            "TIPO DE MANTENIMIENTO": "Tipo de mantenimiento",
+            "MES": "Mes",
+            "ESTATUS": "Estatus",
+            "FECHA REALIZADA": "Fecha realizada",
+        }
+    )
+    st.dataframe(
+        tabla[["Ubicación", "Tipo de mantenimiento", "Mes", "Estatus", "Fecha realizada"]],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
 def render_panel_administrativo() -> None:
     modulo_id = st.session_state.get("admin_modulo")
     if modulo_id == "combustible":
@@ -21555,6 +22320,8 @@ def render_panel_administrativo() -> None:
         render_consulta_programas_mensuales()
     elif modulo_id == "programa_octubre":
         render_programa_octubre()
+    elif modulo_id == "mantenimientos_programados":
+        render_mantenimientos_programados()
     elif modulo_id == "auditoria":
         render_auditoria_accesos()
     elif modulo_id == "calendario_asistencia":

@@ -31,6 +31,7 @@ ARCHIVO_EVIDENCIAS_ELIMINADAS = "database/evidencias_eliminadas.txt"
 ARCHIVO_BAJAS_BITACORA = "database/bitacora_bajas.json"
 ARCHIVOS_DATOS = (
     ARCHIVO_BITACORA,
+    "database/programa_mantenimiento.xlsx",
     ARCHIVO_EVIDENCIAS_ELIMINADAS,
     "baul_evidencias.json",
     "evidencia_fotografica.json",
