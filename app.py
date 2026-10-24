@@ -36,6 +36,12 @@ DATA_DIR = "data"
 DATABASE_DIR = "database"
 EXCEL_FILE = os.path.join(DATABASE_DIR, "bitacora_operativa_soledad.xlsx")
 PROGRAMA_MANTENIMIENTO_FILE = os.path.join(DATABASE_DIR, "programa_mantenimiento.xlsx")
+PROGRAMA_NORTE_FILE = os.path.join(DATABASE_DIR, "programa_norte.xlsx")
+PROGRAMA_SUR_FILE = os.path.join(DATABASE_DIR, "programa_sur.xlsx")
+ZONAS_PROGRAMA = {
+    "norte": {"etiqueta": "Norte", "archivo": PROGRAMA_NORTE_FILE},
+    "sur": {"etiqueta": "Sur", "archivo": PROGRAMA_SUR_FILE},
+}
 COLUMNA_PROGRAMADO = "PROGRAMADO"
 EXCEL_FILE_LEGACY = "bitacora_mantenimiento.xlsx"
 SHEET_NAME = "Bitacora"
@@ -6438,11 +6444,27 @@ _TOKENS_ACTIVIDAD_RUIDO = {
 _TOKENS_EQUIPO_PROGRAMA = {"mci", "ubm", "ici", "ub"}
 _COLUMNAS_PROGRAMA_ARCHIVO = [
     "ID",
+    "ZONA",
     "UBICACION",
+    "CODIGO",
     "TIPO DE MANTENIMIENTO",
     "FECHA PROGRAMADA",
     "MES",
 ]
+_PREFIJOS_CODIGO_PROGRAMA = (
+    ("SN", "PSN"),
+    ("CY", "PC"),
+    ("AR", "PA"),
+    ("PPB", "PPB"),
+    ("PB", "PB"),
+    ("PGA", "PGA"),
+    ("PSN", "PSN"),
+    ("PA", "PA"),
+    ("PS", "PS"),
+    ("PC", "PC"),
+    ("G", "PGA"),
+    ("S", "PS"),
+)
 
 
 def _normalizar_marca_programado(valor) -> str:
@@ -6572,18 +6594,120 @@ def _fecha_marca_mes(valor, anio: int, mes: int) -> date | None:
     return date(anio, mes, 1)
 
 
-def _id_programa_mantenimiento(ubicacion: str, tipo: str, cuando: date | None) -> str:
+def _pozo_desde_codigo_programa(codigo: str) -> tuple[str, str]:
+    """AR-67 (UBM) queda en PA67 y UBM; SN-46 (Motor) queda en PSN46 y MCI."""
+    texto = " ".join(str(codigo or "").split())
+    if not texto:
+        return "", ""
+    plano = _sin_acentos(texto)
+    equipo = ""
+    if re.search(r"\bUBM\b", plano, re.IGNORECASE):
+        equipo = "UBM"
+    elif re.search(r"\bMOTOR\b", plano, re.IGNORECASE):
+        equipo = "MCI"
+    base = re.split(r"\s*\(", texto, maxsplit=1)[0].strip()
+    compacto = clave_pozo_plana(base)
+    for prefijo, destino in _PREFIJOS_CODIGO_PROGRAMA:
+        if compacto.startswith(prefijo) and len(compacto) > len(prefijo) and compacto[len(prefijo)].isdigit():
+            return f"{destino}{compacto[len(prefijo):]}", equipo
+    return base or texto, equipo
+
+
+def _tipo_programa_operativo(tipo: str, actividad: str, equipo: str) -> str:
+    base = " ".join(str(tipo or actividad or "").split())
+    if not base:
+        return ""
+    if equipo and equipo.casefold() not in _sin_acentos(base).casefold():
+        return f"{base} {equipo}"
+    return base
+
+
+def _id_programa_mantenimiento(ubicacion: str, tipo: str, cuando: date | None, zona: str = "") -> str:
     base = "|".join(
         [
+            _sin_acentos(zona).upper(),
             clave_pozo_plana(ubicacion),
             " ".join(sorted(_tokens_actividad_programa(tipo))),
             cuando.isoformat() if cuando else "",
         ]
     )
-    return hashlib.sha1(_sin_acentos(base).encode("utf-8", errors="ignore")).hexdigest()[:12].upper()
+    return hashlib.sha1(base.encode("utf-8", errors="ignore")).hexdigest()[:12].upper()
 
 
-def _filas_tabla_programa(tabla: pd.DataFrame, anio_defecto: int) -> list[dict]:
+def _mapa_historial_programa(fila) -> dict[str, int] | None:
+    roles: dict[str, int] = {}
+    for indice, valor in enumerate(list(fila)):
+        normal = _norm_encabezado(valor)
+        if not normal:
+            continue
+        if normal in {"cod", "codigo"} or normal.startswith("codigo") or normal.startswith("cod "):
+            roles.setdefault("codigo", indice)
+        elif normal == "equipo" or normal.startswith("equipo "):
+            roles.setdefault("equipo", indice)
+        elif "actividad" in normal:
+            roles.setdefault("actividad", indice)
+        elif "tipo" in normal:
+            roles.setdefault("tipo", indice)
+        elif "fecha programada" in normal or normal == "fecha":
+            roles.setdefault("fecha", indice)
+    if ("codigo" in roles or "equipo" in roles) and "fecha" in roles and ("actividad" in roles or "tipo" in roles):
+        return roles
+    return None
+
+
+def _filas_historial_operativo(tabla: pd.DataFrame, anio_defecto: int, zona: str) -> list[dict]:
+    if tabla is None or tabla.empty:
+        return []
+    mejor = None
+    for indice in range(min(len(tabla), 25)):
+        mapa = _mapa_historial_programa(tabla.iloc[indice].tolist())
+        if mapa:
+            mejor = (indice, mapa)
+            break
+    if not mejor:
+        return []
+    fila_header, roles = mejor
+    filas = []
+    vistos = set()
+    for indice in range(fila_header + 1, len(tabla)):
+        renglon = tabla.iloc[indice].tolist()
+
+        def celda(campo: str) -> str:
+            columna = roles.get(campo)
+            if columna is None or columna >= len(renglon):
+                return ""
+            return _texto_actividad(renglon[columna])
+
+        codigo = celda("codigo") or celda("equipo")
+        if not codigo or _norm_encabezado(codigo) in {"cod", "codigo", "equipo", "total"}:
+            continue
+        cuando = _fecha_programada(
+            renglon[roles["fecha"]] if roles["fecha"] < len(renglon) else None,
+            anio_defecto,
+        )
+        if cuando is None:
+            continue
+        ubicacion, equipo = _pozo_desde_codigo_programa(codigo)
+        tipo = _tipo_programa_operativo(celda("tipo"), celda("actividad"), equipo)
+        if not ubicacion or not tipo:
+            continue
+        item = {
+            "ID": _id_programa_mantenimiento(ubicacion, tipo, cuando, zona),
+            "ZONA": zona,
+            "UBICACION": ubicacion,
+            "CODIGO": codigo,
+            "TIPO DE MANTENIMIENTO": tipo,
+            "FECHA PROGRAMADA": cuando.isoformat(),
+            "MES": _etiqueta_mes_programa(cuando),
+        }
+        if item["ID"] in vistos:
+            continue
+        vistos.add(item["ID"])
+        filas.append(item)
+    return filas
+
+
+def _filas_tabla_programa(tabla: pd.DataFrame, anio_defecto: int, zona: str = "") -> list[dict]:
     if tabla is None or tabla.empty:
         return []
     mejor = None
@@ -6646,8 +6770,10 @@ def _filas_tabla_programa(tabla: pd.DataFrame, anio_defecto: int) -> list[dict]:
             if cuando is None:
                 continue
             item = {
-                "ID": _id_programa_mantenimiento(ubicacion, tipo, cuando),
+                "ID": _id_programa_mantenimiento(ubicacion, tipo, cuando, zona),
+                "ZONA": zona,
                 "UBICACION": ubicacion,
+                "CODIGO": "",
                 "TIPO DE MANTENIMIENTO": tipo,
                 "FECHA PROGRAMADA": cuando.isoformat(),
                 "MES": _etiqueta_mes_programa(cuando),
@@ -6659,19 +6785,19 @@ def _filas_tabla_programa(tabla: pd.DataFrame, anio_defecto: int) -> list[dict]:
     return filas
 
 
-def interpretar_programa_mantenimiento(contenido: bytes, nombre: str) -> list[dict]:
-    """Lee un Excel o CSV con ubicación, tipo de mantenimiento y mes o fecha."""
+def interpretar_programa_mantenimiento(contenido: bytes, nombre: str, zona: str = "") -> list[dict]:
+    """Lee un Excel o CSV. Los libros UBM usan la hoja Historial; una tabla simple también sirve."""
     if not contenido:
         raise ValueError("El archivo está vacío.")
     if len(contenido) > 20 * 1024 * 1024:
         raise ValueError("El archivo supera 20 MB.")
     anio = _anio_en_texto(nombre, date.today().year)
-    tablas: list[pd.DataFrame] = []
+    tablas: list[tuple[str, pd.DataFrame]] = []
     if str(nombre or "").lower().endswith(".csv"):
         ultimo = None
         for codec in ("utf-8-sig", "latin-1"):
             try:
-                tablas = [pd.read_csv(io.BytesIO(contenido), header=None, dtype=object, encoding=codec)]
+                tablas = [("csv", pd.read_csv(io.BytesIO(contenido), header=None, dtype=object, encoding=codec))]
                 break
             except Exception as exc:
                 ultimo = exc
@@ -6679,41 +6805,59 @@ def interpretar_programa_mantenimiento(contenido: bytes, nombre: str) -> list[di
             raise ValueError(f"No se pudo leer el CSV: {ultimo}")
     else:
         try:
-            libro = pd.read_excel(io.BytesIO(contenido), sheet_name=None, header=None, dtype=object)
+            libro = pd.ExcelFile(io.BytesIO(contenido))
         except Exception as exc:
             raise ValueError(f"No se pudo leer el Excel: {exc}") from exc
-        tablas = [hoja for hoja in libro.values() if isinstance(hoja, pd.DataFrame)]
+        nombres = list(libro.sheet_names)
+        tiene_historial = any(_norm_encabezado(hoja) == "historial" for hoja in nombres)
+        for hoja in nombres:
+            if tiene_historial and _norm_encabezado(hoja) != "historial":
+                continue
+            try:
+                tabla = pd.read_excel(libro, sheet_name=hoja, header=None, dtype=object)
+            except Exception:
+                continue
+            if isinstance(tabla, pd.DataFrame):
+                tablas.append((hoja, tabla))
+    operativas: list[dict] = []
+    simples: list[dict] = []
+    for _nombre, tabla in tablas:
+        encontradas = _filas_historial_operativo(tabla, anio, zona)
+        if encontradas:
+            operativas.extend(encontradas)
+        else:
+            simples.extend(_filas_tabla_programa(tabla, anio, zona))
+    origen = operativas or simples
     filas: list[dict] = []
     vistos = set()
-    for tabla in tablas:
-        for item in _filas_tabla_programa(tabla, anio):
-            if item["ID"] in vistos:
-                continue
-            vistos.add(item["ID"])
-            filas.append(item)
-            if len(filas) > 20000:
-                raise ValueError("El programa tiene más de 20,000 actividades. Revisa el archivo.")
+    for item in origen:
+        if item["ID"] in vistos:
+            continue
+        vistos.add(item["ID"])
+        filas.append(item)
+        if len(filas) > 20000:
+            raise ValueError("El programa tiene más de 20,000 actividades. Revisa el archivo.")
     if not filas:
         raise ValueError(
-            "No encontré filas con Ubicación/Pozo, Tipo de Mantenimiento y Mes/Fecha programada."
+            "No encontré actividades con pozo o código, tipo de mantenimiento y fecha programada."
         )
     return filas
 
 
-def guardar_programa_mantenimiento(filas: list[dict]) -> int:
+def guardar_programa_mantenimiento(filas: list[dict], ruta: str) -> int:
     df = pd.DataFrame(filas, columns=_COLUMNAS_PROGRAMA_ARCHIVO)
-    os.makedirs(os.path.dirname(PROGRAMA_MANTENIMIENTO_FILE) or DATABASE_DIR, exist_ok=True)
+    os.makedirs(os.path.dirname(ruta) or DATABASE_DIR, exist_ok=True)
     fd, tmp = tempfile.mkstemp(suffix=".xlsx")
     os.close(fd)
     try:
         with pd.ExcelWriter(tmp, engine="openpyxl") as writer:
             df.to_excel(writer, sheet_name="Programa", index=False)
         try:
-            shutil.copy2(tmp, PROGRAMA_MANTENIMIENTO_FILE)
+            shutil.copy2(tmp, ruta)
         except PermissionError:
-            alt = os.path.join(os.path.dirname(PROGRAMA_MANTENIMIENTO_FILE) or DATABASE_DIR, "~pjp4_programa_write.xlsx")
+            alt = os.path.join(os.path.dirname(ruta) or DATABASE_DIR, "~pjp4_programa_write.xlsx")
             shutil.copy2(tmp, alt)
-            os.replace(alt, PROGRAMA_MANTENIMIENTO_FILE)
+            os.replace(alt, ruta)
     finally:
         if os.path.exists(tmp):
             try:
@@ -6724,30 +6868,32 @@ def guardar_programa_mantenimiento(filas: list[dict]) -> int:
     return len(df)
 
 
-def importar_programa_mantenimiento(contenido: bytes, nombre: str) -> int:
-    return guardar_programa_mantenimiento(interpretar_programa_mantenimiento(contenido, nombre))
+def _destino_zona_programa(zona: str) -> tuple[str, str]:
+    clave = str(zona or "").casefold()
+    if clave == "norte":
+        return "Norte", PROGRAMA_NORTE_FILE
+    if clave == "sur":
+        return "Sur", PROGRAMA_SUR_FILE
+    raise ValueError("La zona tiene que ser Norte o Sur.")
+
+
+def importar_programa_zona(zona: str, contenido: bytes, nombre: str) -> int:
+    etiqueta, ruta = _destino_zona_programa(zona)
+    filas = interpretar_programa_mantenimiento(contenido, nombre, etiqueta)
+    return guardar_programa_mantenimiento(filas, ruta)
 
 
 def _programa_vacio() -> pd.DataFrame:
     return pd.DataFrame(columns=_COLUMNAS_PROGRAMA_ARCHIVO + ["FECHA"])
 
 
-def cargar_programa_mantenimiento() -> pd.DataFrame:
-    ruta = PROGRAMA_MANTENIMIENTO_FILE
-    if not os.path.isfile(ruta):
-        return _programa_vacio()
-    firma = (os.path.getmtime(ruta), os.path.getsize(ruta))
-    cache = getattr(cargar_programa_mantenimiento, "_cache", None)
-    if cache and cache[0] == firma:
-        return cache[1].copy()
+def _leer_programa_guardado(ruta: str, zona_defecto: str) -> pd.DataFrame:
     try:
         crudo = pd.read_excel(ruta, sheet_name=0, dtype=object)
     except Exception:
         return _programa_vacio()
     if crudo is None or crudo.empty:
-        df = _programa_vacio()
-        cargar_programa_mantenimiento._cache = (firma, df)
-        return df.copy()
+        return _programa_vacio()
     renombre = {}
     for col in crudo.columns:
         normal = _norm_encabezado(col)
@@ -6762,11 +6908,19 @@ def cargar_programa_mantenimiento() -> pd.DataFrame:
             renombre[col] = "ID"
         elif normal == "mes":
             renombre[col] = "MES"
+        elif normal == "zona":
+            renombre[col] = "ZONA"
+        elif normal in {"codigo", "cod"}:
+            renombre[col] = "CODIGO"
     df = crudo.rename(columns=renombre)
     for col in _COLUMNAS_PROGRAMA_ARCHIVO:
         if col not in df.columns:
-            df[col] = ""
+            df[col] = zona_defecto if col == "ZONA" else ""
+    df["ZONA"] = df["ZONA"].map(_texto_actividad)
+    if zona_defecto:
+        df.loc[df["ZONA"] == "", "ZONA"] = zona_defecto
     df["UBICACION"] = df["UBICACION"].map(_texto_actividad)
+    df["CODIGO"] = df["CODIGO"].map(_texto_actividad)
     df["TIPO DE MANTENIMIENTO"] = df["TIPO DE MANTENIMIENTO"].map(_texto_actividad)
     df["FECHA"] = df["FECHA PROGRAMADA"].map(lambda valor: _fecha_programada(valor, date.today().year))
     df["MES"] = [
@@ -6774,14 +6928,52 @@ def cargar_programa_mantenimiento() -> pd.DataFrame:
         for mes, cuando in zip(df["MES"], df["FECHA"])
     ]
     df["ID"] = [
-        _texto_actividad(identificador) or _id_programa_mantenimiento(ubicacion, tipo, cuando)
-        for identificador, ubicacion, tipo, cuando in zip(
-            df["ID"], df["UBICACION"], df["TIPO DE MANTENIMIENTO"], df["FECHA"]
+        _texto_actividad(identificador)
+        or _id_programa_mantenimiento(ubicacion, tipo, cuando, zona)
+        for identificador, ubicacion, tipo, cuando, zona in zip(
+            df["ID"], df["UBICACION"], df["TIPO DE MANTENIMIENTO"], df["FECHA"], df["ZONA"]
         )
     ]
     df = df[df["UBICACION"].astype(bool) & df["TIPO DE MANTENIMIENTO"].astype(bool)].copy()
-    df = df[_COLUMNAS_PROGRAMA_ARCHIVO + ["FECHA"]]
-    cargar_programa_mantenimiento._cache = (firma, df)
+    return df[_COLUMNAS_PROGRAMA_ARCHIVO + ["FECHA"]]
+
+
+def _firmas_programa_maestro() -> tuple:
+    firmas = []
+    for _zona, ruta in _rutas_programa_maestro():
+        if os.path.isfile(ruta):
+            firmas.append((ruta, os.path.getmtime(ruta), os.path.getsize(ruta)))
+    return tuple(firmas)
+
+
+def _rutas_programa_maestro() -> list[tuple[str, str]]:
+    zonas = [("Norte", PROGRAMA_NORTE_FILE), ("Sur", PROGRAMA_SUR_FILE)]
+    if any(os.path.isfile(ruta) for _, ruta in zonas):
+        return zonas
+    return [("", PROGRAMA_MANTENIMIENTO_FILE)]
+
+
+def cargar_programa_mantenimiento() -> pd.DataFrame:
+    """Une Zona Norte y Zona Sur en un solo programa para las alertas y el avance."""
+    firmas = _firmas_programa_maestro()
+    if not firmas:
+        return _programa_vacio()
+    cache = getattr(cargar_programa_mantenimiento, "_cache", None)
+    if cache and cache[0] == firmas:
+        return cache[1].copy()
+    partes = []
+    for zona, ruta in _rutas_programa_maestro():
+        if not os.path.isfile(ruta):
+            continue
+        parte = _leer_programa_guardado(ruta, zona)
+        if not parte.empty:
+            partes.append(parte)
+    if not partes:
+        df = _programa_vacio()
+    else:
+        df = pd.concat(partes, ignore_index=True)
+        df = df.drop_duplicates(subset=["ID"], keep="first")
+    cargar_programa_mantenimiento._cache = (firmas, df)
     return df.copy()
 
 
@@ -6824,6 +7016,15 @@ def _claves_pozo_programa(*textos: str) -> set[str]:
                 largo = ""
             if largo:
                 claves.add(clave_pozo_plana(largo))
+            corto, _equipo = _pozo_desde_codigo_programa(trozo)
+            if corto and corto != trozo:
+                claves.add(clave_pozo_plana(corto))
+                try:
+                    largo_corto = nombre_largo_excel(corto)
+                except Exception:
+                    largo_corto = ""
+                if largo_corto:
+                    claves.add(clave_pozo_plana(largo_corto))
     return {clave for clave in claves if clave}
 
 
@@ -6844,7 +7045,9 @@ def cruce_cumplimiento_programa(programa: pd.DataFrame, bitacora: pd.DataFrame) 
     """Cada actividad del programa queda Realizada cuando una bitácora con Programado = Sí la cubre."""
     columnas = [
         "ID",
+        "ZONA",
         "UBICACION",
+        "CODIGO",
         "TIPO DE MANTENIMIENTO",
         "FECHA",
         "MES",
@@ -6885,7 +7088,7 @@ def cruce_cumplimiento_programa(programa: pd.DataFrame, bitacora: pd.DataFrame) 
         cuando = fila.get("FECHA")
         if not isinstance(cuando, date):
             cuando = _fecha_programada(fila.get("FECHA PROGRAMADA"), date.today().year)
-        claves = _claves_pozo_programa(str(fila.get("UBICACION") or ""))
+        claves = _claves_pozo_programa(str(fila.get("UBICACION") or ""), str(fila.get("CODIGO") or ""))
         tipo = str(fila.get("TIPO DE MANTENIMIENTO") or "")
         candidatos = []
         for registro in confirmados:
@@ -6916,7 +7119,9 @@ def cruce_cumplimiento_programa(programa: pd.DataFrame, bitacora: pd.DataFrame) 
         salida.append(
             {
                 "ID": fila.get("ID") or "",
+                "ZONA": fila.get("ZONA") or "",
                 "UBICACION": fila.get("UBICACION") or "",
+                "CODIGO": fila.get("CODIGO") or "",
                 "TIPO DE MANTENIMIENTO": tipo,
                 "FECHA": cuando,
                 "MES": fila.get("MES") or _etiqueta_mes_programa(cuando),
@@ -6945,7 +7150,7 @@ def coincidencias_pendientes_programa(
     for _, fila in cruce.iterrows():
         if fila.get("ESTATUS") != "Pendiente":
             continue
-        if not (claves & _claves_pozo_programa(str(fila.get("UBICACION") or ""))):
+        if not (claves & _claves_pozo_programa(str(fila.get("UBICACION") or ""), str(fila.get("CODIGO") or ""))):
             continue
         tipo = str(fila.get("TIPO DE MANTENIMIENTO") or "")
         if not (
@@ -6958,6 +7163,7 @@ def coincidencias_pendientes_programa(
         pendientes.append(
             {
                 "ubicacion": str(fila.get("UBICACION") or ""),
+                "zona": str(fila.get("ZONA") or ""),
                 "tipo": tipo,
                 "mes": str(fila.get("MES") or _etiqueta_mes_programa(cuando)),
                 "fecha": cuando,
@@ -8383,7 +8589,8 @@ def render_captura_actividades_campo() -> None:
             detalle = []
             for item in coincidencias_programa[:6]:
                 cuando = f" · {item['mes']}" if item.get("mes") else ""
-                detalle.append(f"- **{item['tipo']}** en {item['ubicacion']}{cuando}")
+                zona = f" · {item['zona']}" if item.get("zona") else ""
+                detalle.append(f"- **{item['tipo']}** en {item['ubicacion']}{zona}{cuando}")
             extras = len(coincidencias_programa) - len(detalle)
             if extras > 0:
                 detalle.append(f"- y {extras} más")
@@ -19622,7 +19829,7 @@ MODULOS_ADMIN = [
         "id": "mantenimientos_programados",
         "icono": "🗓️",
         "titulo": "Mantenimientos Programados",
-        "descripcion": "Programa anual, confirmación en campo y avance de lo realizado contra lo planeado.",
+        "descripcion": "Programas de Zona Norte y Zona Sur, confirmación en campo y avance acumulado.",
     },
     {
         "id": "calendario_asistencia",
@@ -22172,43 +22379,73 @@ def render_auditoria_accesos() -> None:
         render_control_permisos()
 
 
+def _marca_archivo_programa(ruta: str) -> str:
+    if not os.path.isfile(ruta):
+        return "Aún no cargado"
+    momento = datetime.fromtimestamp(os.path.getmtime(ruta))
+    return f"Actualizado {momento.strftime('%d/%m/%Y %H:%M')}"
+
+
 def render_mantenimientos_programados() -> None:
     st.markdown(
         '<div class="section-title">Mantenimientos programados</div>',
         unsafe_allow_html=True,
     )
     st.caption(
-        "Sube el programa anual (Excel o CSV) con Ubicación/Pozo, Tipo de Mantenimiento y "
-        "Mes/Fecha programada. Queda en database/programa_mantenimiento.xlsx. "
-        "En campo, si el pozo y la actividad coinciden con una pendiente, se puede marcar "
-        "Programado = Sí en la bitácora."
+        "Carga por separado, o a la vez, el programa de Zona Norte y el de Zona Sur "
+        "(por ejemplo Programa de Mantto UBM 2026). Quedan en database/programa_norte.xlsx "
+        "y database/programa_sur.xlsx. Las alertas de campo y el avance usan el consolidado de las dos zonas."
     )
     aviso = st.session_state.pop("prog_mtto_aviso", None)
     if aviso:
         st.success(aviso)
-    archivo = st.file_uploader(
-        "Programa de mantenimiento",
-        type=["xlsx", "xlsm", "xls", "csv"],
-        key="prog_mtto_archivo",
-    )
-    if st.button("Actualizar programa", type="primary", key="prog_mtto_guardar"):
-        if archivo is None:
-            st.warning("Elige un archivo Excel o CSV.")
+    col_norte, col_sur = st.columns(2)
+    with col_norte:
+        st.markdown("**Zona Norte**")
+        st.caption(f"`database/programa_norte.xlsx` · {_marca_archivo_programa(PROGRAMA_NORTE_FILE)}")
+        archivo_norte = st.file_uploader(
+            "Programa Zona Norte",
+            type=["xlsx", "xlsm", "xls", "csv"],
+            key="prog_mtto_norte",
+        )
+    with col_sur:
+        st.markdown("**Zona Sur**")
+        st.caption(f"`database/programa_sur.xlsx` · {_marca_archivo_programa(PROGRAMA_SUR_FILE)}")
+        archivo_sur = st.file_uploader(
+            "Programa Zona Sur",
+            type=["xlsx", "xlsm", "xls", "csv"],
+            key="prog_mtto_sur",
+        )
+    if st.button("Actualizar programas", type="primary", key="prog_mtto_guardar"):
+        if archivo_norte is None and archivo_sur is None:
+            st.warning("Elige el archivo de Zona Norte, el de Zona Sur, o los dos.")
         else:
-            try:
-                total = importar_programa_mantenimiento(archivo.getvalue(), archivo.name)
-            except Exception as exc:
-                st.error(str(exc))
-            else:
-                st.session_state.prog_mtto_aviso = (
-                    f"Programa actualizado: {total} actividad(es) en database/programa_mantenimiento.xlsx."
-                )
+            mensajes = []
+            errores = []
+            for zona, archivo in (("norte", archivo_norte), ("sur", archivo_sur)):
+                if archivo is None:
+                    continue
+                etiqueta = ZONAS_PROGRAMA[zona]["etiqueta"]
+                try:
+                    total = importar_programa_zona(zona, archivo.getvalue(), archivo.name)
+                except Exception as exc:
+                    errores.append(f"{etiqueta}: {exc}")
+                else:
+                    mensajes.append(f"{etiqueta}: {total} actividad(es)")
+            for error in errores:
+                st.error(error)
+            if mensajes:
+                st.session_state.prog_mtto_aviso = "Programa actualizado. " + " · ".join(mensajes)
                 st.rerun()
 
     programa = cargar_programa_mantenimiento()
     if programa.empty:
-        st.info("Todavía no hay un programa cargado. El avance aparece aquí en cuanto se actualice el archivo.")
+        st.info("Todavía no hay un programa de Norte ni de Sur. El avance aparece en cuanto se cargue al menos una zona.")
         return
+
+    norte_n = int((programa["ZONA"] == "Norte").sum()) if "ZONA" in programa.columns else 0
+    sur_n = int((programa["ZONA"] == "Sur").sum()) if "ZONA" in programa.columns else 0
+    st.caption(f"Consolidado: {norte_n} actividades de Norte y {sur_n} de Sur.")
 
     cruce = cruce_cumplimiento_programa(programa, _bitacora_para_programa())
     meses = ["Todos"] + [
@@ -22218,12 +22455,26 @@ def render_mantenimientos_programados() -> None:
         )
         if etiqueta
     ]
-    mes_sel = st.selectbox("Mes del programa", meses, key="prog_mtto_mes")
-    vista = cruce if mes_sel == "Todos" else cruce[cruce["MES"] == mes_sel]
+    zonas_filtro = ["Todas"]
+    for etiqueta in ("Norte", "Sur"):
+        if etiqueta in set(cruce["ZONA"].astype(str)):
+            zonas_filtro.append(etiqueta)
+    filtro_zona, filtro_mes = st.columns(2)
+    with filtro_zona:
+        zona_sel = st.selectbox("Zona", zonas_filtro, key="prog_mtto_zona")
+    with filtro_mes:
+        mes_sel = st.selectbox("Mes del programa", meses, key="prog_mtto_mes")
+    vista = cruce
+    if zona_sel != "Todas":
+        vista = vista[vista["ZONA"] == zona_sel]
+    if mes_sel != "Todos":
+        vista = vista[vista["MES"] == mes_sel]
     planeados = len(vista)
     realizados = int((vista["ESTATUS"] == "Realizado").sum()) if planeados else 0
     pendientes = planeados - realizados
     porcentaje = round(100.0 * realizados / planeados, 1) if planeados else 0.0
+    if zona_sel == "Todas":
+        st.caption("Planeados, realizados, pendientes y cumplimiento suman Norte y Sur.")
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Planeados", planeados)
     m2.metric("Realizados", realizados)
@@ -22263,6 +22514,7 @@ def render_mantenimientos_programados() -> None:
 
     tabla = vista.rename(
         columns={
+            "ZONA": "Zona",
             "UBICACION": "Ubicación",
             "TIPO DE MANTENIMIENTO": "Tipo de mantenimiento",
             "MES": "Mes",
@@ -22271,7 +22523,7 @@ def render_mantenimientos_programados() -> None:
         }
     )
     st.dataframe(
-        tabla[["Ubicación", "Tipo de mantenimiento", "Mes", "Estatus", "Fecha realizada"]],
+        tabla[["Zona", "Ubicación", "Tipo de mantenimiento", "Mes", "Estatus", "Fecha realizada"]],
         use_container_width=True,
         hide_index=True,
     )
