@@ -21089,14 +21089,62 @@ def _clase_avance_admin(fila, programadas: set[str]) -> str:
     return "No programado"
 
 
-def _contar_avance_admin(df: pd.DataFrame) -> tuple[int, int, int]:
+def _tipo_mantenimiento_admin(fila) -> str:
+    for columna in ("TIPO DE ACTIVIDAD", "ACTIVIDAD CORTA"):
+        texto = _texto_celda_admin(fila.get(columna))
+        if texto and _clave_actividad_oficial(texto) not in {"otra", "nan", "none"}:
+            return texto
+    return _descripcion_fila_admin(fila)
+
+
+def _ot_fila_admin(fila) -> str:
+    return str(numero_secuencia_actividad(fila.get("SECUENCIA")) or _texto_celda_admin(fila.get("SECUENCIA")))
+
+
+COLUMNAS_AUDITORIA_PERIODO = [
+    "Fecha",
+    "OT",
+    "Pozo",
+    "Sector",
+    "Cuadrilla",
+    "Tipo de mantenimiento",
+    "Programado o no programado",
+]
+
+
+def _tabla_auditoria_periodo(df: pd.DataFrame) -> pd.DataFrame:
+    """Un renglón por actividad del filtro, con la misma clase que las tarjetas."""
     if df is None or df.empty:
-        return 0, 0, 0
+        return pd.DataFrame(columns=COLUMNAS_AUDITORIA_PERIODO)
     programadas = _actividades_programadas_suministros()
-    clases = [_clase_avance_admin(fila, programadas) for _, fila in df.iterrows()]
-    programados = clases.count("Programado")
-    no_programados = clases.count("No programado")
-    return programados, no_programados, programados + no_programados
+    vista = df.sort_values("_fecha", kind="stable") if "_fecha" in df.columns else df
+    filas = []
+    for _, fila in vista.iterrows():
+        dia = fila.get("_fecha")
+        filas.append(
+            {
+                "Fecha": dia.strftime("%d/%m/%Y") if isinstance(dia, date) and not isinstance(dia, datetime) else "",
+                "OT": _ot_fila_admin(fila),
+                "Pozo": _pozo_fila_admin(fila),
+                "Sector": _sector_fila_admin(fila),
+                "Cuadrilla": _cuadrilla_fila_admin(fila),
+                "Tipo de mantenimiento": _tipo_mantenimiento_admin(fila),
+                "Programado o no programado": _clase_avance_admin(fila, programadas),
+            }
+        )
+    return pd.DataFrame(filas, columns=COLUMNAS_AUDITORIA_PERIODO)
+
+
+def _resumen_auditoria_periodo(tabla: pd.DataFrame) -> tuple[int, int, int]:
+    if tabla is None or tabla.empty:
+        return 0, 0, 0
+    programados = int((tabla["Programado o no programado"] == "Programado").sum())
+    no_programados = int((tabla["Programado o no programado"] == "No programado").sum())
+    return programados, no_programados, len(tabla)
+
+
+def _contar_avance_admin(df: pd.DataFrame) -> tuple[int, int, int]:
+    return _resumen_auditoria_periodo(_tabla_auditoria_periodo(df))
 
 
 def _nombre_excel_programa(nombre: str) -> str:
@@ -21369,7 +21417,8 @@ def render_vista_previa_admin(jornada: date) -> None:
             "Cuadrilla", _opciones_admin(periodo, _cuadrilla_fila_admin), "adm_m_f_cuadrilla"
         )
     filtrada = _filtrar_vista_admin(periodo, ot, sector, pozo, cuadrilla, estatus)
-    programados, imprevistos, total = _contar_avance_admin(filtrada)
+    auditoria = _tabla_auditoria_periodo(filtrada)
+    programados, imprevistos, total = _resumen_auditoria_periodo(auditoria)
     m1, m2, m3 = st.columns(3)
     m1.metric("Programados", programados)
     m2.metric("No programados", imprevistos)
@@ -21415,6 +21464,19 @@ def render_vista_previa_admin(jornada: date) -> None:
             title="Insumos consumidos",
         )
         st.plotly_chart(figura, use_container_width=True, key="adm_m_chart_insumos")
+    with st.expander("Verificar actividades del periodo"):
+        st.caption(
+            f"{programados} programadas · {imprevistos} no programadas · {total} en total."
+        )
+        if auditoria.empty:
+            st.info("No hay actividades en el periodo seleccionado.")
+        else:
+            st.dataframe(
+                auditoria,
+                hide_index=True,
+                use_container_width=True,
+                height=420,
+            )
 
 
 PLANTILLA_SUMINISTROS = os.path.join("assets", "plantilla_suministros.xlsm")
