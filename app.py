@@ -21135,6 +21135,44 @@ def _tabla_auditoria_periodo(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(filas, columns=COLUMNAS_AUDITORIA_PERIODO)
 
 
+def _figura_insumos_vista_previa(detalle: pd.DataFrame):
+    """Barras del periodo con la cantidad escrita arriba, sin depender del cursor."""
+    resumen = (
+        detalle.groupby("refaccion", as_index=False)["cantidad"]
+        .sum()
+        .sort_values("cantidad", ascending=False)
+        .head(8)
+    )
+    resumen["etiqueta"] = [
+        _texto_cantidad_refaccion(str(nombre), float(valor))
+        for nombre, valor in zip(resumen["refaccion"], resumen["cantidad"])
+    ]
+    figura = px.bar(
+        resumen,
+        x="refaccion",
+        y="cantidad",
+        text="etiqueta",
+        labels={"refaccion": "Insumo", "cantidad": "Cantidad"},
+    )
+    tope = float(resumen["cantidad"].max() or 0) * 1.28
+    figura.update_traces(
+        textposition="outside",
+        textfont=dict(color="#e2e8f0", size=13),
+        cliponaxis=False,
+    )
+    figura.update_layout(
+        height=280,
+        margin=dict(l=8, r=8, t=36, b=8),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font_color="#e2e8f0",
+        title="Insumos consumidos",
+        uniformtext=dict(minsize=11, mode="show"),
+        yaxis=dict(rangemode="tozero", range=[0, tope] if tope else None),
+    )
+    return figura
+
+
 def _resumen_auditoria_periodo(tabla: pd.DataFrame) -> tuple[int, int, int]:
     if tabla is None or tabla.empty:
         return 0, 0, 0
@@ -21443,26 +21481,7 @@ def render_vista_previa_admin(jornada: date) -> None:
     if detalle.empty:
         st.caption("Sin insumos consumidos en el periodo seleccionado.")
     else:
-        resumen = (
-            detalle.groupby("refaccion", as_index=False)["cantidad"]
-            .sum()
-            .sort_values("cantidad", ascending=False)
-            .head(8)
-        )
-        figura = px.bar(
-            resumen,
-            x="refaccion",
-            y="cantidad",
-            labels={"refaccion": "Insumo", "cantidad": "Cantidad"},
-        )
-        figura.update_layout(
-            height=220,
-            margin=dict(l=8, r=8, t=28, b=8),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font_color="#e2e8f0",
-            title="Insumos consumidos",
-        )
+        figura = _figura_insumos_vista_previa(detalle)
         st.plotly_chart(figura, use_container_width=True, key="adm_m_chart_insumos")
     with st.expander("Verificar actividades del periodo"):
         st.caption(
