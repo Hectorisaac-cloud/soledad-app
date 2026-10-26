@@ -1,9 +1,10 @@
-"""Respaldo de la bitácora y las evidencias fuera del disco efímero.
+"""Respaldo permanente de la bitácora y limpieza de archivos pesados.
 
 Streamlit Cloud reconstruye el disco con el contenido de `main` en cada
-despliegue. Los registros capturados en la nube se conservan en la rama
-Git `datos`, que no dispara ese despliegue. Al arrancar, la app se queda
-con la bitácora que tenga más registros y descarga las fotos que falten.
+despliegue. Fechas, pozos, actividades, insumos y estatus se conservan en
+la rama Git `datos`, que no dispara ese despliegue. Las fotografías y los
+PDF de OT no se suben ni se vuelven a bajar: viven en el disco solo hasta
+que el usuario descarga su reporte, y después se retiran.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ ARCHIVO_ESTADO = "database/persistencia_estado.json"
 ARCHIVO_EVIDENCIAS_NUEVAS = "database/evidencias_pendientes.txt"
 ARCHIVO_EVIDENCIAS_ELIMINADAS = "database/evidencias_eliminadas.txt"
 ARCHIVO_BAJAS_BITACORA = "database/bitacora_bajas.json"
+ARCHIVO_OT_LIBERADAS = "database/ot_liberadas.json"
 ARCHIVOS_DATOS = (
     ARCHIVO_BITACORA,
     "database/programa_norte.xlsx",
@@ -47,6 +49,7 @@ ARCHIVOS_DATOS = (
     "personal_cuadrillas.json",
     "vehiculos_ot.json",
     "soporte_refacciones.json",
+    ARCHIVO_OT_LIBERADAS,
 )
 CARPETAS_EVIDENCIA = (
     "evidencia_fotografica_octubre",
@@ -55,11 +58,17 @@ CARPETAS_EVIDENCIA = (
     "Evidencia Fotografica",
     os.path.join("taller_vehicular", "evidencias"),
 )
+CARPETAS_PDF = (
+    "bitacora_pdf",
+    "historial_ot",
+)
+CARPETAS_PESADAS = CARPETAS_EVIDENCIA + CARPETAS_PDF
 EXTENSIONES_EVIDENCIA = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+EXTENSIONES_PESADAS = EXTENSIONES_EVIDENCIA | {".pdf"}
 MAX_ARCHIVOS_POR_RESPALDO = 25
 MAX_BYTES_POR_RESPALDO = 20 * 1024 * 1024
 MAX_BYTES_ZIP = 25 * 1024 * 1024
-MAX_DESCARGAS_ARRANQUE = 30
+MAX_PURGA_PESADOS = 200
 API = "https://api.github.com"
 _CANDADO = threading.Lock()
 
@@ -108,19 +117,49 @@ def _evidencias_eliminadas() -> set[str]:
         return {linea.strip().replace("\\", "/") for linea in archivo if linea.strip()}
 
 
-def _relativa_evidencia(ruta: str) -> str | None:
+def _prefijo_pesado(ruta: str) -> bool:
+    normal = str(ruta or "").replace("\\", "/")
+    for carpeta in CARPETAS_PESADAS:
+        base = carpeta.replace("\\", "/").rstrip("/")
+        if normal == base or normal.startswith(base + "/"):
+            return True
+    return False
+
+
+def _prefijo_evidencia(ruta: str) -> bool:
+    return _prefijo_pesado(ruta)
+
+
+def _relativa_pesada(ruta: str) -> str | None:
+    """Ruta de foto o PDF dentro del proyecto. Nada fuera de la app."""
     texto = str(ruta or "").replace("\\", "/").strip()
     if not texto:
         return None
-    if os.path.isabs(texto):
+    if os.path.isabs(texto) or (len(texto) > 2 and texto[1] == ":"):
         try:
             texto = os.path.relpath(texto, RAIZ).replace("\\", "/")
         except ValueError:
             return None
     segura = ruta_segura(texto)
-    if segura and _prefijo_evidencia(segura):
-        return segura
-    return None
+    if not segura or not _prefijo_pesado(segura):
+        return None
+    if os.path.splitext(segura)[1].lower() not in EXTENSIONES_PESADAS:
+        return None
+    absoluto = os.path.abspath(os.path.join(RAIZ, segura.replace("/", os.sep)))
+    try:
+        if os.path.commonpath([os.path.abspath(RAIZ), absoluto]) != os.path.abspath(RAIZ):
+            return None
+    except ValueError:
+        return None
+    return segura
+
+
+def es_archivo_pesado(ruta: str) -> bool:
+    return _relativa_pesada(ruta) is not None
+
+
+def _relativa_evidencia(ruta: str) -> str | None:
+    return _relativa_pesada(ruta)
 
 
 def _reescribir_lista(relativa: str, lineas: list[str]) -> None:
@@ -381,13 +420,114 @@ def _escribir_atomico(destino: str, contenido: bytes) -> None:
                 pass
 
 
-def _prefijo_evidencia(ruta: str) -> bool:
-    normal = ruta.replace("\\", "/")
-    for carpeta in CARPETAS_EVIDENCIA:
-        prefijo = carpeta.replace("\\", "/").rstrip("/") + "/"
-        if normal == carpeta.replace("\\", "/") or normal.startswith(prefijo):
-            return True
-    return False
+def leer_ot_liberadas() -> dict[str, dict]:
+    ruta = resolver_ruta(ARCHIVO_OT_LIBERADAS)
+    if not os.path.exists(ruta):
+        return {}
+    try:
+        with open(ruta, encoding="utf-8") as archivo:
+            datos = json.load(archivo)
+    except (OSError, ValueError, TypeError):
+        return {}
+    if not isinstance(datos, dict):
+        return {}
+    salida = {}
+    for clave, valor in datos.items():
+        fecha = str(clave or "").strip()
+        if not fecha:
+            continue
+        if isinstance(valor, dict):
+            salida[fecha] = {
+                "nombre": str(valor.get("nombre") or "").strip(),
+                "cuando": str(valor.get("cuando") or "").strip(),
+            }
+        else:
+            salida[fecha] = {"nombre": str(valor or "").strip(), "cuando": ""}
+    return salida
+
+
+def _guardar_ot_liberadas(datos: dict[str, dict]) -> None:
+    destino = resolver_ruta(ARCHIVO_OT_LIBERADAS)
+    os.makedirs(os.path.dirname(destino), exist_ok=True)
+    contenido = json.dumps(datos, ensure_ascii=False, indent=2).encode("utf-8")
+    _escribir_atomico(destino, contenido)
+
+
+def registrar_ot_liberada(fecha_iso: str, nombre: str) -> None:
+    fecha = str(fecha_iso or "").strip()
+    if not fecha:
+        return
+    datos = leer_ot_liberadas()
+    datos[fecha] = {
+        "nombre": str(nombre or "").strip(),
+        "cuando": datetime.now().isoformat(timespec="seconds"),
+    }
+    _guardar_ot_liberadas(datos)
+
+
+def olvidar_ot_liberada(fecha_iso: str) -> None:
+    fecha = str(fecha_iso or "").strip()
+    datos = leer_ot_liberadas()
+    if fecha not in datos:
+        return
+    datos.pop(fecha, None)
+    _guardar_ot_liberadas(datos)
+
+
+def _podar_carpetas_vacias(relativa: str) -> None:
+    actual = os.path.dirname(resolver_ruta(relativa))
+    raiz = os.path.abspath(RAIZ)
+    topes = {os.path.abspath(resolver_ruta(carpeta)) for carpeta in CARPETAS_PESADAS}
+    topes.add(raiz)
+    while actual:
+        absoluto = os.path.abspath(actual)
+        if absoluto in topes:
+            break
+        try:
+            if os.path.commonpath([raiz, absoluto]) != raiz or os.listdir(absoluto):
+                break
+            borrar_carpeta_vacia(absoluto)
+        except (OSError, ValueError):
+            break
+        actual = os.path.dirname(absoluto)
+
+
+def liberar_archivos_pesados(rutas: list[str] | None) -> int:
+    """Borra fotos y PDF ya descargados. No toca la bitácora ni los JSON."""
+    limpias = []
+    vistos = set()
+    for ruta in rutas or []:
+        relativa = _relativa_pesada(ruta)
+        if not relativa or relativa in vistos:
+            continue
+        vistos.add(relativa)
+        limpias.append(relativa)
+    if not limpias:
+        return 0
+    borradas = 0
+    for relativa in limpias:
+        destino = resolver_ruta(relativa)
+        if os.path.isfile(destino):
+            try:
+                borrar_archivo(destino)
+                borradas += 1
+            except OSError:
+                continue
+        _podar_carpetas_vacias(relativa)
+    marcar_evidencia_eliminada(limpias)
+    return borradas
+
+
+def cambios_purga_pesados(arbol: dict[str, str] | None) -> list[dict]:
+    """Quita fotos y PDF de la rama de respaldo sin borrar los registros de texto."""
+    cambios = []
+    for ruta in sorted(arbol or {}):
+        if not es_archivo_pesado(ruta):
+            continue
+        cambios.append({"path": ruta, "mode": "100644", "type": "blob", "sha": None})
+        if len(cambios) >= MAX_PURGA_PESADOS:
+            break
+    return cambios
 
 
 def restaurar_desde_github() -> dict:
@@ -443,28 +583,13 @@ def restaurar_desde_github() -> dict:
                     continue
                 _escribir_atomico(destino, _descargar_blob(cred, arbol[relativa]))
                 recuperados += 1
-        eliminadas = _evidencias_eliminadas()
-        faltantes = []
-        for ruta, sha in arbol.items():
-            segura = ruta_segura(ruta)
-            if not segura or not _prefijo_evidencia(segura) or segura in eliminadas:
-                continue
-            destino = resolver_ruta(segura)
-            if os.path.exists(destino) and os.path.getsize(destino) > 0:
-                continue
-            faltantes.append((segura, sha))
-        for segura, sha in faltantes[:MAX_DESCARGAS_ARRANQUE]:
-            _escribir_atomico(resolver_ruta(segura), _descargar_blob(cred, sha))
-            recuperados += 1
-        pendientes = max(0, len(faltantes) - MAX_DESCARGAS_ARRANQUE)
         aplicar_evidencias_eliminadas()
         mensaje = (
             f"Bitácora local: {locales} registros. "
             f"Respaldo en {cred['rama']}: {remotas} registros. "
-            f"Se recuperaron {recuperados} archivo(s)."
+            f"Se recuperaron {recuperados} archivo(s) de datos. "
+            "Las fotografías y los PDF no se vuelven a descargar."
         )
-        if pendientes:
-            mensaje += f" Quedan {pendientes} evidencias por descargar en el siguiente arranque."
         estado = {
             "ok": True,
             "cuando": datetime.now().isoformat(timespec="seconds"),
@@ -472,7 +597,7 @@ def restaurar_desde_github() -> dict:
             "filas_locales": locales,
             "filas_remotas": remotas,
             "recuperados": recuperados,
-            "pendientes": pendientes,
+            "pendientes": 0,
         }
         _guardar_estado(estado)
         return estado
@@ -511,17 +636,9 @@ def restaurar_al_arrancar() -> dict:
 def marcar_evidencia_nueva(rutas: list[str] | None) -> None:
     limpias = []
     for ruta in rutas or []:
-        texto = str(ruta or "").replace("\\", "/").strip()
-        if not texto:
-            continue
-        if os.path.isabs(texto):
-            try:
-                texto = os.path.relpath(texto, RAIZ).replace("\\", "/")
-            except ValueError:
-                continue
-        segura = ruta_segura(texto)
-        if segura and _prefijo_evidencia(segura):
-            limpias.append(segura)
+        relativa = _relativa_pesada(ruta)
+        if relativa:
+            limpias.append(relativa)
     if not limpias:
         return
     eliminadas = _evidencias_eliminadas()
@@ -549,18 +666,10 @@ def _evidencias_marcadas() -> list[str]:
         return [linea.strip().replace("\\", "/") for linea in archivo if linea.strip()]
 
 
-def _archivos_a_respaldar(arbol: dict[str, str] | None = None, *, solo_copia_local: bool = False) -> list[str]:
-    elegidos = []
-    for relativa in ARCHIVOS_DATOS:
-        if os.path.exists(resolver_ruta(relativa)):
-            elegidos.append(relativa.replace("\\", "/"))
-    if solo_copia_local:
-        for relativa in _evidencias_marcadas():
-            if relativa not in elegidos and os.path.exists(resolver_ruta(relativa)):
-                elegidos.append(relativa)
-        return elegidos
-    arbol = arbol or {}
-    for carpeta in CARPETAS_EVIDENCIA:
+def _pesados_locales() -> list[str]:
+    encontrados = []
+    vistos = set()
+    for carpeta in CARPETAS_PESADAS:
         base = resolver_ruta(carpeta)
         if not os.path.isdir(base):
             continue
@@ -568,12 +677,25 @@ def _archivos_a_respaldar(arbol: dict[str, str] | None = None, *, solo_copia_loc
             for nombre in nombres:
                 if nombre.startswith("~$") or nombre.startswith("."):
                     continue
-                if os.path.splitext(nombre)[1].lower() not in EXTENSIONES_EVIDENCIA:
-                    continue
                 absoluto = os.path.join(raiz, nombre)
-                relativa = ruta_segura(os.path.relpath(absoluto, RAIZ).replace("\\", "/"))
-                if not relativa or relativa in arbol or relativa in elegidos:
+                relativa = _relativa_pesada(os.path.relpath(absoluto, RAIZ))
+                if not relativa or relativa in vistos or not os.path.isfile(resolver_ruta(relativa)):
                     continue
+                vistos.add(relativa)
+                encontrados.append(relativa)
+    return encontrados
+
+
+def _archivos_a_respaldar(arbol: dict[str, str] | None = None, *, solo_copia_local: bool = False) -> list[str]:
+    """La rama de respaldo solo recibe datos de texto. El ZIP local sí puede llevar fotos y PDF."""
+    del arbol
+    elegidos = []
+    for relativa in ARCHIVOS_DATOS:
+        if os.path.exists(resolver_ruta(relativa)):
+            elegidos.append(relativa.replace("\\", "/"))
+    if solo_copia_local:
+        for relativa in _pesados_locales():
+            if relativa not in elegidos:
                 elegidos.append(relativa)
     return elegidos
 
@@ -638,7 +760,10 @@ def respaldar_cambios(motivo: str) -> dict:
         cambios = []
         bytes_usados = 0
         omitidos = 0
+        datos_permanentes = {item.replace("\\", "/") for item in ARCHIVOS_DATOS}
         for relativa in _archivos_a_respaldar(arbol):
+            if es_archivo_pesado(relativa):
+                continue
             if relativa == ARCHIVO_BITACORA and locales <= 0:
                 continue
             absoluto = resolver_ruta(relativa)
@@ -652,7 +777,10 @@ def respaldar_cambios(motivo: str) -> dict:
             firma = git_blob_sha(contenido)
             if arbol.get(relativa) == firma:
                 continue
-            if len(cambios) >= MAX_ARCHIVOS_POR_RESPALDO or bytes_usados + len(contenido) > MAX_BYTES_POR_RESPALDO:
+            es_dato = relativa in datos_permanentes
+            if not es_dato and (
+                len(cambios) >= MAX_ARCHIVOS_POR_RESPALDO or bytes_usados + len(contenido) > MAX_BYTES_POR_RESPALDO
+            ):
                 omitidos += 1
                 continue
             blob = _api(
@@ -665,9 +793,15 @@ def respaldar_cambios(motivo: str) -> dict:
                 {"path": relativa, "mode": "100644", "type": "blob", "sha": blob["sha"]}
             )
             bytes_usados += len(contenido)
+        ya = {item["path"] for item in cambios}
         for relativa in sorted(_evidencias_eliminadas()):
-            if relativa in arbol and not os.path.exists(resolver_ruta(relativa)):
+            if relativa in arbol and relativa not in ya and not os.path.exists(resolver_ruta(relativa)):
                 cambios.append({"path": relativa, "mode": "100644", "type": "blob", "sha": None})
+                ya.add(relativa)
+        for item in cambios_purga_pesados(arbol):
+            if item["path"] not in ya:
+                cambios.append(item)
+                ya.add(item["path"])
         if not cambios:
             estado = {
                 "ok": True,
@@ -703,7 +837,13 @@ def respaldar_cambios(motivo: str) -> dict:
         )
         if not omitidos and leer_bajas_bitacora():
             _escribir_bajas_bitacora(0)
-        mensaje = f"Respaldo enviado a la rama {cred['rama']}: {locales} registros y {len(cambios)} archivo(s)."
+        purgados = sum(1 for item in cambios if item.get("sha") is None)
+        mensaje = (
+            f"Respaldo enviado a la rama {cred['rama']}: {locales} registros de bitácora "
+            f"y {len(cambios) - purgados} archivo(s) de datos."
+        )
+        if purgados:
+            mensaje += f" Se retiraron {purgados} foto(s) o PDF del respaldo."
         if omitidos:
             mensaje += f" Quedaron {omitidos} archivo(s) para el siguiente respaldo."
         estado = {
@@ -733,11 +873,12 @@ def respaldar_cambios(motivo: str) -> dict:
         _CANDADO.release()
 
 
-def construir_copia_seguridad() -> tuple[bytes, str]:
+def construir_copia_seguridad() -> tuple[bytes, str, list[str]]:
     sello = datetime.now().strftime("%Y%m%d_%H%M%S")
     nombre = f"respaldo_bitacora_{sello}.zip"
     buffer = io.BytesIO()
     incluidos = []
+    pesados = []
     omitidos = []
     usados = 0
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as paquete:
@@ -753,20 +894,22 @@ def construir_copia_seguridad() -> tuple[bytes, str]:
             paquete.write(absoluto, relativa.replace("\\", "/"))
             incluidos.append(relativa.replace("\\", "/"))
             usados += tamano
+            if es_archivo_pesado(relativa):
+                pesados.append(relativa.replace("\\", "/"))
         nota = [
             "Copia de seguridad de Soledad",
             f"Generada: {datetime.now().isoformat(timespec='seconds')}",
             f"Registros en la bitácora: {contar_filas_bitacora(resolver_ruta(ARCHIVO_BITACORA))}",
             "",
-            "Incluye database/bitacora_operativa_soledad.xlsx, los JSON operativos",
-            "y las evidencias capturadas en esta ejecución que aún están en el disco.",
-            "Las fotos históricas ya versionadas siguen en el repositorio.",
-            "La rama Git de respaldo es datos. No la conectes al despliegue de Streamlit.",
+            "La bitácora y los JSON (fechas, pozos, actividades, insumos y estatus)",
+            "se conservan en la rama datos. Las fotografías y los PDF viajan en esta",
+            "copia para descargarlos; al descargarla, la app los retira del servidor.",
+            "No conectes la rama datos al despliegue de Streamlit.",
             "",
             "Archivos incluidos:",
             *incluidos,
         ]
         if omitidos:
-            nota.extend(["", "No cupieron en esta copia:", *omitidos[:200]])
+            nota.extend(["", "No cupieron en esta copia y siguen en el servidor:", *omitidos[:200]])
         paquete.writestr("LEEME_RESPALDO.txt", "\n".join(nota))
-    return buffer.getvalue(), nombre
+    return buffer.getvalue(), nombre, pesados

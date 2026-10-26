@@ -10108,15 +10108,29 @@ def render_panel_evidencias_ops(
         columnas_pdf = st.columns(min(len(resultado["pdfs"]), 3))
         for indice, reporte in enumerate(resultado["pdfs"]):
             with columnas_pdf[indice % len(columnas_pdf)]:
-                with open(reporte["ruta"], "rb") as archivo:
-                    st.download_button(
-                        f"OT · {reporte['fecha'].strftime('%d/%m/%Y')}",
-                        data=archivo.read(),
-                        file_name=reporte["nombre"],
-                        mime="application/pdf",
-                        key=f"ot_ops_{anio}_{mes}_{_compacto_busqueda(titulo)}_{reporte['fecha'].isoformat()}",
-                        width="stretch",
+                ruta_ot = str(reporte.get("ruta") or "")
+                if not ruta_ot or not os.path.isfile(ruta_ot):
+                    st.caption(
+                        f"OT · {reporte['fecha'].strftime('%d/%m/%Y')} ya se descargó y se retiró del servidor."
                     )
+                    continue
+                with open(ruta_ot, "rb") as archivo:
+                    datos_ot = archivo.read()
+                extra = {}
+                if persistencia.es_archivo_pesado(ruta_ot):
+                    extra = {
+                        "on_click": _al_descargar_pdf_ot,
+                        "args": (ruta_ot, reporte["fecha"].isoformat(), reporte["nombre"]),
+                    }
+                st.download_button(
+                    f"OT · {reporte['fecha'].strftime('%d/%m/%Y')}",
+                    data=datos_ot,
+                    file_name=reporte["nombre"],
+                    mime="application/pdf",
+                    key=f"ot_ops_{anio}_{mes}_{_compacto_busqueda(titulo)}_{reporte['fecha'].isoformat()}",
+                    width="stretch",
+                    **extra,
+                )
     fotos = resultado["fotos"]
     if not fotos:
         st.caption("La bitácora coincide, y esa secuencia no tiene fotografías en la carpeta de octubre.")
@@ -12773,8 +12787,29 @@ def listar_reportes_ot_diarios() -> list[dict]:
                     "nombre": nombre,
                     "bytes": peso,
                     "etiqueta": etiqueta_dia_ot(dia),
+                    "liberado": False,
                 }
             )
+    for fecha_iso, meta in persistencia.leer_ot_liberadas().items():
+        try:
+            anio_iso, mes_iso, dia_iso = (int(parte) for parte in str(fecha_iso).split("-"))
+            dia = date(anio_iso, mes_iso, dia_iso)
+        except (TypeError, ValueError):
+            continue
+        if dia in vistos:
+            continue
+        vistos.add(dia)
+        nombre = str((meta or {}).get("nombre") or "").strip() or f"{dia.day:02d}{dia.month:02d}{dia.year}.pdf"
+        reportes.append(
+            {
+                "fecha": dia,
+                "ruta": "",
+                "nombre": nombre,
+                "bytes": 0,
+                "etiqueta": etiqueta_dia_ot(dia),
+                "liberado": True,
+            }
+        )
     reportes.sort(key=lambda r: r["fecha"], reverse=True)
     return reportes
 
@@ -12867,6 +12902,7 @@ def guardar_pdf_ot_diario(archivo, dia: date) -> dict:
     ruta = os.path.join(carpeta, nombre)
     with open(ruta, "wb") as salida:
         salida.write(datos)
+    persistencia.olvidar_ot_liberada(destino_dia.isoformat())
     return {
         "ok": True,
         "mensaje": "",
@@ -13180,7 +13216,8 @@ def render_historial_diario_ot() -> None:
             <h3>Reportes diarios de OT</h3>
             <p>Se leen los PDF con nombre <b>DDMMYYYY.pdf</b> (ejemplo 01092026.pdf) en
             <code>{html.escape(carpeta)}</code> y en sus subcarpetas de mes
-            (septiembre, octubre, …). Elige un día para ver el reporte y el cruce con bitácora.</p>
+            (septiembre, octubre, …). Al descargar el PDF se retira del servidor.
+            La bitácora del día permanece.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -13248,12 +13285,15 @@ def render_historial_diario_ot() -> None:
         st.session_state.ot_hist_dia_ref = dia.isoformat()
         st.session_state.ot_hist_pagina = 1
 
+    ruta_pdf = str(reporte.get("ruta") or "")
+    archivo_pdf = bool(ruta_pdf) and os.path.isfile(ruta_pdf)
     preview, total, mtime = "", 0, 0.0
-    try:
-        mtime = os.path.getmtime(reporte["ruta"])
-        total = paginas_pdf_ot(reporte["ruta"], mtime)
-    except Exception as error:
-        st.error(f"No se pudo abrir el PDF: {error}")
+    if archivo_pdf:
+        try:
+            mtime = os.path.getmtime(ruta_pdf)
+            total = paginas_pdf_ot(ruta_pdf, mtime)
+        except Exception as error:
+            st.error(f"No se pudo abrir el PDF: {error}")
 
     cuadrilla_abierta = (
         st.session_state.get("ot_cuadrilla_dia") == dia.isoformat()
@@ -13298,9 +13338,14 @@ def render_historial_diario_ot() -> None:
             st.caption(f"Hoja {pagina_actual} de {total}")
         elif total == 1:
             st.caption("1 hoja")
-        if total > 0:
+        if not archivo_pdf:
+            st.info(
+                "El PDF de este día ya se descargó y se retiró del servidor. "
+                "Las actividades, pozos, insumos y estatus siguen en la bitácora."
+            )
+        elif total > 0:
             try:
-                preview, total = jpeg_pagina_reporte_ot(reporte["ruta"], mtime, pagina_actual - 1)
+                preview, total = jpeg_pagina_reporte_ot(ruta_pdf, mtime, pagina_actual - 1)
             except Exception as error:
                 preview = ""
                 st.error(f"No se pudo renderizar la hoja: {error}")
@@ -13310,18 +13355,21 @@ def render_historial_diario_ot() -> None:
                 f'alt="OT {html.escape(dia.strftime("%d/%m/%Y"))}"/></div>',
                 unsafe_allow_html=True,
             )
-        try:
-            pdf_bytes = bytes_pdf_ot(reporte["ruta"], mtime) if os.path.isfile(reporte["ruta"]) else b""
-        except OSError:
-            pdf_bytes = b""
-        st.download_button(
-            "Descargar PDF del día",
-            data=pdf_bytes,
-            file_name=reporte["nombre"] if reporte["nombre"].lower().endswith(".pdf") else f"{reporte['nombre']}.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-            key=f"ot_hist_dl_{dia.isoformat()}",
-        )
+        if archivo_pdf:
+            try:
+                pdf_bytes = bytes_pdf_ot(ruta_pdf, mtime)
+            except OSError:
+                pdf_bytes = b""
+            st.download_button(
+                "Descargar PDF del día",
+                data=pdf_bytes,
+                file_name=reporte["nombre"] if reporte["nombre"].lower().endswith(".pdf") else f"{reporte['nombre']}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                key=f"ot_hist_dl_{dia.isoformat()}",
+                on_click=_al_descargar_pdf_ot,
+                args=(ruta_pdf, dia.isoformat(), reporte["nombre"]),
+            )
     with resumen:
         st.markdown("**Cuadrillas de la jornada**")
         render_resumen_cuadrillas_ot_dia(dia, bitacora)
@@ -14534,6 +14582,19 @@ def modulo_reporte_fotografico():
     return reporte_fotografico
 
 
+def _al_descargar_reporte_fotografico(rutas: tuple, aviso_key: str) -> None:
+    st.session_state[aviso_key] = persistencia.liberar_archivos_pesados(list(rutas or ()))
+
+
+def _al_descargar_pdf_ot(ruta: str, fecha_iso: str, nombre: str) -> None:
+    if persistencia.liberar_archivos_pesados([ruta]):
+        persistencia.registrar_ot_liberada(fecha_iso, nombre)
+
+
+def _al_descargar_copia_respaldo(rutas: tuple) -> None:
+    persistencia.liberar_archivos_pesados(list(rutas or ()))
+
+
 def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> None:
     generador = modulo_reporte_fotografico()
     st.markdown(
@@ -14543,7 +14604,9 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
     st.caption(
         "Genera el machote oficial con las actividades del periodo, "
         "ordenadas por cuadrilla: Eléctricos, Instrumentos, Mecánico 1 a 4, "
-        "Montaje, Soldadura y Retro Excavadora. Las fotos quedan en filas de 3."
+        "Montaje, Soldadura y Retro Excavadora. Las fotos quedan en filas de 3. "
+        "Al descargar el Excel o el PDF, esas fotografías se retiran del servidor. "
+        "La bitácora (fecha, pozo, actividad, insumos y estatus) se conserva."
     )
     modo = st.radio(
         "Periodo",
@@ -14583,6 +14646,7 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
         help="El reporte general incluye todas las cuadrillas de la jornada, en el orden oficial.",
     )
     if st.button("Generar reporte fotográfico", type="primary", key=f"{key_prefix}_generar"):
+        st.session_state.pop(f"{key_prefix}_liberadas", None)
         actividades = actividades_reporte_fotografico(inicio, fin)
         if cuadrilla_filtro != opcion_todas:
             objetivo = clave_cuadrilla_oficial(cuadrilla_filtro)
@@ -14607,6 +14671,13 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
                     st.session_state.pop(f"{key_prefix}_paquete", None)
                     st.error(f"No se pudo generar el reporte: {exc}")
                 else:
+                    fotos_rutas = []
+                    vistas = set()
+                    for item in actividades:
+                        for ruta_foto in item.get("fotos") or []:
+                            if ruta_foto and ruta_foto not in vistas:
+                                vistas.add(ruta_foto)
+                                fotos_rutas.append(ruta_foto)
                     st.session_state[f"{key_prefix}_paquete"] = {
                         "xlsx": xlsx,
                         "pdf": pdf,
@@ -14615,6 +14686,7 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
                         "fin": max(inicio, fin),
                         "cuadrilla": "" if cuadrilla_filtro == opcion_todas else cuadrilla_filtro,
                         "version": generador.VERSION_DISENO_PDF,
+                        "fotos_rutas": tuple(fotos_rutas),
                     }
     paquete = st.session_state.get(f"{key_prefix}_paquete")
     if paquete and paquete.get("version") != generador.VERSION_DISENO_PDF:
@@ -14636,6 +14708,8 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
     if paquete.get("cuadrilla"):
         marca += "_" + clave_cuadrilla_oficial(paquete["cuadrilla"]).replace(" ", "_")
         st.caption(f"Cuadrilla: {paquete['cuadrilla']}.")
+    fotos_rutas = tuple(paquete.get("fotos_rutas") or ())
+    aviso_key = f"{key_prefix}_liberadas"
     col_xlsx, col_pdf = st.columns(2)
     with col_xlsx:
         st.download_button(
@@ -14645,6 +14719,8 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
             key=f"{key_prefix}_xlsx",
+            on_click=_al_descargar_reporte_fotografico,
+            args=(fotos_rutas, aviso_key),
         )
     with col_pdf:
         st.download_button(
@@ -14654,6 +14730,14 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
             mime="application/pdf",
             use_container_width=True,
             key=f"{key_prefix}_pdf",
+            on_click=_al_descargar_reporte_fotografico,
+            args=(fotos_rutas, aviso_key),
+        )
+    liberadas = st.session_state.get(aviso_key)
+    if liberadas:
+        st.caption(
+            f"Se retiraron {liberadas} fotografía(s) del servidor. "
+            "El archivo descargado las conserva y la bitácora no se modifica."
         )
 
 
@@ -20301,8 +20385,9 @@ def render_respaldo_base_datos(clave: str = "respaldo") -> None:
     st.markdown('<div class="section-title">Respaldo de la base de datos</div>', unsafe_allow_html=True)
     st.caption(
         "En cada despliegue, Streamlit Cloud vuelve a bajar main y borra lo capturado en el disco. "
-        "Con el secreto GITHUB_TOKEN la bitácora y las fotos nuevas se copian a la rama datos, "
-        "sin redesplegar el sitio. Al arrancar se conserva la copia que tenga más registros."
+        "Con el secreto GITHUB_TOKEN la bitácora (fechas, pozos, actividades, insumos y estatus) "
+        "se copia a la rama datos, sin redesplegar el sitio. Las fotografías y los PDF no se respaldan: "
+        "viajan en la copia descargable y, al descargarla, se retiran del servidor."
     )
     ruta_xlsx = persistencia.resolver_ruta(persistencia.ARCHIVO_BITACORA)
     filas = persistencia.contar_filas_bitacora(ruta_xlsx)
@@ -20320,10 +20405,11 @@ def render_respaldo_base_datos(clave: str = "respaldo") -> None:
     if os.path.exists(ruta_xlsx):
         firma = f"{os.path.getmtime(ruta_xlsx)}:{os.path.getsize(ruta_xlsx)}"
     if st.session_state.get(f"{clave}_firma") != firma or f"{clave}_zip" not in st.session_state:
-        datos, nombre = persistencia.construir_copia_seguridad()
+        datos, nombre, pesados = persistencia.construir_copia_seguridad()
         st.session_state[f"{clave}_firma"] = firma
         st.session_state[f"{clave}_zip"] = datos
         st.session_state[f"{clave}_nombre"] = nombre
+        st.session_state[f"{clave}_pesados"] = tuple(pesados)
     st.download_button(
         "📥 Descargar Copia de Seguridad de la Base de Datos",
         data=st.session_state[f"{clave}_zip"],
@@ -20331,6 +20417,8 @@ def render_respaldo_base_datos(clave: str = "respaldo") -> None:
         mime="application/zip",
         key=f"{clave}_descarga",
         use_container_width=True,
+        on_click=_al_descargar_copia_respaldo,
+        args=(tuple(st.session_state.get(f"{clave}_pesados") or ()),),
     )
     col_subir, col_bajar = st.columns(2)
     with col_subir:
@@ -21133,10 +21221,11 @@ def _boton_descarga_respaldo_admin() -> None:
     if os.path.exists(ruta):
         firma = f"{os.path.getmtime(ruta)}:{os.path.getsize(ruta)}"
     if st.session_state.get("adm_barra_firma") != firma or "adm_barra_zip" not in st.session_state:
-        datos, nombre = persistencia.construir_copia_seguridad()
+        datos, nombre, pesados = persistencia.construir_copia_seguridad()
         st.session_state.adm_barra_firma = firma
         st.session_state.adm_barra_zip = datos
         st.session_state.adm_barra_nombre = nombre
+        st.session_state.adm_barra_pesados = tuple(pesados)
     st.download_button(
         "Descargar copia",
         data=st.session_state.adm_barra_zip,
@@ -21144,6 +21233,8 @@ def _boton_descarga_respaldo_admin() -> None:
         mime="application/zip",
         key="adm_barra_descarga",
         use_container_width=True,
+        on_click=_al_descargar_copia_respaldo,
+        args=(tuple(st.session_state.get("adm_barra_pesados") or ()),),
     )
 
 
