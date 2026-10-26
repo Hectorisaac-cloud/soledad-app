@@ -33,7 +33,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, Table, TableStyle
 
-VERSION_DISENO_PDF = 9
+VERSION_DISENO_PDF = 10
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -94,7 +94,10 @@ FIRMANTES_PDF = (
     ("LUIS CARMELO CAMPOS BRITO", "COORDINADOR Y/O GERENTE DE PJP4"),
     ("GERARDO BERNABE RICARDEZ", "COORDINADOR DE OPS"),
 )
-COLOR_MARCO_FOTO = colors.HexColor("#B8862E")
+COLOR_MARCO_FOTO = colors.HexColor("#FFCC00")
+COLOR_MARCO_RGB = (255, 204, 0)
+GROSOR_MARCO_FOTO = 8
+HOLGURA_MARCO_PDF = 3.4
 COLOR_BARRA_FIRMAS = colors.HexColor("#E5A200")
 
 
@@ -256,11 +259,36 @@ def _firma_derecha_png(ruta_plantilla: str) -> io.BytesIO | None:
     return _buffer_png(raster, "firma_derecha.png")
 
 
+def _enmarcar_foto(imagen: PILImage.Image, grosor: int = GROSOR_MARCO_FOTO) -> PILImage.Image:
+    """Cuadro amarillo un poco más grande que la fotografía."""
+    if imagen.mode != "RGB":
+        imagen = imagen.convert("RGB")
+    borde = max(1, int(grosor))
+    marco = PILImage.new("RGB", (imagen.width + 2 * borde, imagen.height + 2 * borde), COLOR_MARCO_RGB)
+    marco.paste(imagen, (borde, borde))
+    return marco
+
+
 def _anclar_foto(ws: Worksheet, imagen: PILImage.Image, ranura: tuple[int, int, int, int]) -> dict:
     col_ini, fila_ini, col_fin, fila_fin = ranura
     caja_ancho, caja_alto = _tamano_rango_px(ws, col_ini, fila_ini, col_fin, fila_fin)
     ancho, alto, dx, dy = _ajustar_en_caja(imagen.size[0], imagen.size[1], caja_ancho, caja_alto)
-    if (ancho, alto) != imagen.size:
+    grosor = max(4, min(GROSOR_MARCO_FOTO, min(ancho, alto) // 14))
+    if ancho > 2 * grosor + 8 and alto > 2 * grosor + 8:
+        escala = min(
+            (ancho - 2 * grosor) / max(imagen.size[0], 1),
+            (alto - 2 * grosor) / max(imagen.size[1], 1),
+        )
+        foto_ancho = max(1, int(round(imagen.size[0] * escala)))
+        foto_alto = max(1, int(round(imagen.size[1] * escala)))
+        foto = imagen
+        if (foto_ancho, foto_alto) != imagen.size:
+            foto = imagen.resize((foto_ancho, foto_alto), PILImage.Resampling.LANCZOS)
+        imagen = _enmarcar_foto(foto, grosor)
+        ancho, alto = imagen.size
+        dx = max(_MARGEN_RANURA, int((caja_ancho - ancho) / 2))
+        dy = max(_MARGEN_RANURA, int((caja_alto - alto) / 2))
+    elif (ancho, alto) != imagen.size:
         imagen = imagen.resize((ancho, alto), PILImage.Resampling.LANCZOS)
     buffer = io.BytesIO()
     imagen.save(buffer, format="JPEG", quality=85)
@@ -292,6 +320,7 @@ def _anclar_foto(ws: Worksheet, imagen: PILImage.Image, ranura: tuple[int, int, 
             caja_alto,
         ),
         "proporcion": ancho / alto,
+        "imagen": imagen,
     }
 
 
@@ -536,22 +565,30 @@ def _hoja_a_pdf(
     tabla.drawOn(pdf, tabla_x, tabla_abajo)
 
     pdf.setStrokeColor(COLOR_MARCO_FOTO)
-    pdf.setLineWidth(1.5)
+    pdf.setFillColor(COLOR_MARCO_FOTO)
+    pdf.setLineWidth(1.6)
     for imagen, caja in fotos:
         col_ini, fila_ini, col_fin, fila_fin = _ranura_de_caja(ws, caja)
         buffer = io.BytesIO()
         imagen.save(buffer, format="JPEG", quality=85)
         buffer.seek(0)
-        dibujado = _dibujar_proporcion(
-            pdf,
-            ImageReader(buffer),
-            x_pt(col_ini) + caja["dx"] * 72 / 96 * escala,
-            y_pt(fila_ini, caja["dy"] + caja["alto"]),
-            caja["ancho"] * 72 / 96 * escala,
-            caja["alto"] * 72 / 96 * escala,
-        )
+        lector = ImageReader(buffer)
+        destino_x = x_pt(col_ini) + caja["dx"] * 72 / 96 * escala
+        destino_y = y_pt(fila_ini, caja["dy"] + caja["alto"])
+        destino_ancho = caja["ancho"] * 72 / 96 * escala
+        destino_alto = caja["alto"] * 72 / 96 * escala
+        dibujado = _caja_proporcion(lector, destino_x, destino_y, destino_ancho, destino_alto)
         if dibujado:
-            pdf.rect(*dibujado, stroke=1, fill=0)
+            x_foto, y_foto, ancho_foto, alto_foto = dibujado
+            pdf.rect(
+                x_foto - HOLGURA_MARCO_PDF,
+                y_foto - HOLGURA_MARCO_PDF,
+                ancho_foto + 2 * HOLGURA_MARCO_PDF,
+                alto_foto + 2 * HOLGURA_MARCO_PDF,
+                stroke=1,
+                fill=1,
+            )
+        _dibujar_proporcion(pdf, lector, destino_x, destino_y, destino_ancho, destino_alto)
 
     caja_arriba = y_pt(62) + 4
     caja_abajo = y_pt(70)
@@ -581,19 +618,30 @@ def _ranura_de_caja(ws: Worksheet, caja: dict) -> tuple[int, int, int, int]:
     return caja["ranura_idx"]
 
 
-def _dibujar_proporcion(pdf, lector, x, y, ancho, alto) -> tuple[float, float, float, float] | None:
+def _caja_proporcion(lector, x, y, ancho, alto) -> tuple[float, float, float, float] | None:
     try:
         imagen_ancho, imagen_alto = lector.getSize()
     except Exception:
-        pdf.drawImage(lector, x, y, width=ancho, height=alto, preserveAspectRatio=True, mask="auto", anchor="c")
         return None
     if not imagen_ancho or not imagen_alto:
         return None
     escala = min(ancho / imagen_ancho, alto / imagen_alto)
     dibujo_ancho = imagen_ancho * escala
     dibujo_alto = imagen_alto * escala
-    x_dibujo = x + (ancho - dibujo_ancho) / 2
-    y_dibujo = y + (alto - dibujo_alto) / 2
+    return (
+        x + (ancho - dibujo_ancho) / 2,
+        y + (alto - dibujo_alto) / 2,
+        dibujo_ancho,
+        dibujo_alto,
+    )
+
+
+def _dibujar_proporcion(pdf, lector, x, y, ancho, alto) -> tuple[float, float, float, float] | None:
+    caja = _caja_proporcion(lector, x, y, ancho, alto)
+    if caja is None:
+        pdf.drawImage(lector, x, y, width=ancho, height=alto, preserveAspectRatio=True, mask="auto", anchor="c")
+        return None
+    x_dibujo, y_dibujo, dibujo_ancho, dibujo_alto = caja
     pdf.drawImage(
         lector,
         x_dibujo,
@@ -603,7 +651,7 @@ def _dibujar_proporcion(pdf, lector, x, y, ancho, alto) -> tuple[float, float, f
         preserveAspectRatio=True,
         mask="auto",
     )
-    return x_dibujo, y_dibujo, dibujo_ancho, dibujo_alto
+    return caja
 
 
 def _texto_celda(valor) -> str:
@@ -829,8 +877,9 @@ def generar_reporte_fotografico(
                 caja["dx"] = caja["x"] - caja["ranura"][0]
                 caja["dy"] = caja["y"] - caja["ranura"][1]
                 caja["ranura_idx"] = ranura
-                caja["origen"] = (imagen.size[0], imagen.size[1])
-                fotos_hoja.append((imagen, caja))
+                enmarcada = caja["imagen"]
+                caja["origen"] = (enmarcada.size[0], enmarcada.size[1])
+                fotos_hoja.append((enmarcada, caja))
                 fotos_insertadas += 1
             paginas_pdf.append((hoja, fotos_hoja))
             hojas += 1
