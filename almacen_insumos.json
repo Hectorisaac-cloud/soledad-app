@@ -107,6 +107,15 @@
       "tipo": "Componente Rotativo / Reparable",
       "precargado": true,
       "activo": true
+    },
+    {
+      "id": "banda-c-125",
+      "nombre": "Banda C-125",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Consumible",
+      "precargado": false,
+      "activo": true
     }
   ],
   "movimientos": [
@@ -333,6 +342,22 @@
       "tipo_insumo": "Consumible",
       "id": "8f5b328cc4",
       "registrado": "2026-10-26 16:51"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-23",
+      "secuencia": "Act. 6",
+      "cuadrilla": "Mecanico 2",
+      "sector": "Soledad (S)",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 4.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "f91a12cba2",
+      "registrado": "2026-10-26 16:55"
     }
   ]
 }
