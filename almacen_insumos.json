@@ -173,6 +173,22 @@
       "tipo_insumo": "Consumible",
       "id": "2f895de7ea",
       "registrado": "2026-10-26 15:37"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-23",
+      "secuencia": "Act. 4",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Aragon (A)",
+      "insumo_id": "grasa",
+      "insumo": "Grasa",
+      "cantidad": 2.0,
+      "unidad": "Kg",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "3adaae92a0",
+      "registrado": "2026-10-26 15:42"
     }
   ]
 }
