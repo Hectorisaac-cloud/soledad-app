@@ -5829,11 +5829,11 @@ def guardar_en_excel(df_final: pd.DataFrame, *, sincronizar: bool = True) -> Non
         with pd.ExcelWriter(tmp, engine="openpyxl", mode="w") as writer:
             salida.to_excel(writer, sheet_name=SHEET_NAME, index=False)
         try:
-            shutil.copy2(tmp, EXCEL_FILE)
+            persistencia.copiar_seguro(tmp, EXCEL_FILE)
         except PermissionError:
             alt = os.path.join(os.path.dirname(EXCEL_FILE) or DATABASE_DIR, "~pjp4_bitacora_write.xlsx")
-            shutil.copy2(tmp, alt)
-            os.replace(alt, EXCEL_FILE)
+            persistencia.copiar_seguro(tmp, alt)
+            persistencia.reemplazar_seguro(alt, EXCEL_FILE)
     finally:
         if os.path.exists(tmp):
             try:
@@ -6003,11 +6003,11 @@ def _guardar_libro_bitacora(wb, destino: str) -> None:
     try:
         wb.save(tmp)
         try:
-            shutil.copy2(tmp, destino)
+            persistencia.copiar_seguro(tmp, destino)
         except PermissionError:
             alt = os.path.join(os.path.dirname(destino) or DATABASE_DIR, "~pjp4_bitacora_write.xlsx")
-            shutil.copy2(tmp, alt)
-            os.replace(alt, destino)
+            persistencia.copiar_seguro(tmp, alt)
+            persistencia.reemplazar_seguro(alt, destino)
     finally:
         if os.path.exists(tmp):
             try:
@@ -6853,11 +6853,11 @@ def guardar_programa_mantenimiento(filas: list[dict], ruta: str) -> int:
         with pd.ExcelWriter(tmp, engine="openpyxl") as writer:
             df.to_excel(writer, sheet_name="Programa", index=False)
         try:
-            shutil.copy2(tmp, ruta)
+            persistencia.copiar_seguro(tmp, ruta)
         except PermissionError:
             alt = os.path.join(os.path.dirname(ruta) or DATABASE_DIR, "~pjp4_programa_write.xlsx")
-            shutil.copy2(tmp, alt)
-            os.replace(alt, ruta)
+            persistencia.copiar_seguro(tmp, alt)
+            persistencia.reemplazar_seguro(alt, ruta)
     finally:
         if os.path.exists(tmp):
             try:
@@ -15797,11 +15797,11 @@ def _guardar_libro_excel(wb, ruta: str) -> None:
     tmp = os.path.join(tempfile.gettempdir(), "pjp4_combustible_write.xlsx")
     wb.save(tmp)
     try:
-        shutil.copy2(tmp, ruta)
+        persistencia.copiar_seguro(tmp, ruta)
     except PermissionError:
         alt = os.path.join(os.path.dirname(ruta), "~pjp4_combustible_write.xlsx")
-        shutil.copy2(tmp, alt)
-        os.replace(alt, ruta)
+        persistencia.copiar_seguro(tmp, alt)
+        persistencia.reemplazar_seguro(alt, ruta)
 
 
 def _escribir_comentarios_carga(ws, fila: int, comentarios: str) -> None:
@@ -20405,11 +20405,17 @@ def render_respaldo_base_datos(clave: str = "respaldo") -> None:
     if os.path.exists(ruta_xlsx):
         firma = f"{os.path.getmtime(ruta_xlsx)}:{os.path.getsize(ruta_xlsx)}"
     if st.session_state.get(f"{clave}_firma") != firma or f"{clave}_zip" not in st.session_state:
-        datos, nombre, pesados = persistencia.construir_copia_seguridad()
-        st.session_state[f"{clave}_firma"] = firma
-        st.session_state[f"{clave}_zip"] = datos
-        st.session_state[f"{clave}_nombre"] = nombre
-        st.session_state[f"{clave}_pesados"] = tuple(pesados)
+        try:
+            datos, nombre, pesados = persistencia.construir_copia_seguridad()
+        except OSError as exc:
+            st.warning(f"No se pudo armar la copia de seguridad: {exc}")
+        else:
+            st.session_state[f"{clave}_firma"] = firma
+            st.session_state[f"{clave}_zip"] = datos
+            st.session_state[f"{clave}_nombre"] = nombre
+            st.session_state[f"{clave}_pesados"] = tuple(pesados)
+    if f"{clave}_zip" not in st.session_state:
+        return
     st.download_button(
         "📥 Descargar Copia de Seguridad de la Base de Datos",
         data=st.session_state[f"{clave}_zip"],
@@ -21221,11 +21227,17 @@ def _boton_descarga_respaldo_admin() -> None:
     if os.path.exists(ruta):
         firma = f"{os.path.getmtime(ruta)}:{os.path.getsize(ruta)}"
     if st.session_state.get("adm_barra_firma") != firma or "adm_barra_zip" not in st.session_state:
-        datos, nombre, pesados = persistencia.construir_copia_seguridad()
-        st.session_state.adm_barra_firma = firma
-        st.session_state.adm_barra_zip = datos
-        st.session_state.adm_barra_nombre = nombre
-        st.session_state.adm_barra_pesados = tuple(pesados)
+        try:
+            datos, nombre, pesados = persistencia.construir_copia_seguridad()
+        except OSError as exc:
+            st.warning(f"No se pudo armar la copia de seguridad: {exc}")
+        else:
+            st.session_state.adm_barra_firma = firma
+            st.session_state.adm_barra_zip = datos
+            st.session_state.adm_barra_nombre = nombre
+            st.session_state.adm_barra_pesados = tuple(pesados)
+    if "adm_barra_zip" not in st.session_state:
+        return
     st.download_button(
         "Descargar copia",
         data=st.session_state.adm_barra_zip,

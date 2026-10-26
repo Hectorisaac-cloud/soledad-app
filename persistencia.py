@@ -10,10 +10,12 @@ que el usuario descarga su reporte, y después se retiran.
 from __future__ import annotations
 
 import base64
+import errno
 import hashlib
 import io
 import json
 import os
+import shutil
 import stat
 import tempfile
 import threading
@@ -317,13 +319,47 @@ def contar_filas_bitacora(ruta: str | None) -> int:
         wb.close()
 
 
+def _es_cruce_de_dispositivo(exc: BaseException) -> bool:
+    return isinstance(exc, OSError) and getattr(exc, "errno", None) in {errno.EXDEV, 18}
+
+
+def copiar_seguro(origen: str, destino: str) -> None:
+    """Copia bytes aunque origen y destino estén en discos distintos."""
+    carpeta = os.path.dirname(os.path.abspath(destino))
+    if carpeta:
+        os.makedirs(carpeta, exist_ok=True)
+    try:
+        shutil.copy(origen, destino)
+        return
+    except OSError as exc:
+        if not _es_cruce_de_dispositivo(exc):
+            raise
+    with open(origen, "rb") as entrada, open(destino, "wb") as salida:
+        shutil.copyfileobj(entrada, salida)
+
+
+def reemplazar_seguro(origen: str, destino: str) -> None:
+    """Sustituye el destino. Si el renombrado cruza de partición, copia y borra el temporal."""
+    try:
+        os.replace(origen, destino)
+        return
+    except OSError as exc:
+        if not _es_cruce_de_dispositivo(exc):
+            raise
+    copiar_seguro(origen, destino)
+    try:
+        os.remove(origen)
+    except OSError:
+        pass
+
+
 def _guardar_estado(estado: dict) -> None:
     destino = resolver_ruta(ARCHIVO_ESTADO)
     os.makedirs(os.path.dirname(destino), exist_ok=True)
     temporal = destino + ".tmp"
     with open(temporal, "w", encoding="utf-8") as archivo:
         json.dump(estado, archivo, ensure_ascii=False, indent=2)
-    os.replace(temporal, destino)
+    reemplazar_seguro(temporal, destino)
 
 
 def leer_estado() -> dict:
@@ -404,14 +440,22 @@ def _descargar_blob(cred: dict, sha: str) -> bytes:
     return _api("GET", f"{API}/repos/{cred['repo']}/git/blobs/{sha}", cred["token"], crudo=True)
 
 
+def _directorio_temporal(destino: str | None = None) -> str:
+    carpeta = os.path.dirname(destino) if destino else ""
+    if carpeta:
+        os.makedirs(carpeta, exist_ok=True)
+        return carpeta
+    return tempfile.gettempdir()
+
+
 def _escribir_atomico(destino: str, contenido: bytes) -> None:
     os.makedirs(os.path.dirname(destino) or ".", exist_ok=True)
-    fd, temporal = tempfile.mkstemp(suffix=".tmp", dir=os.path.dirname(destino) or None)
+    fd, temporal = tempfile.mkstemp(suffix=".tmp", dir=_directorio_temporal(destino))
     os.close(fd)
     try:
         with open(temporal, "wb") as archivo:
             archivo.write(contenido)
-        os.replace(temporal, destino)
+        reemplazar_seguro(temporal, destino)
     finally:
         if os.path.exists(temporal):
             try:
@@ -554,7 +598,7 @@ def restaurar_desde_github() -> dict:
         blob_bitacora = arbol.get(ARCHIVO_BITACORA)
         if blob_bitacora:
             contenido = _descargar_blob(cred, blob_bitacora)
-            fd, temporal = tempfile.mkstemp(suffix=".xlsx")
+            fd, temporal = tempfile.mkstemp(suffix=".xlsx", dir=_directorio_temporal(resolver_ruta(ARCHIVO_BITACORA)))
             os.close(fd)
             try:
                 with open(temporal, "wb") as archivo:
@@ -723,7 +767,7 @@ def respaldar_cambios(motivo: str) -> dict:
         locales = contar_filas_bitacora(resolver_ruta(ARCHIVO_BITACORA))
         blob_remoto = arbol.get(ARCHIVO_BITACORA)
         if blob_remoto:
-            fd, temporal = tempfile.mkstemp(suffix=".xlsx")
+            fd, temporal = tempfile.mkstemp(suffix=".xlsx", dir=_directorio_temporal(resolver_ruta(ARCHIVO_BITACORA)))
             os.close(fd)
             try:
                 with open(temporal, "wb") as archivo:
@@ -873,6 +917,28 @@ def respaldar_cambios(motivo: str) -> dict:
         _CANDADO.release()
 
 
+def _leer_bytes(absoluto: str) -> bytes:
+    """Lee un archivo. Si el disco rechaza el acceso directo, lo copia a un temporal."""
+    try:
+        with open(absoluto, "rb") as archivo:
+            return archivo.read()
+    except OSError as exc:
+        if not _es_cruce_de_dispositivo(exc):
+            raise
+    fd, temporal = tempfile.mkstemp(prefix="soledad_lectura_")
+    os.close(fd)
+    try:
+        copiar_seguro(absoluto, temporal)
+        with open(temporal, "rb") as archivo:
+            return archivo.read()
+    finally:
+        if os.path.exists(temporal):
+            try:
+                os.remove(temporal)
+            except OSError:
+                pass
+
+
 def construir_copia_seguridad() -> tuple[bytes, str, list[str]]:
     sello = datetime.now().strftime("%Y%m%d_%H%M%S")
     nombre = f"respaldo_bitacora_{sello}.zip"
@@ -891,11 +957,16 @@ def construir_copia_seguridad() -> tuple[bytes, str, list[str]]:
             if usados + tamano > MAX_BYTES_ZIP:
                 omitidos.append(relativa)
                 continue
-            paquete.write(absoluto, relativa.replace("\\", "/"))
-            incluidos.append(relativa.replace("\\", "/"))
+            arcname = relativa.replace("\\", "/")
+            try:
+                paquete.writestr(arcname, _leer_bytes(absoluto))
+            except OSError:
+                omitidos.append(relativa)
+                continue
+            incluidos.append(arcname)
             usados += tamano
             if es_archivo_pesado(relativa):
-                pesados.append(relativa.replace("\\", "/"))
+                pesados.append(arcname)
         nota = [
             "Copia de seguridad de Soledad",
             f"Generada: {datetime.now().isoformat(timespec='seconds')}",
