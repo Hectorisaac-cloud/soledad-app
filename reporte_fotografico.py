@@ -33,7 +33,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, Table, TableStyle
 
-VERSION_DISENO_PDF = 11
+VERSION_DISENO_PDF = 12
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -418,7 +418,7 @@ def _escribir_encabezado(ws: Worksheet, actividad: dict, continuacion: str) -> N
     if continuacion:
         descripcion = f"{descripcion} {continuacion}".strip()
     ws["A4"] = str(actividad.get("ot") or "")
-    ws["C4"] = str(actividad.get("ubicacion") or "")
+    ws["C4"] = _ubicacion_tabla_pdf(actividad.get("ubicacion"))
     fecha = actividad.get("fecha")
     if isinstance(fecha, datetime):
         fecha = fecha.date()
@@ -711,20 +711,8 @@ def _pozo_tabla_pdf(valor) -> str:
 
 
 def _ubicacion_tabla_pdf(valor) -> str:
-    """Encabezado limpio: ARAGON (A) - PA67. Sin comillas ni marco."""
-    texto = _texto_celda(valor).replace('"', "").replace("'", "").strip()
-    if not texto:
-        return ""
-    if " - " in texto:
-        izquierda, derecha = [parte.strip() for parte in texto.split(" - ", 1)]
-        if izquierda and derecha:
-            return f"{izquierda.upper()} - {derecha.upper()}"
-    partes = [parte.strip() for parte in texto.split("·") if parte.strip()]
-    pozo = _pozo_tabla_pdf(texto)
-    sector = partes[0] if partes and _es_sector_zona(partes[0]) else ""
-    if sector and pozo and sector.casefold() != pozo.casefold():
-        return f"{sector.upper()} - {pozo.upper()}"
-    return (pozo or sector or texto).upper()
+    """Columna Ubicación: solo la clave del pozo o sitio, sin el sector."""
+    return _pozo_tabla_pdf(valor).upper()
 
 
 def _tag_cuadrilla_pdf(valor) -> str:

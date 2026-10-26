@@ -1962,7 +1962,7 @@ def resolver_ubicacion_catalogo(seleccion: str) -> tuple[str, str]:
 
 
 def formato_ubicacion_reporte(fila) -> str:
-    """Encabezado limpio: ARAGON (A) - PA67. Sin comillas."""
+    """Solo la clave del pozo o sitio: PB163, PS1019. Sin el sector."""
     sector = texto_visible(fila.get("SECTOR"), "")
     pozo = texto_visible(fila.get("POZO"), "")
     ubicacion = texto_visible(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN"), "")
@@ -1978,10 +1978,8 @@ def formato_ubicacion_reporte(fila) -> str:
         if ficha:
             sector = str(ficha.get("sector") or "").strip() or sector
             pozo = etiqueta_codigo_ubicacion(ficha.get("nombre")) or pozo
-    sector = sector.replace('"', "").replace("'", "").strip()
     pozo = pozo.replace('"', "").replace("'", "").strip()
-    if sector and pozo and sector.casefold() != pozo.casefold():
-        return f"{sector.upper()} - {pozo.upper()}"
+    sector = sector.replace('"', "").replace("'", "").strip()
     return (pozo or sector or ubicacion).replace('"', "").replace("'", "").strip().upper()
 
 
