@@ -18,6 +18,8 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 RAIZ = os.path.dirname(os.path.abspath(__file__))
 PLANTILLA_XLSX = os.path.join(RAIZ, "assets", "plantilla_reporte_ejecutivo.xlsx")
+HOJA_PLANTILLA = "Hoja2"
+FILA_ENCABEZADO = 4
 FILA_DATOS = 5
 COLUMNAS_EXCEL = ("C", "D", "E", "F", "G", "H", "I")
 CAMPOS = ("ot", "fecha", "ubicacion", "cuadrilla", "descripcion", "insumo", "cantidad")
@@ -90,38 +92,68 @@ def _escribir_fila(ws: Worksheet, renglon: int, fila: dict, borde: Border) -> No
     ws.row_dimensions[renglon].height = 30
 
 
+def _hoja_destino(libro):
+    if HOJA_PLANTILLA not in libro.sheetnames:
+        raise KeyError(f"La plantilla no tiene la hoja «{HOJA_PLANTILLA}».")
+    return libro[HOJA_PLANTILLA]
+
+
+def _limpiar_referencias_externas(libro) -> None:
+    """La plantilla arrastra nombres y vínculos de otros libros. Excel los refresca y deja la hoja en blanco."""
+    libro._external_links = []
+    for nombre in list(libro.defined_names):
+        del libro.defined_names[nombre]
+
+
+def _extender_tabla(hoja: Worksheet, ultima_fila: int) -> None:
+    """La tabla oficial nace en C4:I5. Hay que crecerla para que Excel conserve las filas nuevas."""
+    ref = f"C{FILA_ENCABEZADO}:I{max(ultima_fila, FILA_DATOS)}"
+    if not hoja.tables:
+        return
+    for tabla in hoja.tables.values():
+        tabla.ref = ref
+        if tabla.autoFilter is not None:
+            tabla.autoFilter.ref = ref
+
+
 def generar_excel_reporte_ejecutivo(filas: list[dict], criterio: str, periodo: str) -> bytes:
     if not os.path.isfile(PLANTILLA_XLSX):
         raise FileNotFoundError("No está la plantilla assets/plantilla_reporte_ejecutivo.xlsx.")
     libro = load_workbook(PLANTILLA_XLSX)
-    hoja = libro.active
+    _limpiar_referencias_externas(libro)
+    hoja = _hoja_destino(libro)
     borde = _borde_formal()
     hoja["C3"] = f"{_titulo(criterio)}\n{periodo}".strip()
     hoja["C3"].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     hoja.row_dimensions[3].height = 36
     for columna in COLUMNAS_EXCEL:
-        encabezado = hoja[f"{columna}4"]
+        encabezado = hoja[f"{columna}{FILA_ENCABEZADO}"]
         encabezado.font = Font(name="Aptos Narrow", size=11, bold=True, color="1F2937")
         encabezado.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         encabezado.border = borde
-    hoja.row_dimensions[4].height = 32
+    hoja.row_dimensions[FILA_ENCABEZADO].height = 32
     for indice, fila in enumerate(filas):
         _escribir_fila(hoja, FILA_DATOS + indice, fila, borde)
-    ultima = FILA_DATOS + len(filas) - 1 if filas else 4
+    ultima = FILA_DATOS + len(filas) - 1 if filas else FILA_DATOS
+    _extender_tabla(hoja, ultima)
     hoja.print_area = f"C3:I{ultima}"
     hoja.print_title_rows = "3:4"
     hoja.page_setup.orientation = "landscape"
     hoja.page_setup.paperSize = hoja.PAPERSIZE_LETTER
     hoja.page_setup.fitToWidth = 1
-    hoja.page_setup.fitToHeight = 0
+    hoja.page_setup.fitToHeight = 1
     hoja.page_setup.horizontalCentered = True
     hoja.sheet_properties.pageSetUpPr.fitToPage = True
     hoja.page_margins.left = 0.4
     hoja.page_margins.right = 0.4
     hoja.page_margins.top = 0.5
     hoja.page_margins.bottom = 0.5
-    hoja.oddFooter.center.text = "PJP4 · Área Contractual Soledad · OPS"
-    hoja.sheet_view.showGridLines = False
+    hoja.oddFooter.center.text = "PJP4 - Area Contractual Soledad - OPS"
+    hoja.sheet_view.topLeftCell = "A1"
+    hoja.sheet_view.zoomScale = 110
+    if hoja.sheet_view.selection:
+        hoja.sheet_view.selection[0].activeCell = "C3"
+        hoja.sheet_view.selection[0].sqref = "C3"
     buffer = io.BytesIO()
     libro.save(buffer)
     return buffer.getvalue()
