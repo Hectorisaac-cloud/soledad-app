@@ -20906,15 +20906,38 @@ def _ubicacion_fila_admin(fila) -> str:
     return _texto_celda_admin(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN"))
 
 
-def _bitacora_mes_admin(jornada: date) -> pd.DataFrame:
+def _periodo_mes_calendario(ancla: date) -> tuple[date, date]:
+    ultimo = calendar.monthrange(ancla.year, ancla.month)[1]
+    return date(ancla.year, ancla.month, 1), date(ancla.year, ancla.month, ultimo)
+
+
+def _bitacora_rango_admin(inicio: date, fin: date) -> pd.DataFrame:
+    """Actividades cuya fecha cae en el periodo, inclusive. Fuera de rango no entran."""
     base = bitacora_con_fechas(cargar_bitacora())
-    if base.empty or "_fecha" not in base.columns:
+    if base is None or base.empty or "_fecha" not in base.columns:
+        return base.iloc[0:0] if base is not None else pd.DataFrame()
+    if not isinstance(inicio, date) or not isinstance(fin, date) or inicio > fin:
         return base.iloc[0:0]
     return base.loc[
-        base["_fecha"].map(
-            lambda dia: isinstance(dia, date) and dia.year == jornada.year and dia.month == jornada.month
-        )
+        base["_fecha"].map(lambda dia: isinstance(dia, date) and not isinstance(dia, datetime) and inicio <= dia <= fin)
     ].copy()
+
+
+def _bitacora_mes_admin(jornada: date) -> pd.DataFrame:
+    inicio, fin = _periodo_mes_calendario(jornada)
+    return _bitacora_rango_admin(inicio, fin)
+
+
+def _etiqueta_periodo_admin(inicio: date, fin: date) -> str:
+    mes_completo = (
+        inicio.year == fin.year
+        and inicio.month == fin.month
+        and inicio.day == 1
+        and fin.day == calendar.monthrange(fin.year, fin.month)[1]
+    )
+    if mes_completo:
+        return f"{NOMBRES_MES[inicio.month - 1]} {inicio.year}"
+    return f"{inicio.strftime('%d/%m/%Y')} – {fin.strftime('%d/%m/%Y')}"
 
 
 def _filtrar_vista_admin(df: pd.DataFrame, ot: str, sector: str, pozo: str, cuadrilla: str, estatus: str) -> pd.DataFrame:
@@ -20947,6 +20970,14 @@ def _opciones_admin(df: pd.DataFrame, extractor) -> list[str]:
             if texto:
                 valores.add(texto)
     return ["Todos"] + sorted(valores, key=str.casefold)
+
+
+def _elegir_filtro_admin(etiqueta: str, opciones: list[str], key: str) -> str:
+    if not opciones:
+        opciones = ["Todos"]
+    if st.session_state.get(key) not in opciones:
+        st.session_state[key] = opciones[0]
+    return st.selectbox(etiqueta, opciones, key=key)
 
 
 def _clase_avance_admin(fila, programadas: set[str]) -> str:
@@ -21197,16 +21228,44 @@ def render_edicion_captura_admin(jornada: date) -> None:
 
 
 def render_vista_previa_admin(jornada: date) -> None:
-    mes = _bitacora_mes_admin(jornada)
+    inicio_mes, fin_mes = _periodo_mes_calendario(date.today())
+    with st.container(border=True):
+        desde_col, hasta_col = st.columns(2)
+        with desde_col:
+            desde = st.date_input(
+                "Desde",
+                value=inicio_mes,
+                format="DD/MM/YYYY",
+                key="adm_m_prev_desde",
+            )
+        with hasta_col:
+            hasta = st.date_input(
+                "Hasta",
+                value=fin_mes,
+                format="DD/MM/YYYY",
+                key="adm_m_prev_hasta",
+            )
+    if not isinstance(desde, date) or not isinstance(hasta, date):
+        st.warning("Elige un rango de fechas válido.")
+        return
+    if desde > hasta:
+        st.warning("La fecha Desde tiene que ser anterior o igual a Hasta.")
+        return
+    periodo = _bitacora_rango_admin(desde, hasta)
+    st.caption(
+        f"{_etiqueta_periodo_admin(desde, hasta)} · {len(periodo)} actividad(es) en el periodo"
+    )
     filtros = st.columns(2)
     with filtros[0]:
         ot = st.text_input("OT", key="adm_m_f_ot", placeholder="Secuencia")
-        pozo = st.selectbox("Pozo", _opciones_admin(mes, _pozo_fila_admin), key="adm_m_f_pozo")
-        estatus = st.selectbox("Estatus", _opciones_admin(mes, _estatus_fila_admin), key="adm_m_f_estatus")
+        pozo = _elegir_filtro_admin("Pozo", _opciones_admin(periodo, _pozo_fila_admin), "adm_m_f_pozo")
+        estatus = _elegir_filtro_admin("Estatus", _opciones_admin(periodo, _estatus_fila_admin), "adm_m_f_estatus")
     with filtros[1]:
-        sector = st.selectbox("Sector", _opciones_admin(mes, _sector_fila_admin), key="adm_m_f_sector")
-        cuadrilla = st.selectbox("Cuadrilla", _opciones_admin(mes, _cuadrilla_fila_admin), key="adm_m_f_cuadrilla")
-    filtrada = _filtrar_vista_admin(mes, ot, sector, pozo, cuadrilla, estatus)
+        sector = _elegir_filtro_admin("Sector", _opciones_admin(periodo, _sector_fila_admin), "adm_m_f_sector")
+        cuadrilla = _elegir_filtro_admin(
+            "Cuadrilla", _opciones_admin(periodo, _cuadrilla_fila_admin), "adm_m_f_cuadrilla"
+        )
+    filtrada = _filtrar_vista_admin(periodo, ot, sector, pozo, cuadrilla, estatus)
     programados, imprevistos, total = _contar_avance_admin(filtrada)
     m1, m2, m3 = st.columns(3)
     m1.metric("Programados", programados)
@@ -21230,7 +21289,7 @@ def render_vista_previa_admin(jornada: date) -> None:
     st.plotly_chart(avance, use_container_width=True, key="adm_m_chart_avance")
     detalle = detalle_insumos_suministrados(filtrada)
     if detalle.empty:
-        st.caption("Sin insumos consumidos para el filtro de este mes.")
+        st.caption("Sin insumos consumidos en el periodo seleccionado.")
     else:
         resumen = (
             detalle.groupby("refaccion", as_index=False)["cantidad"]
