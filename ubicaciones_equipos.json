@@ -452,11 +452,11 @@
       "zona_id": "gallo",
       "prefijo": "PGA",
       "sector": "Gallo (GA)",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
+      "equipo_mci": "GALLO 368",
+      "equipo_ub": "AROW A 54",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-09-27 23:50"
+      "actualizado": "2026-10-26 17:15"
     },
     "PGA374": {
       "id": "PGA374",
@@ -464,11 +464,11 @@
       "zona_id": "gallo",
       "prefijo": "PGA",
       "sector": "Gallo (GA)",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Lufkin",
+      "equipo_mci": "GALLO 374",
+      "equipo_ub": "AROW A 54",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-09-27 23:50"
+      "actualizado": "2026-10-26 17:15"
     },
     "PA67": {
       "id": "PA67",
@@ -1525,6 +1525,174 @@
       "estatus": "Operativo",
       "notas": "",
       "actualizado": "2026-09-27 23:50"
+    },
+    "NOMBRE CORTO DEL POZO EN LA APP": {
+      "id": "NOMBRE CORTO DEL POZO EN LA APP",
+      "nombre": "NOMBRE CORTO DEL POZO EN LA APP",
+      "zona_id": "gallo",
+      "prefijo": "PGA",
+      "sector": "Gallo (GA)",
+      "equipo_mci": "NOMBRE LARGO DEL POZO EN EXCEL",
+      "equipo_ub": "MCI",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "2026-10-26 17:15"
+    },
+    "PGA356": {
+      "id": "PGA356",
+      "nombre": "PGA356",
+      "zona_id": "gallo",
+      "prefijo": "PGA",
+      "sector": "Gallo (GA)",
+      "equipo_mci": "GALLO 356",
+      "equipo_ub": "AROW A 54",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "2026-10-26 17:15"
+    },
+    "PGA358": {
+      "id": "PGA358",
+      "nombre": "PGA358",
+      "zona_id": "gallo",
+      "prefijo": "PGA",
+      "sector": "Gallo (GA)",
+      "equipo_mci": "GALLO 358",
+      "equipo_ub": "AROW A 54",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "2026-10-26 17:15"
+    },
+    "PGA398": {
+      "id": "PGA398",
+      "nombre": "PGA398",
+      "zona_id": "gallo",
+      "prefijo": "PGA",
+      "sector": "Gallo (GA)",
+      "equipo_mci": "GALLO 398",
+      "equipo_ub": "VORTEC V8",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "2026-10-26 17:15"
+    },
+    "PGA352": {
+      "id": "PGA352",
+      "nombre": "PGA352",
+      "zona_id": "gallo",
+      "prefijo": "PGA",
+      "sector": "Gallo (GA)",
+      "equipo_mci": "GALLO 352",
+      "equipo_ub": "AROW A 54",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "2026-10-26 17:15"
+    },
+    "PS794": {
+      "id": "PS794",
+      "nombre": "PS794",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": ""
+    },
+    "PSN251": {
+      "id": "PSN251",
+      "nombre": "PSN251",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": ""
+    },
+    "PS418": {
+      "id": "PS418",
+      "nombre": "PS418",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": ""
+    },
+    "PS116": {
+      "id": "PS116",
+      "nombre": "PS116",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": ""
+    },
+    "PSN262": {
+      "id": "PSN262",
+      "nombre": "PSN262",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": ""
+    },
+    "PSN36": {
+      "id": "PSN36",
+      "nombre": "PSN36",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": ""
+    },
+    "PSN456": {
+      "id": "PSN456",
+      "nombre": "PSN456",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": ""
+    },
+    "PSN232": {
+      "id": "PSN232",
+      "nombre": "PSN232",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": ""
+    },
+    "PS628": {
+      "id": "PS628",
+      "nombre": "PS628",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "MCI tipo Arrow",
+      "equipo_ub": "UBM tipo Weatherford",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "2026-10-26 17:16"
     }
   },
   "cambios_equipo": [
@@ -1543,11 +1711,11 @@
     }
   ],
   "migracion": {
-    "archivo": "C:\\Users\\torif\\OneDrive\\Desktop\\App_bitacora_pjp4\\ubicacion_equipo\\ubicaciones_equipos.json.xlsx",
-    "mtime": 1790574614.0,
-    "fecha": "2026-09-27 23:50",
-    "nuevos": 0,
-    "actualizados": 96,
-    "total_excel": 96
+    "archivo": "/mount/src/soledad-app/ubicacion_equipo/ubicaciones_equipos.json.xlsx",
+    "mtime": 1793003822.3839147,
+    "fecha": "2026-10-26 17:15",
+    "nuevos": 5,
+    "actualizados": 2,
+    "total_excel": 7
   }
 }
