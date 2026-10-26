@@ -20,7 +20,7 @@ from openpyxl.utils.units import pixels_to_EMU
 from openpyxl.workbook.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from PIL import Image as PILImage
-from PIL import ImageOps
+from PIL import ImageDraw, ImageOps
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -33,7 +33,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, Table, TableStyle
 
-VERSION_DISENO_PDF = 10
+VERSION_DISENO_PDF = 11
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -94,10 +94,9 @@ FIRMANTES_PDF = (
     ("LUIS CARMELO CAMPOS BRITO", "COORDINADOR Y/O GERENTE DE PJP4"),
     ("GERARDO BERNABE RICARDEZ", "COORDINADOR DE OPS"),
 )
-COLOR_MARCO_FOTO = colors.HexColor("#FFCC00")
-COLOR_MARCO_RGB = (255, 204, 0)
-GROSOR_MARCO_FOTO = 8
-HOLGURA_MARCO_PDF = 3.4
+COLOR_MARCO_RGB = (255, 215, 0)
+GROSOR_LINEA_MARCO = 2
+SEPARACION_MARCO = 6
 COLOR_BARRA_FIRMAS = colors.HexColor("#E5A200")
 
 
@@ -259,13 +258,24 @@ def _firma_derecha_png(ruta_plantilla: str) -> io.BytesIO | None:
     return _buffer_png(raster, "firma_derecha.png")
 
 
-def _enmarcar_foto(imagen: PILImage.Image, grosor: int = GROSOR_MARCO_FOTO) -> PILImage.Image:
-    """Cuadro amarillo un poco más grande que la fotografía."""
+def _enmarcar_foto(
+    imagen: PILImage.Image,
+    linea: int = GROSOR_LINEA_MARCO,
+    separacion: int = SEPARACION_MARCO,
+) -> PILImage.Image:
+    """Línea amarilla delgada con un margen blanco entre la foto y el marco."""
     if imagen.mode != "RGB":
         imagen = imagen.convert("RGB")
-    borde = max(1, int(grosor))
-    marco = PILImage.new("RGB", (imagen.width + 2 * borde, imagen.height + 2 * borde), COLOR_MARCO_RGB)
-    marco.paste(imagen, (borde, borde))
+    linea = max(1, int(linea))
+    separacion = max(1, int(separacion))
+    margen = linea + separacion
+    marco = PILImage.new("RGB", (imagen.width + 2 * margen, imagen.height + 2 * margen), (255, 255, 255))
+    marco.paste(imagen, (margen, margen))
+    ImageDraw.Draw(marco).rectangle(
+        (0, 0, marco.width - 1, marco.height - 1),
+        outline=COLOR_MARCO_RGB,
+        width=linea,
+    )
     return marco
 
 
@@ -273,27 +283,27 @@ def _anclar_foto(ws: Worksheet, imagen: PILImage.Image, ranura: tuple[int, int, 
     col_ini, fila_ini, col_fin, fila_fin = ranura
     caja_ancho, caja_alto = _tamano_rango_px(ws, col_ini, fila_ini, col_fin, fila_fin)
     ancho, alto, dx, dy = _ajustar_en_caja(imagen.size[0], imagen.size[1], caja_ancho, caja_alto)
-    grosor = max(4, min(GROSOR_MARCO_FOTO, min(ancho, alto) // 14))
-    if ancho > 2 * grosor + 8 and alto > 2 * grosor + 8:
+    margen = GROSOR_LINEA_MARCO + SEPARACION_MARCO
+    if ancho > 2 * margen + 8 and alto > 2 * margen + 8:
         escala = min(
-            (ancho - 2 * grosor) / max(imagen.size[0], 1),
-            (alto - 2 * grosor) / max(imagen.size[1], 1),
+            (ancho - 2 * margen) / max(imagen.size[0], 1),
+            (alto - 2 * margen) / max(imagen.size[1], 1),
         )
         foto_ancho = max(1, int(round(imagen.size[0] * escala)))
         foto_alto = max(1, int(round(imagen.size[1] * escala)))
         foto = imagen
         if (foto_ancho, foto_alto) != imagen.size:
             foto = imagen.resize((foto_ancho, foto_alto), PILImage.Resampling.LANCZOS)
-        imagen = _enmarcar_foto(foto, grosor)
+        imagen = _enmarcar_foto(foto)
         ancho, alto = imagen.size
         dx = max(_MARGEN_RANURA, int((caja_ancho - ancho) / 2))
         dy = max(_MARGEN_RANURA, int((caja_alto - alto) / 2))
     elif (ancho, alto) != imagen.size:
         imagen = imagen.resize((ancho, alto), PILImage.Resampling.LANCZOS)
     buffer = io.BytesIO()
-    imagen.save(buffer, format="JPEG", quality=85)
+    imagen.save(buffer, format="PNG")
     buffer.seek(0)
-    buffer.name = "evidencia.jpg"
+    buffer.name = "evidencia.png"
     dibujo = XLImage(buffer)
     dibujo.width = ancho
     dibujo.height = alto
@@ -564,31 +574,19 @@ def _hoja_a_pdf(
     tabla.wrapOn(pdf, tabla_ancho, tabla_arriba - tabla_abajo)
     tabla.drawOn(pdf, tabla_x, tabla_abajo)
 
-    pdf.setStrokeColor(COLOR_MARCO_FOTO)
-    pdf.setFillColor(COLOR_MARCO_FOTO)
-    pdf.setLineWidth(1.6)
     for imagen, caja in fotos:
         col_ini, fila_ini, col_fin, fila_fin = _ranura_de_caja(ws, caja)
         buffer = io.BytesIO()
-        imagen.save(buffer, format="JPEG", quality=85)
+        imagen.save(buffer, format="PNG")
         buffer.seek(0)
-        lector = ImageReader(buffer)
-        destino_x = x_pt(col_ini) + caja["dx"] * 72 / 96 * escala
-        destino_y = y_pt(fila_ini, caja["dy"] + caja["alto"])
-        destino_ancho = caja["ancho"] * 72 / 96 * escala
-        destino_alto = caja["alto"] * 72 / 96 * escala
-        dibujado = _caja_proporcion(lector, destino_x, destino_y, destino_ancho, destino_alto)
-        if dibujado:
-            x_foto, y_foto, ancho_foto, alto_foto = dibujado
-            pdf.rect(
-                x_foto - HOLGURA_MARCO_PDF,
-                y_foto - HOLGURA_MARCO_PDF,
-                ancho_foto + 2 * HOLGURA_MARCO_PDF,
-                alto_foto + 2 * HOLGURA_MARCO_PDF,
-                stroke=1,
-                fill=1,
-            )
-        _dibujar_proporcion(pdf, lector, destino_x, destino_y, destino_ancho, destino_alto)
+        _dibujar_proporcion(
+            pdf,
+            ImageReader(buffer),
+            x_pt(col_ini) + caja["dx"] * 72 / 96 * escala,
+            y_pt(fila_ini, caja["dy"] + caja["alto"]),
+            caja["ancho"] * 72 / 96 * escala,
+            caja["alto"] * 72 / 96 * escala,
+        )
 
     caja_arriba = y_pt(62) + 4
     caja_abajo = y_pt(70)
