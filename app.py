@@ -19914,6 +19914,12 @@ MODULOS_ADMIN = [
         "descripcion": "Programas de Zona Norte y Zona Sur, confirmación en campo y avance acumulado.",
     },
     {
+        "id": "reportes_ejecutivos",
+        "icono": "📄",
+        "titulo": "Reportes ejecutivos",
+        "descripcion": "Reporte formal para OPS, con la bitácora cruzada por fechas y por criterio.",
+    },
+    {
         "id": "calendario_asistencia",
         "icono": "📅",
         "titulo": "Calendario de asistencia",
@@ -22561,8 +22567,214 @@ def render_explorador_admin() -> None:
     with pie_hist:
         if st.button("HISTORIAL", use_container_width=True, key="adm_pie_historial"):
             abrir_modulo_admin("historial_base")
-    if st.button("MANTENIMIENTOS PROGRAMADOS", use_container_width=True, key="adm_pie_programados"):
-        abrir_modulo_admin("mantenimientos_programados")
+    pie_prog, pie_ejec = st.columns(2)
+    with pie_prog:
+        if st.button("MANTENIMIENTOS PROGRAMADOS", use_container_width=True, key="adm_pie_programados"):
+            abrir_modulo_admin("mantenimientos_programados")
+    with pie_ejec:
+        if st.button("REPORTES EJECUTIVOS", use_container_width=True, key="adm_pie_ejecutivos"):
+            abrir_modulo_admin("reportes_ejecutivos")
+
+
+CRITERIOS_REPORTE_EJECUTIVO = (
+    ("Bandas", "insumo", ("banda",), ()),
+    ("Refrigerantes", "insumo", ("refrigerante", "anticongelante"), ()),
+    ("Aceite", "insumo", ("aceite",), ("filtro",)),
+    ("Grasa", "insumo", ("grasa",), ()),
+    ("Filtros", "insumo", ("filtro",), ()),
+    ("Bujías", "insumo", ("bujia",), ()),
+    ("Mantenimientos mensuales y bimestrales", "mantenimiento", ("mensual", "bimestral"), ("semestral",)),
+    ("Mantenimientos semestrales", "mantenimiento", ("semestral",), ()),
+)
+
+
+def _criterio_reporte_ejecutivo(nombre: str) -> tuple[str, str, tuple[str, ...], tuple[str, ...]]:
+    for criterio in CRITERIOS_REPORTE_EJECUTIVO:
+        if criterio[0] == nombre:
+            return criterio
+    return CRITERIOS_REPORTE_EJECUTIVO[0]
+
+
+def _texto_coincide_criterio(texto: str, tokens: tuple[str, ...], excluir: tuple[str, ...]) -> bool:
+    clave = _sin_acentos(texto).casefold()
+    if any(pieza in clave for pieza in excluir):
+        return False
+    return any(pieza in clave for pieza in tokens)
+
+
+def _descripcion_fila_reporte(fila) -> str:
+    for columna in (
+        "DESCRIPCION DE LA ACTIVIDAD",
+        "DESCRIPCIÓN DE LA ACTIVIDAD",
+        "ACTIVIDAD CORTA",
+        "TIPO DE ACTIVIDAD",
+    ):
+        texto = texto_visible(fila.get(columna), "")
+        if texto:
+            return texto
+    return ""
+
+
+def _cuadrilla_personal_reporte(fila) -> str:
+    cuadrilla = etiqueta_cuadrilla_historial(str(fila.get("CUADRILLA") or ""))
+    personal = texto_visible(fila.get("PERSONAL") or fila.get("MECANICO EN TURNO"), "")
+    if personal:
+        return f"{cuadrilla} / {personal}"
+    return cuadrilla
+
+
+def _ot_fila_reporte(fila) -> str:
+    numero = numero_secuencia_actividad(fila.get("SECUENCIA"))
+    if numero is None:
+        return ""
+    return etiqueta_secuencia_consecutiva(numero)
+
+
+def _insumos_fila_reporte(fila) -> list[tuple[str, float]]:
+    columnas = []
+    for columna in getattr(fila, "index", []):
+        nombre = str(columna)
+        if not _es_columna_cantidad_refaccion(nombre):
+            continue
+        origen = _ESPEJO_INSUMO_BITACORA.get(nombre)
+        if origen and origen in fila.index:
+            continue
+        columnas.append(nombre)
+    salida = []
+    for columna in columnas:
+        bruto = fila.get(columna)
+        cantidad = cantidad_grasa_kg(bruto) if _es_grasa(columna) else _numero_insumo(bruto)
+        if cantidad <= 0:
+            continue
+        salida.append((etiqueta_refaccion(columna), float(cantidad)))
+    for nombre, cantidad in _partes_otros_insumos(fila.get("OTROS INSUMOS")):
+        if cantidad > 0:
+            salida.append((nombre, float(cantidad)))
+    return salida
+
+
+def filas_reporte_ejecutivo(df: pd.DataFrame | None, criterio: str) -> list[dict]:
+    """Actividades del periodo que corresponden al criterio, una fila por insumo."""
+    _etiqueta, tipo, tokens, excluir = _criterio_reporte_ejecutivo(criterio)
+    if df is None or df.empty:
+        return []
+    filas = []
+    for _, fila in df.iterrows():
+        dia = fila.get("_fecha")
+        if not isinstance(dia, date) or isinstance(dia, datetime):
+            continue
+        descripcion = _descripcion_fila_reporte(fila)
+        insumos = _insumos_fila_reporte(fila)
+        base = {
+            "ot": _ot_fila_reporte(fila),
+            "fecha": dia,
+            "ubicacion": formato_ubicacion_reporte(fila),
+            "cuadrilla": _cuadrilla_personal_reporte(fila),
+            "descripcion": descripcion,
+        }
+        if tipo == "insumo":
+            for nombre, cantidad in insumos:
+                if _texto_coincide_criterio(nombre, tokens, excluir):
+                    filas.append({**base, "insumo": nombre, "cantidad": cantidad})
+            continue
+        if not _texto_coincide_criterio(descripcion, tokens, excluir):
+            continue
+        if insumos:
+            for nombre, cantidad in insumos:
+                filas.append({**base, "insumo": nombre, "cantidad": cantidad})
+        else:
+            filas.append({**base, "insumo": "", "cantidad": None})
+    filas.sort(key=lambda item: (item["fecha"], item["ot"], item["ubicacion"], item["insumo"]))
+    return filas
+
+
+def _tabla_reporte_ejecutivo(filas: list[dict]) -> pd.DataFrame:
+    columnas = [
+        "N° de OT",
+        "Fecha",
+        "Ubicación/Pozo",
+        "Cuadrilla/Personal asignado",
+        "Descripción de la actividad",
+        "Insumo/Refacción",
+        "Cantidad",
+    ]
+    if not filas:
+        return pd.DataFrame(columns=columnas)
+    registros = []
+    for fila in filas:
+        cantidad = fila.get("cantidad")
+        registros.append(
+            {
+                "N° de OT": fila.get("ot") or "",
+                "Fecha": fila["fecha"].strftime("%d/%m/%Y") if isinstance(fila.get("fecha"), date) else "",
+                "Ubicación/Pozo": fila.get("ubicacion") or "",
+                "Cuadrilla/Personal asignado": fila.get("cuadrilla") or "",
+                "Descripción de la actividad": fila.get("descripcion") or "",
+                "Insumo/Refacción": fila.get("insumo") or "",
+                "Cantidad": "" if cantidad in (None, "") else _texto_cantidad_refaccion(str(fila.get("insumo") or ""), float(cantidad)),
+            }
+        )
+    return pd.DataFrame(registros, columns=columnas)
+
+
+def render_reportes_ejecutivos() -> None:
+    import reporte_ejecutivo
+
+    st.markdown('<div class="section-title">Reportes ejecutivos</div>', unsafe_allow_html=True)
+    st.caption("Cruza la bitácora con la plantilla formal para presentarla ante OPS.")
+    inicio_mes, fin_mes = _periodo_mes_calendario(date.today())
+    col_desde, col_hasta, col_criterio = st.columns([1, 1, 1.45])
+    with col_desde:
+        inicio = st.date_input("Desde", value=inicio_mes, key="ejec_desde")
+    with col_hasta:
+        fin = st.date_input("Hasta", value=fin_mes, key="ejec_hasta")
+    with col_criterio:
+        criterio = st.selectbox(
+            "Criterio",
+            [item[0] for item in CRITERIOS_REPORTE_EJECUTIVO],
+            key="ejec_criterio",
+        )
+    if not isinstance(inicio, date) or not isinstance(fin, date) or isinstance(inicio, datetime) or isinstance(fin, datetime):
+        st.warning("Selecciona un rango de fechas válido.")
+        return
+    if inicio > fin:
+        st.warning("La fecha inicial queda después de la final.")
+        return
+    periodo = _etiqueta_periodo_admin(inicio, fin)
+    filas = filas_reporte_ejecutivo(_bitacora_rango_admin(inicio, fin), criterio)
+    st.caption(f"{len(filas)} registro(s) · {periodo}")
+    tabla = _tabla_reporte_ejecutivo(filas)
+    if tabla.empty:
+        st.info("No hay registros de bitácora para ese periodo y criterio.")
+    else:
+        st.dataframe(tabla, use_container_width=True, hide_index=True)
+    try:
+        excel = reporte_ejecutivo.generar_excel_reporte_ejecutivo(filas, criterio, periodo)
+        pdf = reporte_ejecutivo.generar_pdf_reporte_ejecutivo(filas, criterio, periodo)
+    except Exception as exc:
+        st.error(f"No se pudo armar el reporte: {exc}")
+        return
+    slug = re.sub(r"[^a-z0-9]+", "_", _sin_acentos(criterio).casefold()).strip("_") or "reporte"
+    nombre = f"reporte_ejecutivo_{slug}_{inicio.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}"
+    col_excel, col_pdf = st.columns(2)
+    with col_excel:
+        st.download_button(
+            "Descargar Excel",
+            data=excel,
+            file_name=f"{nombre}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="ejec_descarga_excel",
+        )
+    with col_pdf:
+        st.download_button(
+            "Descargar PDF",
+            data=pdf,
+            file_name=f"{nombre}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            key="ejec_descarga_pdf",
+        )
 
 
 def render_historial_base_admin() -> None:
@@ -22898,6 +23110,8 @@ def render_panel_administrativo() -> None:
         render_programa_octubre()
     elif modulo_id == "mantenimientos_programados":
         render_mantenimientos_programados()
+    elif modulo_id == "reportes_ejecutivos":
+        render_reportes_ejecutivos()
     elif modulo_id == "auditoria":
         render_auditoria_accesos()
     elif modulo_id == "calendario_asistencia":
