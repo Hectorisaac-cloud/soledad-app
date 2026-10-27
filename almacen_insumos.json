@@ -470,6 +470,22 @@
       "tipo_insumo": "Consumible",
       "id": "e748452562",
       "registrado": "2026-10-27 17:24"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-26",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 1",
+      "sector": "Coyotes (Coy)",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 3.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "2abc2b9085",
+      "registrado": "2026-10-27 17:28"
     }
   ]
 }
