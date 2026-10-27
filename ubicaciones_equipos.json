@@ -456,7 +456,7 @@
       "equipo_ub": "AROW A 54",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-10-26 17:15"
+      "actualizado": "2026-10-27 16:21"
     },
     "PGA374": {
       "id": "PGA374",
@@ -468,7 +468,7 @@
       "equipo_ub": "AROW A 54",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-10-26 17:15"
+      "actualizado": "2026-10-27 16:21"
     },
     "PA67": {
       "id": "PA67",
@@ -1536,7 +1536,7 @@
       "equipo_ub": "MCI",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-10-26 17:15"
+      "actualizado": "2026-10-27 16:21"
     },
     "PGA356": {
       "id": "PGA356",
@@ -1548,7 +1548,7 @@
       "equipo_ub": "AROW A 54",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-10-26 17:15"
+      "actualizado": "2026-10-27 16:21"
     },
     "PGA358": {
       "id": "PGA358",
@@ -1560,7 +1560,7 @@
       "equipo_ub": "AROW A 54",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-10-26 17:15"
+      "actualizado": "2026-10-27 16:21"
     },
     "PGA398": {
       "id": "PGA398",
@@ -1572,7 +1572,7 @@
       "equipo_ub": "VORTEC V8",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-10-26 17:15"
+      "actualizado": "2026-10-27 16:21"
     },
     "PGA352": {
       "id": "PGA352",
@@ -1584,7 +1584,7 @@
       "equipo_ub": "AROW A 54",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-10-26 17:15"
+      "actualizado": "2026-10-27 16:21"
     },
     "PS794": {
       "id": "PS794",
@@ -1693,6 +1693,18 @@
       "estatus": "Operativo",
       "notas": "",
       "actualizado": "2026-10-26 17:16"
+    },
+    "PSN301": {
+      "id": "PSN301",
+      "nombre": "PSN301",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Bateria de Separacion Soledad Norte (BSNI)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": ""
     }
   },
   "cambios_equipo": [
@@ -1712,10 +1724,10 @@
   ],
   "migracion": {
     "archivo": "/mount/src/soledad-app/ubicacion_equipo/ubicaciones_equipos.json.xlsx",
-    "mtime": 1793003822.3839147,
-    "fecha": "2026-10-26 17:15",
-    "nuevos": 5,
-    "actualizados": 2,
+    "mtime": 1793113194.355328,
+    "fecha": "2026-10-27 16:21",
+    "nuevos": 0,
+    "actualizados": 7,
     "total_excel": 7
   }
 }
