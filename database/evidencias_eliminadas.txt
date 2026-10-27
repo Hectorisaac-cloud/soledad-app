@@ -178,4 +178,5 @@ evidencias/2026-10-26_Act1_152744/foto_4.jpg
 evidencias/2026-10-26_Act1_152744/foto_5.jpg
 evidencias/2026-10-26_Act1_152744/foto_6.jpg
 evidencias/2026-10-26_Act1_152744/foto_7.jpg
+evidencias/2026-10-26_Act1_152744/foto_8.jpg
 evidencias/2026-10-26_Act1_152744/foto_9.jpg
