@@ -180,3 +180,12 @@ evidencias/2026-10-26_Act1_152744/foto_6.jpg
 evidencias/2026-10-26_Act1_152744/foto_7.jpg
 evidencias/2026-10-26_Act1_152744/foto_8.jpg
 evidencias/2026-10-26_Act1_152744/foto_9.jpg
+evidencias/2026-10-26_Act3_170609/foto_1.jpg
+evidencias/2026-10-26_Act3_170609/foto_2.jpg
+evidencias/2026-10-26_Act3_170609/foto_3.jpg
+evidencias/2026-10-26_Act3_170609/foto_4.jpg
+evidencias/2026-10-26_Act3_170609/foto_5.jpg
+evidencias/2026-10-26_Act3_170609/foto_6.jpg
+evidencias/2026-10-26_Act3_170609/foto_7.jpg
+evidencias/2026-10-26_Act3_170609/foto_8.jpg
+evidencias/2026-10-26_Act3_170609/foto_9.jpg
