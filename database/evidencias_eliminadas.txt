@@ -173,4 +173,5 @@ evidencias/2026-10-23_Act9_171123/foto_7.jpg
 evidencias/2026-10-23_Act9_171123/foto_8.jpg
 evidencias/2026-10-26_Act1_152744/foto_1.jpg
 evidencias/2026-10-26_Act1_152744/foto_2.jpg
+evidencias/2026-10-26_Act1_152744/foto_3.jpg
 evidencias/2026-10-26_Act1_152744/foto_5.jpg
