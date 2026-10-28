@@ -613,30 +613,11 @@ PREFIJOS_ZONA_CAPTURA = {
     "PPB": "PPB",
     "PC": "PC",
 }
-MACRO_BATERIAS = "Baterías"
-MACRO_ESTACION = "Estación de compresión"
 MACRO_AOPS = "AOPS"
 MACRO_BASE = "Base PJP4"
 CLAVE_BASE_PJP4 = "BSE PJP4"
-OPCIONES_MACRO_CAPTURA = (
-    *OPCIONES_SECCION_REGISTRO,
-    MACRO_BATERIAS,
-    MACRO_ESTACION,
-    MACRO_AOPS,
-    MACRO_BASE,
-)
-OPCIONES_BATERIAS_CAPTURA = ("MODI", "MODII", "MODIII", "MODIV", "BPB", "BSI", "BSII", "BSNI")
-OPCIONES_ESTACION_CAPTURA = ("ECSII", "ECSN")
-_CLAVE_A_OPCION_BATERIA = {
-    "MOD I": "MODI",
-    "MOD II": "MODII",
-    "MOD III": "MODIII",
-    "MOD IV": "MODIV",
-    "BPB": "BPB",
-    "BSI": "BSI",
-    "BSII": "BSII",
-    "BSNI": "BSNI",
-}
+_IDS_ZONA_POZO_CAPTURA = tuple(item["id"] for item in ZONAS_HISTORIAL_POZOS)
+_IDS_BLOQUE_CAPTURA = ("instalaciones", "otros", "infra-norte", "infra-sur")
 DIAS_SEMANA_CAL = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 POZOS_SEMILLA = [
     ("PS-1", "soledad"),
@@ -2111,75 +2092,142 @@ def etiqueta_codigo_ubicacion(nombre: str) -> str:
     return texto
 
 
+def etiqueta_macro_zona_oficial(zona_id: str, zona: dict | None = None) -> str:
+    """Misma etiqueta que las tarjetas: PSN, INS Instalaciones y baterías, NTE…"""
+    for item in ZONAS_HISTORIAL_POZOS:
+        if item["id"] == zona_id:
+            return item["titulo"]
+    zona = zona or next((item for item in ZONAS_UBICACION_DEFAULT if item["id"] == zona_id), {})
+    prefijo = str((zona or {}).get("prefijo") or "").strip()
+    nombre = str((zona or {}).get("nombre") or "").strip()
+    return f"{prefijo} {nombre}".strip()
+
+
+def opciones_macro_captura() -> list[str]:
+    """Paso 1: zonas de pozos + INS/OTR/NTE/SUR + atajos AOPS y Base PJP4."""
+    macros = [item["titulo"] for item in ZONAS_HISTORIAL_POZOS]
+    for zona_id in _IDS_BLOQUE_CAPTURA:
+        etiqueta = etiqueta_macro_zona_oficial(zona_id)
+        if etiqueta:
+            macros.append(etiqueta)
+    macros.extend([MACRO_AOPS, MACRO_BASE])
+    return macros
+
+
 def opciones_secciones_operativas() -> list[str]:
-    """Desplegable macro: 6 zonas de pozos más instalaciones especiales."""
-    return list(OPCIONES_MACRO_CAPTURA)
+    return opciones_macro_captura()
 
 
 def tipo_macro_captura(macro) -> str:
     texto = str(macro or "").strip()
-    if texto in OPCIONES_SECCION_REGISTRO:
-        return "pozo"
-    if texto == MACRO_BATERIAS:
-        return "baterias"
-    if texto == MACRO_ESTACION:
-        return "estacion"
     if texto == MACRO_AOPS:
         return "aops"
     if texto in {MACRO_BASE, CLAVE_BASE_PJP4, "Base Soledad"}:
         return "base"
+    zona_id = zona_id_macro_captura(texto)
+    if zona_id in _IDS_ZONA_POZO_CAPTURA:
+        return "pozo"
+    if zona_id in _IDS_BLOQUE_CAPTURA:
+        return "bloque"
     return ""
+
+
+def es_codigo_infraestructura(texto) -> bool:
+    plano = clave_pozo_plana(texto)
+    return "IQSIN" in plano or plano[:3] in _CLASES_INFRAESTRUCTURA and "SIN" in plano
+
+
+def tag_pozo_de_nombre(macro, nombre) -> str:
+    """PSN-190 / PSN190 / PC168D -> tag limpio de la zona, sin Ninguno."""
+    prefijo = prefijo_zona_captura(macro)
+    plano = clave_pozo_plana(nombre)
+    if prefijo and plano.startswith(prefijo):
+        resto = plano[len(prefijo) :]
+        if resto[:1].isdigit():
+            return f"{prefijo}{resto}"
+    return componer_tag_pozo(macro, nombre)
+
+
+def tag_limpio_ficha_captura(ficha: dict, macro: str = "") -> str:
+    nombre = str((ficha or {}).get("nombre") or "").strip()
+    if not nombre or sitios_operativos.es_vacio_sitio(nombre):
+        return ""
+    zona_id = str((ficha or {}).get("zona_id") or "")
+    etiqueta = macro or etiqueta_macro_zona_oficial(zona_id)
+    if zona_id in _IDS_ZONA_POZO_CAPTURA:
+        return tag_pozo_de_nombre(etiqueta, nombre)
+    if zona_id == "instalaciones":
+        clave = sitios_operativos.clave_sitio(nombre)
+        if clave:
+            return clave
+        if clave_pozo_plana(nombre) in {"BASEPJP4", "BASESOLEDAD"}:
+            return CLAVE_BASE_PJP4
+        return nombre
+    return nombre
+
+
+def opciones_items_macro_captura(macro) -> list[str]:
+    """Paso 2: solo fichas del bloque elegido (pozos, INS, NTE, SUR u OTR)."""
+    tipo = tipo_macro_captura(macro)
+    zona_id = zona_id_macro_captura(macro)
+    if tipo == "pozo":
+        return opciones_pozos_zona_captura(macro)
+    if tipo != "bloque" or not zona_id:
+        return []
+    vistos: set[str] = set()
+    opciones: list[str] = []
+    for ficha in fichas_de_zona(cargar_ubicaciones(), zona_id):
+        tag = tag_limpio_ficha_captura(ficha, macro)
+        if not tag or tag in vistos or sitios_operativos.es_vacio_sitio(tag):
+            continue
+        vistos.add(tag)
+        opciones.append(tag)
+    return sorted(opciones, key=orden_natural_pozo)
 
 
 def resolver_tag_macro(macro, detalle="") -> str:
     """Convierte Paso 1 + Paso 2 en la clave limpia a guardar. Nunca Ninguno."""
     tipo = tipo_macro_captura(macro)
-    if tipo == "pozo":
-        tag = componer_tag_pozo(macro, detalle)
-        if tag:
-            return tag
-        plano = clave_pozo_plana(detalle)
-        if _PATRON_CODIGO_POZO.match(plano):
-            return etiqueta_codigo_ubicacion(plano)
-        return ""
-    if tipo == "baterias":
-        texto = str(detalle or "").strip()
-        if not texto:
-            return ""
-        clave = sitios_operativos.clave_sitio(texto)
-        opcion = _CLAVE_A_OPCION_BATERIA.get(clave, texto)
-        if opcion not in OPCIONES_BATERIAS_CAPTURA:
-            return ""
-        return clave
-    if tipo == "estacion":
-        texto = str(detalle or "").strip().upper()
-        if texto not in OPCIONES_ESTACION_CAPTURA:
-            return ""
-        return sitios_operativos.clave_sitio(texto) or texto
     if tipo == "aops":
         return MACRO_AOPS
     if tipo == "base":
         return CLAVE_BASE_PJP4
-    sitio = sitios_operativos.clave_sitio(detalle) or sitios_operativos.clave_sitio(macro)
-    return sitio or ""
+    texto = str(detalle or "").strip()
+    if not texto or sitios_operativos.es_vacio_sitio(texto):
+        return ""
+    if tipo == "pozo":
+        return tag_pozo_de_nombre(macro, texto) or componer_tag_pozo(macro, texto)
+    if tipo == "bloque":
+        opciones = opciones_items_macro_captura(macro)
+        if texto in opciones:
+            return texto
+        clave = "" if es_codigo_infraestructura(texto) else sitios_operativos.clave_sitio(texto)
+        if clave and clave in opciones:
+            return clave
+        return ""
+    return ""
 
 
 def descomponer_macro_captura(texto) -> tuple[str, str]:
     """Recupera Paso 1 y Paso 2 a partir de un valor ya guardado."""
     zona, numero = descomponer_tag_pozo(texto)
     if zona:
-        tag = componer_tag_pozo(zona, numero)
+        tag = tag_pozo_de_nombre(zona, texto) or componer_tag_pozo(zona, numero)
         return zona, tag or etiqueta_codigo_ubicacion(texto)
-    clave = sitios_operativos.clave_sitio(texto)
+    clave = "" if es_codigo_infraestructura(texto) else sitios_operativos.clave_sitio(texto)
     if clave == MACRO_AOPS:
         return MACRO_AOPS, ""
     if clave == CLAVE_BASE_PJP4:
         return MACRO_BASE, ""
-    if clave in OPCIONES_ESTACION_CAPTURA:
-        return MACRO_ESTACION, clave
-    opcion_bateria = _CLAVE_A_OPCION_BATERIA.get(clave)
-    if opcion_bateria:
-        return MACRO_BATERIAS, opcion_bateria
+    ficha = encontrar_ficha(cargar_ubicaciones(), texto)
+    if ficha:
+        zona_id = str(ficha.get("zona_id") or "")
+        macro = etiqueta_macro_zona_oficial(zona_id)
+        tag = tag_limpio_ficha_captura(ficha, macro)
+        if macro and tag:
+            return macro, tag
+    if clave:
+        return etiqueta_macro_zona_oficial("instalaciones"), clave
     return "", ""
 
 
@@ -2218,7 +2266,17 @@ def componer_tag_pozo(zona, numero) -> str:
 
 
 def zona_id_macro_captura(macro) -> str:
-    prefijo = prefijo_zona_captura(macro)
+    texto = str(macro or "").strip()
+    if not texto or texto in {MACRO_AOPS, MACRO_BASE, CLAVE_BASE_PJP4}:
+        return ""
+    for item in ZONAS_HISTORIAL_POZOS:
+        if texto == item["titulo"]:
+            return item["id"]
+    for zona in ZONAS_UBICACION_DEFAULT:
+        etiqueta = etiqueta_macro_zona_oficial(zona["id"], zona)
+        if texto in {etiqueta, zona["id"], zona["prefijo"], f"{zona['prefijo']} {zona['nombre']}".strip()}:
+            return zona["id"]
+    prefijo = prefijo_zona_captura(texto)
     if not prefijo:
         return ""
     for seccion in SECCIONES_OPERATIVAS:
@@ -2231,7 +2289,7 @@ def opciones_pozos_zona_captura(macro) -> list[str]:
     """Pozos oficiales de la zona, en tag limpio (PSN190). Sin texto libre."""
     zona_id = zona_id_macro_captura(macro)
     prefijo = prefijo_zona_captura(macro)
-    if not zona_id or not prefijo:
+    if not zona_id or not prefijo or zona_id not in _IDS_ZONA_POZO_CAPTURA:
         return []
     vistos: set[str] = set()
     opciones: list[str] = []
@@ -2241,18 +2299,11 @@ def opciones_pozos_zona_captura(macro) -> list[str]:
             continue
         if sitios_operativos.clave_sitio(nombre) and not _PATRON_CODIGO_POZO.match(clave_pozo_plana(nombre)):
             continue
-        tag = componer_tag_pozo(macro, nombre)
-        if not tag:
-            plano = clave_pozo_plana(nombre)
-            if (
-                _PATRON_CODIGO_POZO.match(plano)
-                and plano.startswith(prefijo)
-                and plano[len(prefijo) :].isdigit()
-            ):
-                tag = etiqueta_codigo_ubicacion(plano)
+        tag = tag_pozo_de_nombre(macro, nombre)
         if not tag or tag in vistos:
             continue
-        if not (tag.startswith(prefijo) and tag[len(prefijo) :].isdigit()):
+        resto = tag[len(prefijo) :] if tag.startswith(prefijo) else ""
+        if not resto[:1].isdigit():
             continue
         vistos.add(tag)
         opciones.append(tag)
@@ -2265,7 +2316,7 @@ def descomponer_tag_pozo(texto) -> tuple[str, str]:
     if not plano:
         return "", ""
     for etiqueta, prefijo in sorted(PREFIJOS_ZONA_CAPTURA.items(), key=lambda item: -len(item[1])):
-        if plano.startswith(prefijo) and plano[len(prefijo) :].isdigit():
+        if plano.startswith(prefijo) and plano[len(prefijo) : len(prefijo) + 1].isdigit():
             return etiqueta, plano[len(prefijo) :]
         if plano == prefijo:
             return etiqueta, ""
@@ -2322,7 +2373,7 @@ def etiqueta_selector_ubicacion(valor: str) -> str:
 
 
 def opciones_ubicacion_catalogo() -> list[str]:
-    return list(OPCIONES_MACRO_CAPTURA)
+    return opciones_macro_captura()
 
 
 def selector_tag_instalacion(key: str, ubicacion: str, actual: str = "") -> str:
@@ -2347,62 +2398,43 @@ def render_selector_ubicacion_captura(
     etiqueta: str = "Ubicación / Equipo — zona",
     valor_actual: str = "",
 ) -> tuple[str, str, str]:
-    """Paso 1 ampliado y Paso 2 condicional. Devuelve (macro, detalle, tag limpio)."""
-    macro_key = f"{key}_macro_v3"
+    """Paso 1 = tarjetas oficiales. Paso 2 = catálogo de ese bloque."""
+    macro_key = f"{key}_macro_v5"
     if valor_actual and macro_key not in st.session_state:
         macro_prev, detalle_prev = descomponer_macro_captura(valor_actual)
         if macro_prev:
             st.session_state[macro_key] = macro_prev
             tipo_prev = tipo_macro_captura(macro_prev)
-            if tipo_prev == "pozo" and detalle_prev:
-                prefijo_prev = prefijo_zona_captura(macro_prev)
-                st.session_state[f"{key}_pozo_v4_{prefijo_prev or 'zona'}"] = detalle_prev
-            elif tipo_prev == "baterias" and detalle_prev:
-                st.session_state[f"{key}_bateria_v3"] = detalle_prev
-            elif tipo_prev == "estacion" and detalle_prev:
-                st.session_state[f"{key}_estacion_v3"] = detalle_prev
+            zona_prev = zona_id_macro_captura(macro_prev) or tipo_prev
+            if tipo_prev in {"pozo", "bloque"} and detalle_prev:
+                st.session_state[f"{key}_item_v5_{zona_prev}"] = detalle_prev
 
     macro = st.selectbox(
         etiqueta,
-        list(OPCIONES_MACRO_CAPTURA),
+        opciones_macro_captura(),
         index=None,
-        placeholder="Paso 1: elige zona o instalación",
+        placeholder="Paso 1: elige zona, INS, NTE, SUR u otra ubicación",
         key=macro_key,
     )
     tipo = tipo_macro_captura(macro)
     detalle = ""
-    if tipo == "pozo":
-        pozos = opciones_pozos_zona_captura(macro)
-        pozo_key = f"{key}_pozo_v4_{prefijo_zona_captura(macro) or 'zona'}"
-        actual_pozo = str(st.session_state.get(pozo_key) or "").strip()
-        if actual_pozo and actual_pozo not in pozos:
-            pozos = [actual_pozo, *pozos]
-        if not pozos:
-            st.caption("No hay pozos en el catálogo de esta zona.")
+    if tipo in {"pozo", "bloque"}:
+        items = opciones_items_macro_captura(macro)
+        item_key = f"{key}_item_v5_{zona_id_macro_captura(macro) or tipo}"
+        actual_item = str(st.session_state.get(item_key) or "").strip()
+        if actual_item and actual_item not in items:
+            items = [actual_item, *items]
+        etiqueta_paso2 = "Pozo" if tipo == "pozo" else "Ubicación / equipo del bloque"
+        if not items:
+            st.caption("No hay elementos en el catálogo de este bloque.")
         else:
             detalle = st.selectbox(
-                "Pozo",
-                pozos,
+                etiqueta_paso2,
+                items,
                 index=None,
-                placeholder="Paso 2: elige el pozo",
-                key=pozo_key,
+                placeholder="Paso 2: elige el elemento de este bloque",
+                key=item_key,
             ) or ""
-    elif tipo == "baterias":
-        detalle = st.selectbox(
-            "Batería / módulo",
-            list(OPCIONES_BATERIAS_CAPTURA),
-            index=None,
-            placeholder="Paso 2: MODI a MODIV, BPB, BSI, BSII o BSNI",
-            key=f"{key}_bateria_v3",
-        ) or ""
-    elif tipo == "estacion":
-        detalle = st.selectbox(
-            "Estación de compresión",
-            list(OPCIONES_ESTACION_CAPTURA),
-            index=None,
-            placeholder="Paso 2: ECSII o ECSN",
-            key=f"{key}_estacion_v3",
-        ) or ""
     elif tipo in {"aops", "base"}:
         st.caption("No se pide un segundo paso: se guarda la clave de esta instalación.")
 
@@ -2411,15 +2443,13 @@ def render_selector_ubicacion_captura(
         st.caption(f"Se guardará: **{tag}**")
     elif tipo == "pozo":
         st.caption("Elige el pozo del catálogo de esta zona.")
-    elif tipo == "baterias":
-        st.caption("Elige el módulo o la batería.")
-    elif tipo == "estacion":
-        st.caption("Elige ECSII o ECSN.")
+    elif tipo == "bloque":
+        st.caption("Elige la instalación, línea o ubicación de este bloque.")
     return macro or "", detalle or "", tag
 
 
 def opciones_ubicacion_estandar() -> list[str]:
-    return list(OPCIONES_MACRO_CAPTURA)
+    return opciones_macro_captura()
 
 
 def resolver_ubicacion_catalogo(seleccion: str) -> tuple[str, str]:
@@ -2463,7 +2493,7 @@ def resolver_ubicacion_catalogo(seleccion: str) -> tuple[str, str]:
 
 
 def resolver_captura_ubicacion(seleccion, nueva="", tag="") -> dict:
-    """Guarda PSN190 o la clave de instalación (BSNI, ECSN, AOPS, BSE PJP4). Nunca Ninguno."""
+    """Guarda el tag limpio del bloque (PSN190, BSNI, GDO-…, AOPS). Nunca Ninguno."""
     tag_final = str(tag or "").strip()
     if not tag_final or sitios_operativos.es_vacio_sitio(tag_final):
         tag_final = resolver_tag_macro(seleccion, nueva)
@@ -2472,6 +2502,9 @@ def resolver_captura_ubicacion(seleccion, nueva="", tag="") -> dict:
             plano = clave_pozo_plana(bruto)
             if _PATRON_CODIGO_POZO.match(plano):
                 tag_final = etiqueta_codigo_ubicacion(plano)
+                break
+            if es_codigo_infraestructura(bruto):
+                tag_final = str(bruto or "").strip()
                 break
             sitio = sitios_operativos.clave_sitio(bruto)
             if sitio:
@@ -2486,6 +2519,18 @@ def resolver_captura_ubicacion(seleccion, nueva="", tag="") -> dict:
             "pozo": "",
             "ubicacion": "",
             "tag": "",
+        }
+    zona_id = zona_id_macro_captura(seleccion)
+    if es_codigo_infraestructura(tag_final) or zona_id in {"infra-norte", "infra-sur", "otros"}:
+        sector = etiqueta_macro_zona_oficial(zona_id) if zona_id else str(seleccion or tag_final)
+        return {
+            "es_instalacion": False,
+            "es_seccion": False,
+            "clave": tag_final,
+            "sector": sector,
+            "pozo": tag_final,
+            "ubicacion": tag_final,
+            "tag": tag_final,
         }
     sitio = sitios_operativos.clave_sitio(tag_final)
     if sitio:
@@ -8336,7 +8381,10 @@ def construir_registro(
     tag_pozo = componer_tag_pozo(sector, pozo)
     if not tag_pozo and _PATRON_CODIGO_POZO.match(clave_pozo_plana(pozo)):
         tag_pozo = etiqueta_codigo_ubicacion(pozo)
-    if tag_pozo:
+    if es_codigo_infraestructura(pozo):
+        partes_ubicacion = [pozo]
+        sitio = pozo
+    elif tag_pozo:
         pozo = tag_pozo
         zona, _n = descomponer_tag_pozo(tag_pozo)
         sector = zona or sector or tag_pozo
