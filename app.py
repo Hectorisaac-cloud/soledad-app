@@ -19,6 +19,8 @@ from decimal import Decimal, ROUND_HALF_UP
 import pandas as pd
 import persistencia
 import reporte_fotografico
+import historial_pjp4
+import sitios_operativos
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
@@ -365,7 +367,8 @@ SECTORES_DEFAULT = [
     "Bateria de Separacion Soledad Norte (BSNI)",
     "Bateria Palo Blanco (BPB)",
     "Coyotes (Coy)",
-    "Estacion de Compresion Soledad Norte (ECSII)",
+    "Estacion de Compresion Soledad II (ECSII)",
+    "Estacion de Compresion Soledad Norte (ECSN)",
     "Gallo (GA)",
     "Palo Blanco (PB)",
     "Soledad (S)",
@@ -379,7 +382,13 @@ SECTORES_SIN_POZO_DEFAULT = [
     "Bateria de Separacion Soledad II (BSII)",
     "Bateria de Separacion Soledad Norte (BSNI)",
     "Bateria Palo Blanco (BPB)",
-    "Estacion de Compresion Soledad Norte (ECSII)",
+    "Estacion de Compresion Soledad II (ECSII)",
+    "Estacion de Compresion Soledad Norte (ECSN)",
+    "Base Soledad (BSE PJP4)",
+    "Modulo I Soledad Norte (MOD I)",
+    "Modulo II Soledad Norte (MOD II)",
+    "Modulo III Soledad Norte (MOD III)",
+    "Modulo IV Soledad Norte (MOD IV)",
 ]
 CUADRILLAS = [
     "Electricos",
@@ -407,11 +416,16 @@ UBICACIONES_ESTANDAR = [
     "BSI",
     "BSII",
     "BSNI",
-    "MODI",
+    "MOD I",
+    "MOD II",
+    "MOD III",
+    "MOD IV",
     "BPB",
     "ECSII",
+    "ECSN",
     "AOPS",
     "Base PJP4",
+    "BSE PJP4",
     "Soledad (S)",
     "Soledad Norte (SN)",
     "Aragon (A)",
@@ -533,6 +547,8 @@ ZONAS_UBICACION_DEFAULT = [
     {"id": "palo-blanco", "prefijo": "PPB", "nombre": "Pozos Palo Blanco", "sector": "Palo Blanco (PB)"},
     {"id": "coyotes", "prefijo": "PC", "nombre": "Pozos Coyotes", "sector": "Coyotes (Coy)"},
     {"id": "instalaciones", "prefijo": "INS", "nombre": "Instalaciones y baterías", "sector": ""},
+    {"id": "infra-norte", "prefijo": "NTE", "nombre": "Infraestructura Norte", "sector": "Norte (NTE)"},
+    {"id": "infra-sur", "prefijo": "SUR", "nombre": "Infraestructura Sur", "sector": "Sur (SUR)"},
     {"id": "otros", "prefijo": "OTR", "nombre": "Otras ubicaciones", "sector": ""},
 ]
 ZONAS_HISTORIAL_POZOS = [
@@ -543,6 +559,60 @@ ZONAS_HISTORIAL_POZOS = [
     {"id": "palo-blanco", "titulo": "PPB", "icono": "🌲", "detalle": "Pozos Palo Blanco"},
     {"id": "coyotes", "titulo": "PC", "icono": "📍", "detalle": "Pozos Coyotes"},
 ]
+SECCIONES_OPERATIVAS = (
+    {
+        "id": "soledad",
+        "prefijo": "PS",
+        "etiqueta": "PS Soledad (Soledad S)",
+        "aliases": ("PS SOLEDAD", "SOLEDAD S", "SOLEDAD (S)", "POZOS SOLEDAD", "SOLEDAD"),
+    },
+    {
+        "id": "aragon",
+        "prefijo": "PA",
+        "etiqueta": "PA Aragón (Aragon A)",
+        "aliases": ("PA ARAGON", "ARAGON A", "ARAGON (A)", "ARAGÓN A", "ARAGÓN (A)", "POZOS ARAGON", "POZOS ARAGÓN", "ARAGON", "ARAGÓN"),
+    },
+    {
+        "id": "gallo",
+        "prefijo": "PGA",
+        "etiqueta": "PGA Gallo (Gallo GA)",
+        "aliases": ("PGA GALLO", "GALLO GA", "GALLO (GA)", "POZOS GALLO", "GALLO"),
+    },
+    {
+        "id": "soledad-norte",
+        "prefijo": "PSN",
+        "etiqueta": "PSN (Soledad Norte SN)",
+        "aliases": ("PSN", "SOLEDAD NORTE SN", "SOLEDAD NORTE (SN)", "POZOS SOLEDAD NORTE", "SOLEDAD NORTE"),
+    },
+    {
+        "id": "palo-blanco",
+        "prefijo": "PPB",
+        "etiqueta": "PPB (Palo Blanco PB)",
+        "aliases": ("PPB", "PALO BLANCO PB", "PALO BLANCO (PB)", "POZOS PALO BLANCO", "PALO BLANCO"),
+    },
+    {
+        "id": "coyotes",
+        "prefijo": "PC",
+        "etiqueta": "PC (Coyotes Coy)",
+        "aliases": ("PC", "COYOTES COY", "COYOTES (COY)", "POZOS COYOTES", "COYOTES"),
+    },
+)
+OPCIONES_SECCION_REGISTRO = (
+    "PS Soledad",
+    "PA Aragón",
+    "PGA Gallo",
+    "PSN",
+    "PPB",
+    "PC",
+)
+PREFIJOS_ZONA_CAPTURA = {
+    "PS Soledad": "PS",
+    "PA Aragón": "PA",
+    "PGA Gallo": "PGA",
+    "PSN": "PSN",
+    "PPB": "PPB",
+    "PC": "PC",
+}
 DIAS_SEMANA_CAL = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 POZOS_SEMILLA = [
     ("PS-1", "soledad"),
@@ -565,20 +635,149 @@ POZOS_SEMILLA = [
     ("BSI", "instalaciones"),
     ("BSII", "instalaciones"),
     ("BSNI", "instalaciones"),
+    ("MOD I", "instalaciones"),
+    ("MOD II", "instalaciones"),
+    ("MOD III", "instalaciones"),
+    ("MOD IV", "instalaciones"),
     ("BPB", "instalaciones"),
     ("ECSII", "instalaciones"),
+    ("ECSN", "instalaciones"),
     ("AOPS", "instalaciones"),
     ("Base PJP4", "instalaciones"),
+    ("BSE PJP4", "instalaciones"),
 ]
 INSTALACIONES_SECTOR = {
     "BSI": "Bateria de Separacion Soledad I (BSI)",
     "BSII": "Bateria de Separacion Soledad II (BSII)",
     "BSNI": "Bateria de Separacion Soledad Norte (BSNI)",
+    "MOD I": "Modulo I Soledad Norte (MOD I)",
+    "MOD II": "Modulo II Soledad Norte (MOD II)",
+    "MOD III": "Modulo III Soledad Norte (MOD III)",
+    "MOD IV": "Modulo IV Soledad Norte (MOD IV)",
     "BPB": "Bateria Palo Blanco (BPB)",
-    "ECSII": "Estacion de Compresion Soledad Norte (ECSII)",
+    "ECSII": "Estacion de Compresion Soledad II (ECSII)",
+    "ECSN": "Estacion de Compresion Soledad Norte (ECSN)",
     "AOPS": "Almacen OPS (AOPS)",
     "Base PJP4": "Base PJP4",
+    "BSE PJP4": "Base Soledad (BSE PJP4)",
 }
+ALIAS_FICHA_CANON = {
+    "AOPS": ["ALMACEN OPS", "Almacen OPS", "ALMACÉN OPS", "Almacén OPS"],
+    "BSNI": ["BSN", "BSSN1", "Bateria de Separacion Soledad Norte", "Batería de Separación Soledad Norte (BSNI)", "BAT. SOL. NORTE"],
+    "BSI": ["GDO BSI", "Bateria de Separacion Soledad I", "BAT. SOL. I"],
+    "BSII": ["GDO BSII", "Bateria de Separacion Soledad II", "BAT. SOL. II"],
+    "BPB": ["GDO BPB", "Bateria Palo Blanco", "BAT. PALO BLANCO"],
+    "ECSII": ["GDO ECSII", 'GDO ECSII 10"Ø', "Estacion de Compresion Soledad II", "ESTACION DE COMPRESORAS -2 SUR"],
+    "ECSN": ["ECO SLN", "Estacion de Compresion Soledad Norte", "Estacion de Compresion Soledad Norte (ECSN)", "ESTACION DE COMPRESORAS SOLEDAD NORTE"],
+    "MOD I": ["MODI", "MOD-I", "MOD 1", "MODULO I", "Módulo I", "MODULO-I"],
+    "MOD II": ["MODII", "MOD-II", "MOD 2", "MODULO II", "Módulo II", "MODULO-II"],
+    "MOD III": ["MODIII", "MOD-III", "MOD 3", "MODULO III", "Módulo III", "MODULO-III"],
+    "MOD IV": ["MODIV", "MOD-IV", "MOD 4", "MODULO IV", "Módulo IV", "MODULO-IV"],
+    "BASE PJP4": ["Base PJP4", "BASE PJP4"],
+    "BSE PJP4": ["BSE PJP4", "BASE SOLEDAD", "Base Soledad", "BSE"],
+}
+_CANON_UBICACION_PLANO = {
+    "ALMACENOPS": "AOPS",
+    "MODI": "MOD I",
+    "MOD1": "MOD I",
+    "MODII": "MOD II",
+    "MOD2": "MOD II",
+    "MODIII": "MOD III",
+    "MOD3": "MOD III",
+    "MODIV": "MOD IV",
+    "MOD4": "MOD IV",
+    "BSSN1": "BSNI",
+    "BSN": "BSNI",
+    "GDOBPB": "BPB",
+    "GDOECSII": "ECSII",
+    "GDOECSII10": "ECSII",
+    "ECSN": "ECSN",
+    "GDOECSN": "ECSN",
+    "GDOBSI": "BSI",
+    "GDOBSII": "BSII",
+    "BSEPJP4": "BSE PJP4",
+    "BASESOLEDAD": "BSE PJP4",
+    "BATSOLNORTE": "BSNI",
+    "BATSOLI": "BSI",
+    "BATSOLII": "BSII",
+    "BATPALOBLANCO": "BPB",
+}
+_PREFIJO_POZO_CORTO = {"PB": "PPB", "PG": "PGA"}
+_RE_POZO_NOMBRE = [
+    (re.compile(r"POZO\s+SOLEDAD\s+NORTE\s+(\d+)", re.I), "PSN"),
+    (re.compile(r"POZO\s+SOLEDAD\s+(\d+)", re.I), "PS"),
+    (re.compile(r"\bSOLEDAD\s+(\d+)\b", re.I), "PS"),
+    (re.compile(r"POZO\s+GALLO\s+(\d+)", re.I), "PGA"),
+    (re.compile(r"POZO\s+COY(?:OTES?)?\s+(\d+)", re.I), "PC"),
+    (re.compile(r"POZO\s+ARAG[OÓ]N\s+(\d+)", re.I), "PA"),
+    (re.compile(r"POZO\s+PALO\s+BLANCO\s+(\d+)", re.I), "PPB"),
+]
+_RE_TOKEN_INFRA = re.compile(
+    r"(MPSN|MPS|MPG|BSMIV|BSMIII|BSMI|BSPB|BSSII|BSSI|ECSII|ECSN|TDSGF|TDSGC|TDSGB|TDSGD|TDSN)\d*",
+    re.I,
+)
+_ALIAS_SEG_INFRA = {
+    "SEGFE": "CBN-TDSGF-IQ-SIN-13",
+    "SEGF": "CBN-TDSGF-IQ-SIN-13",
+    "SEGAC": "CBN-TDSGC-IQ-SIN-10",
+    "SEGBH": "CBN-TDSGB-IQ-SIN-11",
+    "SEGDG": "CBN-TDSGD-IQ-SIN-12",
+    "CBNKM4762": "CBN-TDSGC-IQ-SIN-10",
+}
+# Código exacto, zona NTE/SUR, clase y descripción oficial.
+# El tramo sin la clase (TDSGF-IQ-SIN-13) es la clave que suele venir en la bitácora de Montaje.
+INFRAESTRUCTURA_OFICIAL = (
+    ("GDO-BSPB-IQ-SIN-01", "SUR", "GDO", 'GDO BSE PLB-ECO SOL II 16"x4.436 km'),
+    ("GDO-BSSI-IQ-SIN-02", "SUR", "GDO", 'GDO BSE SOLI-ECO SOL II 12"x1.967 Km'),
+    ("GDO-BSSII-IQ-SIN-03", "SUR", "GDO", 'GDO BSE SOL II - ECO SOL II 12"x2.625 Km'),
+    ("GDO-ECSII-IQ-SIN-04", "SUR", "GDO", 'GDO ECO SOL II-BSE SLN 10"x7.535 km'),
+    ("GDO-BSMI-IQ-SIN-05", "NTE", "GDO", 'GDO BSE MOD I SLN - ECO SLN 10" x 2.644 Km'),
+    ("GDO-TDSN-IQ-SIN-06", "NTE", "GDO", 'GDO TDE SLNTDR SOL 691_6 6"x3.000 Km'),
+    ("GDO-ECSN-IQ-SIN-07", "NTE", "GDO", 'GDO ECO SLNMP SLN 31 6"x1.485 km'),
+    ("CBN-TDSN31-IQ-SIN-08", "NTE", "CBN", 'CBN TDE SLN 31-TDR SEG A SLN 6"x8.358 Km'),
+    ("CBN-TDSN31-IQ-SIN-09", "NTE", "CBN", 'CBN TDE SLN 31 - TDR SEG B SLN 6"x3.682 Km'),
+    ("CBN-TDSGC-IQ-SIN-10", "SUR", "CBN", 'CBN TDE SEG C-TDR SEG A SOL 6" x 4.762 Km'),
+    ("CBN-TDSGB-IQ-SIN-11", "SUR", "CBN", 'CBN TDE SEG B - TDR SEG H SOL 6"x5.584 Km'),
+    ("CBN-TDSGD-IQ-SIN-12", "SUR", "CBN", 'CBN TDE SEG D-TDR SEG G SOL 6"x3.716 Km'),
+    ("CBN-TDSGF-IQ-SIN-13", "SUR", "CBN", 'CBN TDE SEG F-TDR SEG E SOL 6"x6.057 Km'),
+    ("OLD-BSSI-IQ-SIN-14", "SUR", "OLD", 'OLD BSE SOLI-BSE MIQ I_8 8"x21.300 Km Megietla'),
+    ("OLD-BSSII-IQ-SIN-15", "SUR", "OLD", 'OLD BSE SOL II - ENT SOL I/MIQ 6" x 3.500 Km'),
+    ("OLD-BSPB-IQ-SIN-16", "SUR", "OLD", 'OLD BSE PLB-ENT SOL I/MIQ 6"x3.750 Km'),
+    ("OLD-BSMI-IQ-SIN-17", "NTE", "OLD", 'OLD BSE MOD I SLN-BSE SLN 6" x 2.629 Km'),
+    ("GDO-BSMIV-IQ-SIN-18", "NTE", "GDO", 'GDO BSE MOD IV SLN-BSE SLN 4"Ø x 4.927 Km'),
+    ("GDO-BSMIII-IQ-SIN-19", "NTE", "GDO", 'GDO BSE MOD III SLN - ENT MOD IV/SLN_4" x 1.776 Km'),
+    ("OLG-MPG204-IQ-SIN-20", "NTE", "OLG", 'OLG MP GAL 204 - ENT 8" MP GAL 218 8" x 1.179 Km'),
+    ("OLG-MPG218-IQ-SIN-21", "NTE", "OLG", 'OLG MP GAL 218-BSE MODI SLN 8"x2.889 Km'),
+    ("OLG-MPG204-IQ-SIN-55", "NTE", "OLG", 'OLG MP GAL 204 - ENT 6" MP GAL 218 6" x 1.173 Km'),
+    ("OLG-MPG218-IQ-SIN-56", "NTE", "OLG", 'OLG MP GAL 218-BSE MOD I SLN 6" x 2.889 Km'),
+    ("OLG-MPS549-IQ-SIN-22", "SUR", "OLG", 'OLG MP SOL 549-BSE PLB 6-8" x 2.569 Km'),
+    ("OLG-MPS539-IQ-SIN-23", "SUR", "OLG", 'OLG MP SOL 539-ENT 6" SOL 549/PLB_6" x 0.089 Km'),
+    ("OLG-MPS529-IQ-SIN-24", "SUR", "OLG", 'OLG MP SOL 529-ENT 6" SOL 549/PLB_6" x 0.137 Km'),
+    ("OLG-MPS509-IQ-SIN-25", "SUR", "OLG", 'OLG MP SOL 509-ENT 8" SOL 549/PLB_ 6" x 0.127 Km'),
+    ("OLG-MPP286-IQ-SIN-26", "SUR", "OLG", 'OLG MP PLB 286-MP SOL 505 6" x 3.049 Km'),
+    ("OLG-MPS505-IQ-SIN-27", "SUR", "OLG", 'OLG MP SOL 505-BSE PLB 6" x 1.600 Km'),
+    ("OLG-MPSN301-IQ-SIN-28", "SUR", "OLG", 'OLG MP SLN 301-BSE SOL II 6" x 2.452 Km'),
+    ("OLG-MPS594-IQ-SIN-29", "SUR", "OLG", 'OLG MP SOL 594-BSE SOL II 6"x1.130 Km'),
+    ("OLG-MPS676-IQ-SIN-57", "SUR", "OLG", 'OLG MP SOL 676-BSE SOL II 4-6" x 3.307 Km'),
+    ("OLG-MPS651-IQ-SIN-31", "SUR", "OLG", 'OLG MP SOL 651-ENT 6" SOL 676/SOL II 4"x 0.185 Km'),
+    ("OLG-MPS794-IQ-SIN-32", "SUR", "OLG", 'OLG MP SOL 794-BSE SOL II 4" x 1.722 Km'),
+    ("OLG-MPS738-IQ-SIN-33", "SUR", "OLG", 'OLG MP SOL 738-BSE SOL II 4" x 0.477 Km'),
+    ("OLG-MPS128-IQ-SIN-34", "SUR", "OLG", 'OLG MP SOL 128-BSE SOLI 4" x 1.091 Km'),
+    ("OLG-MPS129-IQ-SIN-35", "SUR", "OLG", 'OLG MP SOL 129-BSE SOLI 4" x 0.667 Km'),
+    ("OLG-MPSN269-IQ-SIN-36", "SUR", "OLG", 'OLG MP SLN 269-ENT 8" GAL 218/MODI 4"x 0.634 Km'),
+    ("OLG-MPSN241-IQ-SIN-37", "NTE", "OLG", 'OLG MP SLN 241-ENT 8" GAL 218/MOD I 4"x 0.628 Km'),
+    ("OLG-MPSN207-IQ-SIN-38", "NTE", "OLG", 'OLG MP SLN 207 - ENT 8" GAL 218/MOD 1_4" x 0.734 Km'),
+    ("OLG-MPSN227-IQ-SIN-39", "NTE", "OLG", 'OLG MP SLN 227-ENT 4-8" SLN 207/GAL 218 4" x 0.240 Km'),
+    ("OLG-MPG281-IQ-SIN-40", "NTE", "OLG", 'OLG MP SLN 281 - ENT 8" GAL 218/MODI 4"x.226 Km'),
+    ("OLG-MPSN261-IQ-SIN-58", "NTE", "OLG", 'OLG MP SLN 261-ENT 8" GAL 218/MOD I_4"x 0.014 Km'),
+    ("OLG-MPSN269-IQ-SIN-59", "NTE", "OLG", 'OLG MP SLN 269-ENT 6" GAL 218/MODI 4"x 0.634 Km'),
+    ("OLG-MPSN241-IQ-SIN-60", "NTE", "OLG", 'OLG MP SLN 241 - ENT 6" GAL 218/MOD I_4"x 0.628 Km'),
+    ("OLG-MPSN207-IQ-SIN-61", "NTE", "OLG", 'OLG MP SLN 207 - ENT 6" GAL 218/MOD | 4" x 0.738 Km'),
+    ("OLG-MPSN227-IQ-SIN-62", "NTE", "OLG", 'OLG MP SLN 227 - ENT 4-6" SLN 207/GAL 218 4" x 0.236 Km'),
+    ("OLG-MPSN261-IQ-SIN-64", "NTE", "OLG", 'OLG MP SLN 261-ENT 6" GAL 218/MOD | 4"x 0.016 Km'),
+    ("OLG-MPSN281-IQ-SIN-63", "NTE", "OLG", 'OLG MP SLN 281-ENT 6" GAL 218/MODI 4"x.224 Km'),
+)
+_CLASES_INFRAESTRUCTURA = {"GDO", "CBN", "OLD", "OLG"}
 
 COLUMNAS_INSUMOS = [
     "ACEITE (LTS)",
@@ -1163,6 +1362,7 @@ st.markdown(
         }
         .hist-card.cambio { border-left-color: #f59e0b; }
         .hist-card.nprog { border-left-color: #f97316; }
+        .hist-card.historico { border-left-color: #a78bfa; }
         .hist-card .hist-date {
             font-size: 0.72rem;
             letter-spacing: 0.06em;
@@ -1801,8 +2001,11 @@ def normalizar_catalogos(datos: dict | None) -> dict:
         base[clave] = limpios or valor_default
     if SECTOR_OTRO not in base["sectores"]:
         base["sectores"].append(SECTOR_OTRO)
-    if "Ninguno" not in base["equipos_otros"]:
-        base["equipos_otros"].append("Ninguno")
+    base["equipos_otros"] = [
+        equipo
+        for equipo in base["equipos_otros"]
+        if not sitios_operativos.es_vacio_sitio(equipo)
+    ]
     for equipo_ub in EQUIPOS_UB_DEFAULT:
         if equipo_ub not in base["equipos_ub"]:
             base["equipos_ub"].append(equipo_ub)
@@ -1845,9 +2048,7 @@ def equipos_actuales() -> list[str]:
         if equipo not in vistos:
             unicos.append(equipo)
             vistos.add(equipo)
-    if "Ninguno" in unicos:
-        unicos = [e for e in unicos if e != "Ninguno"] + ["Ninguno"]
-    return unicos
+    return [equipo for equipo in unicos if not sitios_operativos.es_vacio_sitio(equipo)]
 
 
 _UBICACIONES_IGNORADAS = {
@@ -1886,52 +2087,150 @@ def etiqueta_codigo_ubicacion(nombre: str) -> str:
     return texto
 
 
+def opciones_secciones_operativas() -> list[str]:
+    """Únicamente las 6 zonas del desplegable macro de captura."""
+    return list(OPCIONES_SECCION_REGISTRO)
+
+
+def prefijo_zona_captura(zona) -> str:
+    texto = " ".join(str(zona or "").split())
+    if not texto:
+        return ""
+    if texto in PREFIJOS_ZONA_CAPTURA:
+        return PREFIJOS_ZONA_CAPTURA[texto]
+    plano = clave_pozo_plana(texto)
+    for etiqueta, prefijo in sorted(PREFIJOS_ZONA_CAPTURA.items(), key=lambda item: -len(item[1])):
+        if plano == clave_pozo_plana(etiqueta) or plano == prefijo:
+            return prefijo
+    seccion = etiqueta_seccion_operativa(texto)
+    if seccion:
+        for item in SECCIONES_OPERATIVAS:
+            if item["etiqueta"] == seccion:
+                return item["prefijo"]
+    return ""
+
+
+def numero_pozo_captura(valor) -> str:
+    return re.sub(r"\D", "", str(valor or ""))
+
+
+def componer_tag_pozo(zona, numero) -> str:
+    """PSN + 190 -> PSN190. Nunca devuelve Ninguno."""
+    prefijo = prefijo_zona_captura(zona)
+    digitos = numero_pozo_captura(numero)
+    if not prefijo or not digitos:
+        plano = clave_pozo_plana(numero) or clave_pozo_plana(zona)
+        if _PATRON_CODIGO_POZO.match(plano):
+            return etiqueta_codigo_ubicacion(plano)
+        return ""
+    return f"{prefijo}{digitos}"
+
+
+def descomponer_tag_pozo(texto) -> tuple[str, str]:
+    """PSN190 -> ('PSN', '190')."""
+    plano = clave_pozo_plana(texto)
+    if not plano:
+        return "", ""
+    for etiqueta, prefijo in sorted(PREFIJOS_ZONA_CAPTURA.items(), key=lambda item: -len(item[1])):
+        if plano.startswith(prefijo) and plano[len(prefijo) :].isdigit():
+            return etiqueta, plano[len(prefijo) :]
+        if plano == prefijo:
+            return etiqueta, ""
+    return "", ""
+
+
+def etiqueta_seccion_operativa(texto) -> str:
+    """Devuelve la etiqueta limpia de una de las 6 secciones, o vacío."""
+    bruto = " ".join(str(texto or "").split())
+    if not bruto or sitios_operativos.es_vacio_sitio(bruto):
+        return ""
+    plano = clave_pozo_plana(bruto)
+    for seccion in SECCIONES_OPERATIVAS:
+        etiqueta = seccion["etiqueta"]
+        if bruto == etiqueta or plano == clave_pozo_plana(etiqueta):
+            return etiqueta
+        for alias in seccion["aliases"]:
+            if plano == clave_pozo_plana(alias):
+                return etiqueta
+    # Pozos individuales (PSN261, PA-7, etc.) se agrupan en su sección.
+    for seccion in sorted(SECCIONES_OPERATIVAS, key=lambda item: -len(item["prefijo"])):
+        pref = seccion["prefijo"]
+        if plano == pref:
+            return seccion["etiqueta"]
+        if plano.startswith(pref) and len(plano) > len(pref) and plano[len(pref)].isdigit():
+            return seccion["etiqueta"]
+    zona_id = inferir_zona_id(bruto)
+    for seccion in SECCIONES_OPERATIVAS:
+        if seccion["id"] == zona_id:
+            return seccion["etiqueta"]
+    return ""
+
+
+def _opcion_catalogo_guardar(valor) -> str:
+    """Instalaciones del catálogo maestro se listan y se guardan por clave corta."""
+    texto = etiqueta_codigo_ubicacion(str(valor or "").strip())
+    if not texto:
+        return ""
+    clave = sitios_operativos.clave_sitio(texto)
+    return clave or texto
+
+
+def etiqueta_selector_ubicacion(valor: str) -> str:
+    texto = str(valor or "").strip()
+    if not texto or texto == OPCION_UBICACION_NUEVA:
+        return texto
+    clave = sitios_operativos.clave_sitio(texto)
+    if not clave:
+        return texto
+    nombre = sitios_operativos.nombre_oficial_sitio(clave)
+    if nombre and nombre.casefold() not in {clave.casefold(), texto.casefold()}:
+        return f"{clave} — {nombre}"
+    return clave
+
+
 def opciones_ubicacion_catalogo() -> list[str]:
-    """Pozos y ubicaciones del catálogo oficial, ordenados por código."""
-    opciones: list[str] = []
-    vistos: set[str] = set()
-    for nombre in nombres_cortos_oficiales():
-        _agregar_opcion_unica(opciones, vistos, etiqueta_codigo_ubicacion(nombre))
-    fichas = (cargar_ubicaciones().get("fichas") or {})
-    origen = fichas.values() if isinstance(fichas, dict) else fichas
-    for ficha in origen:
-        if not isinstance(ficha, dict):
-            continue
-        _agregar_opcion_unica(opciones, vistos, etiqueta_codigo_ubicacion(ficha.get("nombre")))
-    for extra in UBICACIONES_ESTANDAR:
-        _agregar_opcion_unica(opciones, vistos, extra)
-    opciones.sort(key=orden_natural_pozo)
-    opciones.append(OPCION_UBICACION_NUEVA)
-    return opciones
+    """El registro solo admite las 6 secciones operativas."""
+    return list(OPCIONES_SECCION_REGISTRO)
 
 
-def selector_ubicacion_oficial(key: str, etiqueta: str = "Ubicación / Equipo"):
-    """Desplegable con búsqueda del catálogo oficial. El mismo en campo y en administración."""
-    seleccion = st.selectbox(
-        etiqueta,
-        opciones_ubicacion_catalogo(),
-        index=None,
-        placeholder="Escribe pozo o ubicación, ej. 272 o PSN",
-        key=key,
-        filter_mode="contains",
-        help=(
-            "Catálogo oficial de pozos y ubicaciones. "
-            "Escribe un número o letras (272, PSN, PA) para filtrar. "
-            "Otra / Nuevo equipo sirve para una ubicación que no esté en la lista."
-        ),
+def selector_tag_instalacion(key: str, ubicacion: str, actual: str = "") -> str:
+    """Opcional. En instalaciones no se pide pozo ni MCI; la clave corta es el valor guardado."""
+    clave = sitios_operativos.clave_sitio(ubicacion)
+    if not clave:
+        return ""
+    st.caption(
+        f"**{clave}** — {sitios_operativos.nombre_oficial_sitio(clave)}. "
+        "No requiere pozo ni motor. El registro guarda esta clave."
     )
-    nueva = ""
-    if seleccion == OPCION_UBICACION_NUEVA:
-        nueva = st.text_input(
-            "Nueva ubicación / equipo",
-            placeholder="Escribe la ubicación o el equipo",
-            key=f"{key}_nueva",
-        )
-    return seleccion, nueva
+    return clave
+
+
+def selector_ubicacion_oficial(key: str, etiqueta: str = "Zona operativa", tag_actual: str = ""):
+    """Paso 1: zona. Paso 2: número de pozo. El tag guardado es PSN190."""
+    opciones = ["PS Soledad", "PA Aragón", "PGA Gallo", "PSN", "PPB", "PC"]
+    zona_key = f"{key}_zona_paso1"
+    numero_key = f"{key}_numero_paso2"
+    zona = st.selectbox(
+        etiqueta,
+        opciones,
+        index=None,
+        placeholder="Paso 1: elige la zona",
+        key=zona_key,
+    )
+    numero = st.text_input(
+        "Número de pozo",
+        placeholder="Paso 2: ej. 190",
+        key=numero_key,
+        disabled=not bool(zona),
+    )
+    tag = componer_tag_pozo(zona, numero)
+    if tag:
+        st.caption(f"Se guardará: **{tag}**")
+    return zona or "", numero or "", tag
 
 
 def opciones_ubicacion_estandar() -> list[str]:
-    return list(UBICACIONES_ESTANDAR) + [OPCION_UBICACION_NUEVA]
+    return list(OPCIONES_SECCION_REGISTRO)
 
 
 def resolver_ubicacion_catalogo(seleccion: str) -> tuple[str, str]:
@@ -1944,6 +2243,9 @@ def resolver_ubicacion_catalogo(seleccion: str) -> tuple[str, str]:
         compacto = clave_ubicacion(texto).replace(" ", "")
         if _PATRON_CODIGO_POZO.match(compacto):
             return "", etiqueta_codigo_ubicacion(texto)
+        sitio = sitios_operativos.clave_sitio(texto)
+        if sitio:
+            return sitio, sitio
         return texto, ""
     nombre = etiqueta_codigo_ubicacion(ficha.get("nombre")) or texto
     sector = str(ficha.get("sector") or "").strip()
@@ -1953,34 +2255,175 @@ def resolver_ubicacion_catalogo(seleccion: str) -> tuple[str, str]:
     compacto = clave_ubicacion(nombre).replace(" ", "")
     if _PATRON_CODIGO_POZO.match(compacto):
         return sector, nombre
+    sitio = sitios_operativos.clave_sitio(nombre) or sitios_operativos.clave_sitio(texto)
+    if sitio:
+        return sitio, sitio
     instalacion = INSTALACIONES_SECTOR.get(nombre) or INSTALACIONES_SECTOR.get(str(ficha.get("nombre") or "").strip())
     if instalacion:
-        return instalacion, ""
+        clave = sitios_operativos.clave_sitio(nombre) or sitios_operativos.clave_sitio(instalacion) or nombre
+        return clave, clave
     if sector and sector.casefold() != nombre.casefold():
-        return sector, ""
+        sitio = sitios_operativos.clave_sitio(sector) or sitios_operativos.clave_sitio(nombre)
+        if sitio:
+            return sitio, sitio
+        return sector, nombre
+    clave = sitios_operativos.clave_sitio(nombre)
+    if clave:
+        return clave, clave
     return nombre, ""
 
 
+def resolver_captura_ubicacion(seleccion, nueva="", tag="") -> dict:
+    """Guarda el tag concatenado (PSN190). Nunca Ninguno ni un campo vacío."""
+    tag_final = componer_tag_pozo(seleccion, nueva) or componer_tag_pozo(seleccion, tag)
+    if not tag_final:
+        for bruto in (tag, nueva, seleccion):
+            plano = clave_pozo_plana(bruto)
+            if _PATRON_CODIGO_POZO.match(plano):
+                tag_final = etiqueta_codigo_ubicacion(plano)
+                break
+    if not tag_final or sitios_operativos.es_vacio_sitio(tag_final):
+        return {
+            "es_instalacion": False,
+            "es_seccion": False,
+            "clave": "",
+            "sector": "",
+            "pozo": "",
+            "ubicacion": "",
+            "tag": "",
+        }
+    zona, _numero = descomponer_tag_pozo(tag_final)
+    return {
+        "es_instalacion": False,
+        "es_seccion": True,
+        "clave": tag_final,
+        "sector": zona or tag_final,
+        "pozo": tag_final,
+        "ubicacion": tag_final,
+        "tag": tag_final,
+    }
+
+
+_CAMPOS_UBICACION_OT = (
+    "POZO",
+    "UBICACIÓN",
+    "UBICACION",
+    "EQUIPO/UBICACIÓN",
+    "EQUIPO/UBICACION",
+    "SECTOR",
+    "DESCRIPCIÓN DE LA ACTIVIDAD",
+    "DESCRIPCION DE LA ACTIVIDAD",
+    "ACTIVIDAD CORTA",
+    "TIPO DE ACTIVIDAD",
+    "COMENTARIOS",
+)
+
+
+def _texto_crudo_campo(valor) -> str:
+    return texto_visible(valor, "").replace('"', "").replace("'", "").strip()
+
+
+def _iter_campos_fila(fila):
+    if fila is None:
+        return
+    if isinstance(fila, dict):
+        yield from fila.items()
+        return
+    try:
+        yield from fila.items()
+    except Exception:
+        for col in getattr(fila, "index", []):
+            yield col, fila.get(col)
+
+
+def textos_ubicacion_ot(fila) -> dict[str, str]:
+    """Texto exacto de cada campo de ubicación del registro de la OT."""
+    buscados = {_clave_columna_bitacora(nombre) for nombre in _CAMPOS_UBICACION_OT}
+    extraidos: dict[str, str] = {}
+    for col, valor in _iter_campos_fila(fila):
+        clave = _clave_columna_bitacora(str(col))
+        if clave not in buscados:
+            continue
+        texto = _texto_crudo_campo(valor)
+        if texto and clave not in extraidos:
+            extraidos[clave] = texto
+    return extraidos
+
+
+def aplicar_catalogo_maestro_excel() -> int:
+    """Carga el mapa Nombre Largo / Nombre Corto del Excel de ubicaciones y equipos."""
+    ruta = excel_inventario_predeterminado()
+    if not ruta or not os.path.isfile(ruta):
+        return 0
+    try:
+        mtime = os.path.getmtime(ruta)
+    except OSError:
+        return 0
+    cache = getattr(aplicar_catalogo_maestro_excel, "_cache", None)
+    if cache and cache[0] == mtime:
+        return cache[1]
+    try:
+        extraer_catalogo_maestro_excel(ruta)
+        pares = list(getattr(extraer_catalogo_maestro_excel, "_pares", None) or [])
+    except Exception:
+        pares = []
+    aplicar_catalogo_maestro_excel._cache = (mtime, len(pares))
+    return len(pares)
+
+
+def _recargar_sitios_operativos() -> None:
+    ruta = getattr(sitios_operativos, "__file__", "")
+    mtime = os.path.getmtime(ruta) if ruta and os.path.exists(ruta) else 0
+    if getattr(_recargar_sitios_operativos, "_mtime", None) != mtime:
+        importlib.reload(sitios_operativos)
+        _recargar_sitios_operativos._mtime = mtime
+        aplicar_catalogo_maestro_excel._cache = None
+    aplicar_catalogo_maestro_excel()
+
+
+def etiqueta_ubicacion_fila(fila) -> str:
+    """Etiqueta visible: batería/estación + TAG, nunca '· Ninguno'."""
+    _recargar_sitios_operativos()
+    campos = textos_ubicacion_ot(fila)
+    loc = [
+        campos.get("pozo") or "",
+        campos.get("ubicacion") or "",
+        campos.get("equipo ubicacion") or "",
+        campos.get("sector") or "",
+    ]
+    return sitios_operativos.texto_ubicacion_final(*loc)
+
+
 def formato_ubicacion_reporte(fila) -> str:
-    """Solo la clave del pozo o sitio: PB163, PS1019. Sin el sector."""
-    sector = texto_visible(fila.get("SECTOR"), "")
-    pozo = texto_visible(fila.get("POZO"), "")
-    ubicacion = texto_visible(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN"), "")
-    partes = [parte.strip() for parte in ubicacion.split("·") if parte.strip()]
+    """Nombre limpio de la instalación o clave del pozo. Nunca 'NINGUNO'."""
+    _recargar_sitios_operativos()
+    campos = textos_ubicacion_ot(fila)
+    etiqueta = sitios_operativos.texto_ubicacion_final(*campos.values())
+    if etiqueta:
+        return etiqueta
+    pozo = sitios_operativos.quitar_ninguno(campos.get("pozo", ""))
+    ubicacion = sitios_operativos.quitar_ninguno(
+        campos.get("ubicacion") or campos.get("equipo ubicacion") or ""
+    )
+    sector = sitios_operativos.quitar_ninguno(campos.get("sector", ""))
+    partes = [parte.strip() for parte in re.split(r"[·|;/]+", ubicacion) if parte.strip()]
     if not sector and partes:
         sector = partes[0]
-    if not pozo and len(partes) >= 2:
-        pozo = partes[1]
+    if sitios_operativos.es_vacio_sitio(pozo) and len(partes) >= 2:
+        pozo = next((parte for parte in partes[1:] if not sitios_operativos.es_vacio_sitio(parte)), "")
     if sector and _PATRON_CODIGO_POZO.match(clave_ubicacion(sector).replace(" ", "")) and not pozo:
         pozo, sector = sector, ""
-    if pozo and (not sector or sector.casefold() == pozo.casefold()):
+    if pozo and not sitios_operativos.es_vacio_sitio(pozo):
         ficha = encontrar_ficha(cargar_ubicaciones(), pozo)
         if ficha:
-            sector = str(ficha.get("sector") or "").strip() or sector
             pozo = etiqueta_codigo_ubicacion(ficha.get("nombre")) or pozo
-    pozo = pozo.replace('"', "").replace("'", "").strip()
-    sector = sector.replace('"', "").replace("'", "").strip()
-    return (pozo or sector or ubicacion).replace('"', "").replace("'", "").strip().upper()
+            sitio = sitios_operativos.texto_ubicacion_final(pozo, ficha.get("nombre"), ficha.get("sector"))
+            if sitio:
+                return sitio
+        return sitios_operativos.quitar_ninguno(pozo).upper()
+    if sector and not sitios_operativos.es_vacio_sitio(sector):
+        return sitios_operativos.quitar_ninguno(sector)
+    return ""
 
 
 def opciones_ubicacion_equipo(df: pd.DataFrame | None = None) -> list[str]:
@@ -2333,6 +2776,75 @@ def clave_pozo_plana(nombre: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", _sin_acentos(str(nombre or "")).upper())
 
 
+def _nombres_ubicacion_expandida(texto: str) -> list[str]:
+    bruto = " ".join(str(texto or "").split())
+    if not bruto:
+        return []
+    salida = [bruto]
+    plano = _sin_acentos(bruto).upper()
+    for patron, prefijo in _RE_POZO_NOMBRE:
+        hallado = patron.search(plano)
+        if hallado:
+            salida.append(f"{prefijo}-{hallado.group(1)}")
+            break
+    return salida
+
+
+def _variantes_clave_ubicacion(*textos: str) -> set[str]:
+    claves: set[str] = set()
+    for texto in textos:
+        for bruto in _nombres_ubicacion_expandida(texto):
+            plana = clave_pozo_plana(bruto)
+            if not plana:
+                continue
+            claves.add(plana)
+            canon = _CANON_UBICACION_PLANO.get(plana)
+            if canon:
+                claves.add(clave_pozo_plana(canon))
+            hallado = re.fullmatch(r"(PSN|PPB|PGA|PS|PA|PC|PB|PG)(\d+[A-Z]?)", plana)
+            if hallado:
+                pref, num = hallado.group(1), hallado.group(2)
+                largo = _PREFIJO_POZO_CORTO.get(pref, pref)
+                claves.add(f"{pref}{num}")
+                claves.add(f"{largo}{num}")
+                if num.isdigit():
+                    recorte = str(int(num))
+                    claves.add(f"{pref}{recorte}")
+                    claves.add(f"{largo}{recorte}")
+                if largo == "PPB":
+                    claves.add(f"PB{num}")
+                if largo == "PGA":
+                    claves.add(f"PG{num}")
+            elif plana.startswith("P") and plana[1:].isdigit():
+                claves.add("PS" + plana[1:])
+            if "IQSIN" not in plana and "BSMI" not in plana:
+                for inst in ("BSNI", "ECSII", "BSII", "BPB", "BSI"):
+                    if inst in plana:
+                        claves.add(inst)
+                        break
+    return claves
+
+
+def canonizar_nombre_ubicacion(texto: str) -> str:
+    """Lleva PS116, PB266, ALMACEN OPS o POZO SOLEDAD 549 a la clave del catálogo."""
+    bruto = " ".join(str(texto or "").split())
+    if not bruto:
+        return ""
+    for extra in _nombres_ubicacion_expandida(bruto):
+        plana = clave_pozo_plana(extra)
+        if plana in _CANON_UBICACION_PLANO:
+            return _CANON_UBICACION_PLANO[plana]
+        hallado = re.fullmatch(r"(PSN|PPB|PGA|PS|PA|PC|PB|PG)(\d+[A-Z]?)", plana)
+        if hallado:
+            pref, num = hallado.group(1), hallado.group(2)
+            pref = _PREFIJO_POZO_CORTO.get(pref, pref)
+            numero = str(int(num)) if num.isdigit() else num
+            return f"{pref}-{numero}"
+        if plana.startswith("P") and plana[1:].isdigit():
+            return f"PS-{int(plana[1:])}"
+    return bruto
+
+
 def coincide_prefijo(nombre: str, prefijo: str) -> bool:
     clave = clave_ubicacion(nombre).replace(" ", "")
     pref = str(prefijo or "").upper().strip()
@@ -2378,13 +2890,97 @@ def ficha_vacia(nombre: str, zona_id: str = "", sector: str = "") -> dict:
         "estatus": "Operativo",
         "notas": "",
         "actualizado": "",
+        "aliases": [],
     }
+
+
+def _ficha_infraestructura(codigo: str, zona: str, clase: str, descripcion: str) -> dict:
+    zona_id = "infra-norte" if zona == "NTE" else "infra-sur"
+    return {
+        "id": codigo,
+        "nombre": codigo,
+        "zona_id": zona_id,
+        "prefijo": clase,
+        "sector": f"{zona} - {clase}",
+        "equipo_mci": "",
+        "equipo_ub": "",
+        "estatus": "Operativo",
+        "notas": descripcion,
+        "actualizado": "",
+    }
+
+
+def _alias_infraestructura(codigo: str) -> str:
+    """TDSGF-IQ-SIN-13 valida el mismo punto que CBN-TDSGF-IQ-SIN-13."""
+    texto = clave_ubicacion(codigo)
+    clase, separador, resto = texto.partition("-")
+    if separador and clase in _CLASES_INFRAESTRUCTURA and resto:
+        return resto
+    return ""
+
+
+def _claves_ficha(ficha: dict) -> set[str]:
+    valores = [ficha.get("nombre"), ficha.get("id")]
+    for valor in list(valores):
+        alias = _alias_infraestructura(str(valor or ""))
+        if alias:
+            valores.append(alias)
+    valores.extend(ficha.get("aliases") or [])
+    for clave in (ficha.get("id"), ficha.get("nombre")):
+        valores.extend(ALIAS_FICHA_CANON.get(str(clave or ""), []))
+    sector = str(ficha.get("sector") or "")
+    ident = clave_pozo_plana(ficha.get("id") or ficha.get("nombre") or "")
+    if ident and ident in clave_pozo_plana(sector):
+        valores.append(sector)
+    return _variantes_clave_ubicacion(*valores) | _claves_pozo(*valores)
+
+
+def _indice_infraestructura() -> dict[str, dict]:
+    cache = getattr(_indice_infraestructura, "cache", None)
+    if cache is not None:
+        return cache
+    indice: dict[str, dict] = {}
+    por_codigo: dict[str, dict] = {}
+    for codigo, zona, clase, descripcion in INFRAESTRUCTURA_OFICIAL:
+        ficha = _ficha_infraestructura(codigo, zona, clase, descripcion)
+        por_codigo[codigo] = ficha
+        for plana in _claves_ficha(ficha):
+            indice.setdefault(plana, ficha)
+        for token in _RE_TOKEN_INFRA.findall(clave_pozo_plana(codigo)):
+            token = token.upper()
+            indice.setdefault(token, ficha)
+            if token.startswith("MPS") and token[3:].isdigit():
+                indice.setdefault("OLG" + token[3:], ficha)
+                indice.setdefault("OLGPS" + token[3:], ficha)
+            if token.startswith("MPG") and token[3:].isdigit():
+                indice.setdefault("OLG" + token[3:], ficha)
+                indice.setdefault("OLGPGA" + token[3:], ficha)
+            if token.startswith("MPSN") and token[4:].isdigit():
+                indice.setdefault("OLGPSN" + token[4:], ficha)
+    for alias, codigo in _ALIAS_SEG_INFRA.items():
+        if codigo in por_codigo:
+            indice.setdefault(alias, por_codigo[codigo])
+    _indice_infraestructura.cache = indice
+    return indice
+
+
+def ficha_infraestructura(texto: str) -> dict | None:
+    """Punto oficial de ducto, recolección o skid, por código completo o sin la clase."""
+    indice = _indice_infraestructura()
+    for clave in _variantes_clave_ubicacion(texto) | _claves_pozo(texto, canonizar_nombre_ubicacion(texto)):
+        hallada = indice.get(clave)
+        if hallada:
+            return hallada
+    return None
 
 
 def ubicaciones_default() -> dict:
     fichas = {}
     for nombre, zona_id in POZOS_SEMILLA:
         ficha = ficha_vacia(nombre, zona_id)
+        fichas[ficha["id"]] = ficha
+    for codigo, zona, clase, descripcion in INFRAESTRUCTURA_OFICIAL:
+        ficha = _ficha_infraestructura(codigo, zona, clase, descripcion)
         fichas[ficha["id"]] = ficha
     return {
         "zonas": [dict(z) for z in ZONAS_UBICACION_DEFAULT],
@@ -2432,6 +3028,11 @@ def normalizar_ubicaciones(datos) -> dict:
             continue
         zona_id = str(item.get("zona_id") or inferir_zona_id(nombre, zonas)).strip()
         zona = mapa_zonas(zonas).get(zona_id, mapa_zonas(zonas).get("otros", {}))
+        aliases = [
+            " ".join(str(alias or "").split())
+            for alias in (item.get("aliases") or [])
+            if str(alias or "").strip()
+        ]
         fichas[fid] = {
             "id": fid,
             "nombre": nombre,
@@ -2443,6 +3044,7 @@ def normalizar_ubicaciones(datos) -> dict:
             "estatus": str(item.get("estatus") or "Operativo").strip(),
             "notas": str(item.get("notas") or "").strip(),
             "actualizado": str(item.get("actualizado") or "").strip(),
+            "aliases": aliases,
         }
     cambios = [c for c in datos.get("cambios_equipo", []) if isinstance(c, dict)]
     resultado = {"zonas": zonas, "fichas": fichas, "cambios_equipo": cambios}
@@ -2474,7 +3076,7 @@ def importar_pozos_bitacora(datos: dict | None = None) -> dict:
         if not nombre or nombre.lower() in {"nan", "none", "-"}:
             continue
         fid = clave_ubicacion(nombre)
-        if fid in datos["fichas"]:
+        if fid in datos["fichas"] or ficha_infraestructura(nombre):
             continue
         ficha = ficha_vacia(nombre, inferir_zona_id(nombre, zonas))
         sector_fila = ""
@@ -2485,6 +3087,122 @@ def importar_pozos_bitacora(datos: dict | None = None) -> dict:
             ficha["sector"] = sector_fila
         datos["fichas"][ficha["id"]] = ficha
     return datos
+
+
+def resolver_ubicacion_historial(texto: str, datos: dict | None = None) -> str:
+    """Cruza el texto de campo con el catálogo maestro (ficha_por_ubicacion)."""
+    datos = datos if datos is not None else cargar_ubicaciones()
+    ficha = ficha_por_ubicacion(datos, texto)
+    if not ficha:
+        return ""
+    return str(ficha.get("nombre") or ficha.get("id") or "").strip()
+
+
+def sincronizar_catalogo_historial(datos: dict | None = None) -> tuple[dict, int]:
+    """Da de alta pozos, módulos y alias que aparecen en el histórico y no están en el JSON."""
+    datos = datos or cargar_ubicaciones()
+    ruta = historial_pjp4.ruta_archivo()
+    if not ruta:
+        return datos, 0
+    zonas = datos["zonas"]
+    cambios = 0
+    for bruto in historial_pjp4.listar_ubicaciones(ruta):
+        existente = ficha_por_ubicacion(datos, bruto)
+        if existente:
+            aliases = list(existente.get("aliases") or [])
+            if bruto and clave_pozo_plana(bruto) not in _claves_ficha(existente):
+                aliases.append(bruto)
+                existente["aliases"] = aliases
+                datos["fichas"][existente["id"]] = existente
+                cambios += 1
+                if getattr(_indice_catalogo, "_cache", None):
+                    _indice_catalogo._cache = None
+            continue
+        nombre = canonizar_nombre_ubicacion(bruto) or " ".join(str(bruto).split())
+        if not nombre:
+            continue
+        if ficha_por_ubicacion(datos, nombre):
+            continue
+        ficha = ficha_vacia(nombre, inferir_zona_id(nombre, zonas))
+        if bruto and clave_pozo_plana(bruto) != clave_pozo_plana(nombre):
+            ficha["aliases"] = [bruto]
+        datos["fichas"][ficha["id"]] = ficha
+        cambios += 1
+        if getattr(_indice_catalogo, "_cache", None):
+            _indice_catalogo._cache = None
+    return datos, cambios
+
+
+def catalogo_con_historial() -> dict:
+    original = cargar_ubicaciones()
+    n0 = len(original["fichas"])
+    datos = importar_pozos_bitacora(original)
+    datos, cambios = sincronizar_catalogo_historial(datos)
+    if cambios or len(datos["fichas"]) > n0:
+        guardar_ubicaciones(datos)
+        return cargar_ubicaciones()
+    return datos
+
+
+def cargar_historial_campo() -> dict:
+    ruta = historial_pjp4.ruta_archivo()
+    mtime_hist = os.path.getmtime(ruta) if ruta and os.path.isfile(ruta) else 0
+    mtime_cat = os.path.getmtime(UBICACIONES_FILE) if os.path.exists(UBICACIONES_FILE) else 0
+    firma = (ruta, mtime_hist, mtime_cat)
+    cache = getattr(cargar_historial_campo, "_cache", None)
+    if cache and cache[0] == firma:
+        return cache[1]
+    datos = cargar_ubicaciones()
+    resultado = historial_pjp4.procesar(
+        ruta,
+        lambda texto, catalogo=datos: resolver_ubicacion_historial(texto, catalogo),
+    )
+    cargar_historial_campo._cache = (firma, resultado)
+    return resultado
+
+
+def historial_de_pozo(ficha: dict) -> list[dict]:
+    filas = []
+    for fila in cargar_historial_campo().get("filas") or []:
+        ubicacion = fila.get("UBICACIÓN") or fila.get("POZO") or ""
+        if _texto_coincide_pozo(ubicacion, ficha):
+            filas.append(fila)
+    return filas
+
+
+def eventos_historial_campo_pozo(ficha: dict) -> list[dict]:
+    eventos: list[dict] = []
+    for fila in historial_de_pozo(ficha):
+        fch = fila.get("FECHA")
+        if isinstance(fch, datetime):
+            fch = fch.date()
+        elif not isinstance(fch, date):
+            fch = parsear_fecha_valor(fch)
+        desc = str(
+            fila.get("DESCRIPCIÓN DE LA ACTIVIDAD")
+            or fila.get("DESCRIPCION DE LA ACTIVIDAD")
+            or ""
+        ).strip()
+        eventos.append(
+            {
+                "idx": None,
+                "fecha": fch,
+                "fecha_txt": fch.strftime("%d/%m/%Y") if isinstance(fch, date) else "s/f",
+                "sort": fch.isoformat() if isinstance(fch, date) else "0000-00-00",
+                "tipo": "historial",
+                "clase": "Histórico",
+                "titulo": desc or "Actividad histórica",
+                "cuadrilla": str(fila.get("CUADRILLA") or "").strip(),
+                "descripcion": str(fila.get("COMENTARIOS") or "").strip(),
+                "estatus": "",
+                "equipo": str(fila.get("UBICACIÓN") or "").strip(),
+                "insumos": insumos_de_fila(fila),
+                "secuencia": "",
+                "evidencia": "",
+                "fotos": 0,
+            }
+        )
+    return eventos
 
 
 ZONAS_TITULO_EXCEL = {
@@ -2603,7 +3321,153 @@ def _copia_excel_legible(ruta: str) -> str:
         return ruta
 
 
+def _tipo_columna_catalogo_excel(valor: str) -> str:
+    titulo = _norm_titulo(valor)
+    if "NOMBRE CORTO" in titulo:
+        return "corto"
+    if "NOMBRE LARGO" in titulo:
+        return "largo"
+    if titulo in {"MCI"}:
+        return "mci"
+    if titulo in {"UB", "UBM"}:
+        return "ub"
+    if _es_encabezado_bloque(valor):
+        return "corto"
+    return ""
+
+
+def _zona_bloque_catalogo_excel(valor: str) -> str:
+    titulo = _norm_titulo(valor)
+    if not titulo:
+        return ""
+    if titulo.startswith("UBICACION DE BATERI") or titulo.startswith("UBICACION DE ESTACION"):
+        return "instalaciones"
+    if titulo.startswith("UBICACION DE") or titulo in ZONAS_TITULO_EXCEL:
+        for clave, zona_id in sorted(ZONAS_TITULO_EXCEL.items(), key=lambda item: -len(item[0])):
+            if clave in titulo:
+                return zona_id
+    return _zona_id_desde_titulo(valor)
+
+
+def _canon_corto_instalacion(corto: str) -> str:
+    texto = " ".join(str(corto or "").split())
+    if not texto:
+        return ""
+    sitio = sitios_operativos.clave_sitio(texto)
+    if sitio:
+        return sitio
+    plano = clave_pozo_plana(texto)
+    return _CANON_UBICACION_PLANO.get(plano) or texto
+
+
+def extraer_catalogo_maestro_excel(ruta: str) -> list[dict]:
+    """Lee las tablas Nombre Largo (Excel) / Nombre Corto (App) del inventario."""
+    from openpyxl import load_workbook
+
+    origen = _copia_excel_legible(ruta)
+    wb = load_workbook(origen, data_only=True, read_only=True)
+    try:
+        hoja = wb[wb.sheetnames[0]]
+        grid = [list(fila) for fila in hoja.iter_rows(values_only=True)]
+    finally:
+        wb.close()
+    if not grid:
+        return []
+
+    bloques: list[tuple[int, int, int, str]] = []
+    for r, fila in enumerate(grid):
+        titulos = []
+        for c, valor in enumerate(fila):
+            zona_id = _zona_bloque_catalogo_excel(_texto_celda(valor))
+            if zona_id:
+                titulos.append((c, zona_id))
+        for i, (c0, zona_id) in enumerate(titulos):
+            c1 = titulos[i + 1][0] if i + 1 < len(titulos) else max(len(fila), c0 + 6)
+            bloques.append((r, c0, c1, zona_id))
+
+    filas: list[dict] = []
+    vistos: set[str] = set()
+    pares_maestro: list[tuple[str, str]] = []
+    for r0, c0, c1, zona_id in bloques:
+        cols = {"corto": None, "largo": None, "mci": None, "ub": None}
+        inicio = r0 + 1
+        for r in range(r0 + 1, min(r0 + 4, len(grid))):
+            fila = grid[r]
+            hallados = False
+            for c in range(c0, min(c1, len(fila))):
+                tipo = _tipo_columna_catalogo_excel(_texto_celda(fila[c]))
+                if tipo:
+                    cols[tipo] = c
+                    hallados = True
+            if hallados:
+                inicio = r + 1
+                break
+        if cols["corto"] is None and cols["largo"] is None:
+            continue
+        zona = mapa_zonas().get(zona_id, {})
+        es_instalacion = zona_id == "instalaciones"
+        vacios = 0
+        for r in range(inicio, len(grid)):
+            fila = grid[r]
+            corto = _texto_celda(fila[cols["corto"]]) if cols["corto"] is not None and cols["corto"] < len(fila) else ""
+            largo = _texto_celda(fila[cols["largo"]]) if cols["largo"] is not None and cols["largo"] < len(fila) else ""
+            if _zona_bloque_catalogo_excel(corto) or _zona_bloque_catalogo_excel(largo):
+                break
+            if _tipo_columna_catalogo_excel(corto) or _tipo_columna_catalogo_excel(largo):
+                break
+            if not corto and not largo:
+                vacios += 1
+                if vacios >= 3:
+                    break
+                continue
+            vacios = 0
+            mci_raw = _texto_celda(fila[cols["mci"]]) if cols["mci"] is not None and cols["mci"] < len(fila) else ""
+            ub_raw = _texto_celda(fila[cols["ub"]]) if cols["ub"] is not None and cols["ub"] < len(fila) else ""
+            nombre = _canon_corto_instalacion(corto or largo) if es_instalacion else (corto or largo)
+            if not nombre or sitios_operativos.es_vacio_sitio(nombre):
+                continue
+            clave = clave_ubicacion(nombre)
+            if clave in vistos:
+                if largo and es_instalacion:
+                    pares_maestro.append((largo, nombre))
+                continue
+            vistos.add(clave)
+            aliases = []
+            if largo and clave_pozo_plana(largo) != clave_pozo_plana(nombre):
+                aliases.append(largo)
+            if corto and corto != nombre:
+                aliases.append(corto)
+            if es_instalacion:
+                sitios_operativos.registrar_par_catalogo(largo, nombre)
+                pares_maestro.append((largo, nombre))
+            filas.append(
+                {
+                    "nombre": nombre,
+                    "zona_id": zona_id,
+                    "sector": (
+                        INSTALACIONES_SECTOR.get(nombre)
+                        or sitios_operativos.nombre_oficial_sitio(nombre)
+                        or zona.get("sector", "")
+                    ),
+                    "prefijo": "INS" if es_instalacion else zona.get("prefijo", ""),
+                    "equipo_mci": "" if es_instalacion else normalizar_mci_excel(mci_raw),
+                    "equipo_ub": "" if es_instalacion else normalizar_ub_excel(ub_raw),
+                    "mci_raw": "" if es_instalacion else mci_raw,
+                    "ub_raw": "" if es_instalacion else ub_raw,
+                    "aliases": aliases,
+                    "instalacion": es_instalacion,
+                    "largo_excel": largo,
+                    "corto_app": nombre,
+                }
+            )
+    extraer_catalogo_maestro_excel._pares = pares_maestro
+    return filas
+
+
 def extraer_pozos_desde_excel(ruta: str) -> list[dict]:
+    filas = extraer_catalogo_maestro_excel(ruta)
+    if filas:
+        return filas
     from openpyxl import load_workbook
 
     origen = _copia_excel_legible(ruta)
@@ -2621,7 +3485,7 @@ def extraer_pozos_desde_excel(ruta: str) -> list[dict]:
             if zona_id:
                 bloques.append((r, c, zona_id))
 
-    filas: list[dict] = []
+    filas = []
     vistos: set[str] = set()
     for r0, c0, zona_id in bloques:
         inicio = r0 + 1
@@ -2657,6 +3521,8 @@ def extraer_pozos_desde_excel(ruta: str) -> list[dict]:
                     "equipo_ub": normalizar_ub_excel(ub_raw),
                     "mci_raw": mci_raw,
                     "ub_raw": ub_raw,
+                    "aliases": [],
+                    "instalacion": zona_id == "instalaciones",
                 }
             )
     return filas
@@ -2694,22 +3560,32 @@ def importar_excel_ubicaciones(ruta: str = "", *, forzar: bool = False) -> dict:
     actualizados = 0
     ahora = datetime.now().strftime("%Y-%m-%d %H:%M")
     for item in extraidos:
-        existente = encontrar_ficha(datos, item["nombre"])
+        aliases_item = [a for a in (item.get("aliases") or []) if str(a).strip()]
+        existente = encontrar_ficha(datos, item["nombre"]) or (
+            encontrar_ficha(datos, aliases_item[0]) if aliases_item else None
+        )
         if existente:
-            existente["zona_id"] = item["zona_id"]
+            existente["zona_id"] = item["zona_id"] or existente.get("zona_id", "")
             existente["prefijo"] = item["prefijo"] or existente.get("prefijo", "")
             existente["sector"] = item["sector"] or existente.get("sector", "")
-            if item["equipo_mci"]:
-                existente["equipo_mci"] = item["equipo_mci"]
-            if item["equipo_ub"]:
-                existente["equipo_ub"] = item["equipo_ub"]
+            aliases = list(existente.get("aliases") or [])
+            for alias in aliases_item:
+                if alias not in aliases and clave_pozo_plana(alias) != clave_pozo_plana(existente.get("nombre")):
+                    aliases.append(alias)
+            existente["aliases"] = aliases
+            if not item.get("instalacion"):
+                if item.get("equipo_mci"):
+                    existente["equipo_mci"] = item["equipo_mci"]
+                if item.get("equipo_ub"):
+                    existente["equipo_ub"] = item["equipo_ub"]
             existente["actualizado"] = ahora
             datos["fichas"][existente["id"]] = existente
             actualizados += 1
         else:
             ficha = ficha_vacia(item["nombre"], item["zona_id"], item["sector"])
-            ficha["equipo_mci"] = item["equipo_mci"]
-            ficha["equipo_ub"] = item["equipo_ub"]
+            ficha["equipo_mci"] = "" if item.get("instalacion") else item.get("equipo_mci", "")
+            ficha["equipo_ub"] = "" if item.get("instalacion") else item.get("equipo_ub", "")
+            ficha["aliases"] = aliases_item
             ficha["actualizado"] = ahora
             datos["fichas"][ficha["id"]] = ficha
             nuevos += 1
@@ -2765,22 +3641,41 @@ def obtener_ficha(datos: dict, ficha_id: str) -> dict | None:
     return datos["fichas"].get(ficha_id)
 
 
+def _indice_catalogo(datos: dict) -> dict[str, dict]:
+    fichas = datos.get("fichas") or {}
+    marca = (id(datos), len(fichas))
+    cache = getattr(_indice_catalogo, "_cache", None)
+    if cache and cache[0] == marca:
+        return cache[1]
+    indice: dict[str, dict] = {}
+    for ficha in fichas.values():
+        for clave in _claves_ficha(ficha):
+            indice.setdefault(clave, ficha)
+    _indice_catalogo._cache = (marca, indice)
+    return indice
+
+
 def encontrar_ficha(datos: dict, nombre: str) -> dict | None:
     nombre = str(nombre or "").strip()
     if not nombre:
         return None
-    fid = clave_ubicacion(nombre)
-    if fid in datos["fichas"]:
-        return datos["fichas"][fid]
-    plana = clave_pozo_plana(nombre)
-    for ficha in datos["fichas"].values():
-        if str(ficha.get("nombre", "")).casefold() == nombre.casefold():
-            return ficha
-        if clave_ubicacion(ficha.get("nombre", "")) == fid:
-            return ficha
-        if plana and plana in _claves_pozo(ficha.get("nombre"), ficha.get("id")):
-            return ficha
-    return None
+    candidatos = [nombre]
+    canon = canonizar_nombre_ubicacion(nombre)
+    if canon and canon.casefold() != nombre.casefold():
+        candidatos.append(canon)
+    indice = _indice_catalogo(datos)
+    for candidato in candidatos:
+        fid = clave_ubicacion(candidato)
+        if fid in datos["fichas"]:
+            return datos["fichas"][fid]
+        for clave in _variantes_clave_ubicacion(candidato):
+            hallada = indice.get(clave)
+            if hallada:
+                return hallada
+        for ficha in datos["fichas"].values():
+            if str(ficha.get("nombre", "")).casefold() == candidato.casefold():
+                return ficha
+    return ficha_infraestructura(nombre) or ficha_infraestructura(canon)
 
 
 def reapuntar_cambios_equipo(
@@ -2969,7 +3864,7 @@ def _texto_coincide_pozo(valor: str, ficha: dict) -> bool:
     texto = str(valor or "").strip()
     if not texto or texto.lower() in {"nan", "none"}:
         return False
-    claves = _claves_pozo(ficha.get("nombre"), ficha.get("id"))
+    claves = _claves_ficha(ficha)
     if not claves:
         return False
     if clave_pozo_plana(texto) in claves:
@@ -4791,6 +5686,8 @@ def bitacora_no_programada(df: pd.DataFrame, mes_clave: str) -> pd.DataFrame:
 
 # ── Funciones de datos ─────────────────────────────────────────────────────────
 def sector_requiere_pozo(sector: str) -> bool:
+    if sitios_operativos.es_instalacion(sector):
+        return False
     return sector not in set(obtener_catalogos()["sectores_sin_pozo"]) and sector != SECTOR_OTRO
 
 
@@ -4919,6 +5816,8 @@ def resolver_actividad_catalogo(
 
 def resolver_equipo(equipo_sel: str | None) -> str:
     if not equipo_sel or equipo_sel == "Seleccionar...":
+        return ""
+    if sitios_operativos.es_vacio_sitio(equipo_sel):
         return ""
     return equipo_sel
 
@@ -5622,6 +6521,7 @@ def avance_texto(valor) -> str:
 def mapear_soledad_a_interno(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
+    aplicar_catalogo_maestro_excel()
     copia = _renombrar_columnas_bitacora(df)
     if "DESCRIPCION DE LA ACTIVIDAD" in copia.columns and "DESCRIPCIÓN DE LA ACTIVIDAD" not in copia.columns:
         copia["DESCRIPCIÓN DE LA ACTIVIDAD"] = copia["DESCRIPCION DE LA ACTIVIDAD"]
@@ -5630,6 +6530,20 @@ def mapear_soledad_a_interno(df: pd.DataFrame) -> pd.DataFrame:
             copia["EQUIPO/UBICACIÓN"] = copia["UBICACIÓN"]
         if "SECTOR" not in copia.columns:
             copia["SECTOR"] = copia["UBICACIÓN"]
+        def _pozo_desde_ubicacion(valor):
+            sitio = sitios_operativos.clave_sitio(valor)
+            if sitio:
+                return sitio
+            texto = str(valor or "").strip()
+            return "" if sitios_operativos.es_vacio_sitio(texto) else texto
+
+        if "POZO" not in copia.columns:
+            copia["POZO"] = copia["UBICACIÓN"].map(_pozo_desde_ubicacion)
+        else:
+            vacio_pozo = copia["POZO"].isna() | copia["POZO"].astype(str).str.strip().str.casefold().isin(
+                ["", "nan", "none", "<na>", "ninguno"]
+            )
+            copia.loc[vacio_pozo, "POZO"] = copia.loc[vacio_pozo, "UBICACIÓN"].map(_pozo_desde_ubicacion)
     if "PERSONAL" in copia.columns:
         personal = copia["PERSONAL"].fillna("").astype(str)
         if "MECANICO TITULAR" not in copia.columns:
@@ -5671,7 +6585,9 @@ def vista_revision_soledad(df: pd.DataFrame) -> pd.DataFrame:
         )
     filas = []
     for _, fila in df.iterrows():
-        ubicacion = str(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or fila.get("POZO") or fila.get("SECTOR") or "").strip()
+        ubicacion = etiqueta_ubicacion_fila(fila) or str(
+            fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or fila.get("POZO") or fila.get("SECTOR") or ""
+        ).strip()
         descripcion = str(
             fila.get("DESCRIPCION DE LA ACTIVIDAD")
             or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD")
@@ -5795,6 +6711,7 @@ def normalizar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def cargar_bitacora() -> pd.DataFrame:
+    aplicar_catalogo_maestro_excel()
     asegurar_archivo_bitacora_soledad()
     if not os.path.exists(EXCEL_FILE):
         return pd.DataFrame(columns=COLUMNAS_EXCEL)
@@ -7207,6 +8124,33 @@ def construir_registro(
     insumos = insumos or {}
     fotos = fotos or []
     rutas = list(fotos) + [""] * MAX_FOTOS
+    pozo = "" if sitios_operativos.es_vacio_sitio(pozo) else str(pozo or "").strip()
+    equipo = "" if sitios_operativos.es_vacio_sitio(equipo) else str(equipo or "").strip()
+    sector = "" if sitios_operativos.es_vacio_sitio(sector) else str(sector or "").strip()
+    tag_pozo = componer_tag_pozo(sector, pozo)
+    if not tag_pozo and _PATRON_CODIGO_POZO.match(clave_pozo_plana(pozo)):
+        tag_pozo = etiqueta_codigo_ubicacion(pozo)
+    if tag_pozo:
+        pozo = tag_pozo
+        zona, _n = descomponer_tag_pozo(tag_pozo)
+        sector = zona or sector or tag_pozo
+        partes_ubicacion = [tag_pozo]
+        sitio = tag_pozo
+    else:
+        sitio = sitios_operativos.clave_sitio_campos(pozo, sector, equipo, descripcion)
+        if sitio:
+            pozo = sitio
+            sector = sitio
+            partes_ubicacion = [sitio]
+            equipo = ""
+        else:
+            partes_ubicacion = []
+            for parte in (sector, pozo):
+                texto = str(parte or "").strip()
+                if not texto or sitios_operativos.es_vacio_sitio(texto):
+                    continue
+                if texto not in partes_ubicacion:
+                    partes_ubicacion.append(texto)
     registro = {
         "FECHA": fecha.strftime("%Y-%m-%d"),
         "SECUENCIA": secuencia,
@@ -7236,7 +8180,7 @@ def construir_registro(
             ]
             if p
         ),
-        "UBICACIÓN": " · ".join(p for p in [sector, pozo or None, equipo] if p),
+        "UBICACIÓN": sitio or sitios_operativos.texto_ubicacion_final(*partes_ubicacion),
         "COMENTARIOS": "",
         "AVANCE %": 1,
         "ID_REGISTRO": "",
@@ -8448,10 +9392,7 @@ def render_historial_operativo() -> None:
                     f"Inventario Excel importado: {auto['nuevos']} pozos nuevos y "
                     f"{auto['actualizados']} actualizados."
                 )
-        datos = importar_pozos_bitacora(cargar_ubicaciones())
-        if len(datos["fichas"]) > len(ubicaciones_default()["fichas"]):
-            guardar_ubicaciones(datos)
-            datos = cargar_ubicaciones()
+        datos = catalogo_con_historial()
         render_flujo_historial_pozos(datos)
         return
     if seccion == "ot_diario":
@@ -8490,7 +9431,24 @@ def render_captura_actividades_campo() -> None:
                 format="DD/MM/YYYY",
                 key=f"fecha_{form_id}",
             )
-            ubicacion_sel, ubicacion_nueva = selector_ubicacion_oficial(f"ubicacion_{form_id}")
+            ubicacion_sel = st.selectbox(
+                "Ubicación / Equipo — zona",
+                ["PS Soledad", "PA Aragón", "PGA Gallo", "PSN", "PPB", "PC"],
+                index=None,
+                placeholder="Paso 1: elige la zona",
+                key=f"zona_macro_paso1_{form_id}",
+            )
+            ubicacion_nueva = st.text_input(
+                "Número de pozo",
+                placeholder="Paso 2: ej. 190",
+                key=f"numero_pozo_paso2_{form_id}",
+                disabled=not bool(ubicacion_sel),
+            )
+            tag_instalacion = componer_tag_pozo(ubicacion_sel, ubicacion_nueva)
+            if tag_instalacion:
+                st.caption(f"Se guardará: **{tag_instalacion}**")
+            elif ubicacion_sel:
+                st.caption("Escribe el número del pozo (ej. 190).")
 
         with col_o:
             st.markdown('<div class="section-title">🔧 Operación</div>', unsafe_allow_html=True)
@@ -8520,6 +9478,8 @@ def render_captura_actividades_campo() -> None:
             )
             aviso_precarga_jornada(precarga)
             cobertura = render_bloque_cobertura(form_id, cuadrilla)
+            if tag_instalacion:
+                st.caption(f"Ubicación del registro: **{tag_instalacion}**. El MCI/UBM es opcional.")
             equipo_sel = st.selectbox(
                 "Equipo",
                 equipos,
@@ -8562,9 +9522,7 @@ def render_captura_actividades_campo() -> None:
                 st.caption("Esta cuadrilla no tiene catálogo oficial de actividades.")
 
     confirma_programa = False
-    ubicacion_programa = str(
-        ubicacion_nueva if ubicacion_sel == OPCION_UBICACION_NUEVA else (ubicacion_sel or "")
-    ).strip()
+    ubicacion_programa = str(tag_instalacion or componer_tag_pozo(ubicacion_sel, ubicacion_nueva) or "").strip()
     if tipo_actividad and tipo_actividad != "Otra":
         actividad_programa = str(tipo_actividad)
         oficial_programa = buscar_actividad_catalogo(cuadrilla, tipo_actividad)
@@ -8653,12 +9611,9 @@ def render_captura_actividades_campo() -> None:
         return
 
     equipo_final = resolver_equipo(equipo_sel)
-    if ubicacion_sel == OPCION_UBICACION_NUEVA:
-        sector_final, pozo_final = resolver_ubicacion_catalogo(ubicacion_nueva)
-        if not sector_final and not pozo_final:
-            sector_final = ubicacion_nueva.strip()
-    else:
-        sector_final, pozo_final = resolver_ubicacion_catalogo(str(ubicacion_sel or ""))
+    captura = resolver_captura_ubicacion(ubicacion_sel, ubicacion_nueva, tag_instalacion)
+    sector_final = captura["sector"]
+    pozo_final = captura["pozo"]
     tipo_actividad_final, actividad_corta_final = resolver_actividad_catalogo(
         cuadrilla, tipo_actividad, tipo_actividad_otro, actividad_corta_otro
     )
@@ -8668,13 +9623,8 @@ def render_captura_actividades_campo() -> None:
 
     if not descripcion.strip():
         st.warning("Por favor escribe una descripción de la actividad antes de guardar.")
-    elif not equipo_final:
-        st.warning("Por favor selecciona un equipo o especifica cuál es.")
-    elif not sector_final and not pozo_final:
-        if ubicacion_sel == OPCION_UBICACION_NUEVA:
-            st.warning("Por favor escribe la nueva ubicación o el equipo.")
-        else:
-            st.warning("Por favor selecciona la ubicación del catálogo.")
+    elif not captura.get("ubicacion"):
+        st.warning("Selecciona la zona y escribe el número de pozo (ej. PSN + 190 → PSN190).")
     elif opciones_act and tipo_actividad == "Otra" and not tipo_actividad_final:
         st.warning("Por favor escribe el nombre de la actividad.")
     elif opciones_act and not tipo_actividad_final:
@@ -8778,7 +9728,9 @@ def etiqueta_registro(df: pd.DataFrame, idx: int) -> str:
     fila = df.loc[idx]
     fecha = parsear_fecha_valor(fila.get("FECHA"))
     fecha_txt = fecha.strftime("%d/%m/%Y") if fecha else str(fila.get("FECHA") or "")
-    ubic = str(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or fila.get("SECTOR") or "").strip()
+    ubic = etiqueta_ubicacion_fila(fila) or str(
+        fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or fila.get("SECTOR") or ""
+    ).strip()
     evid = estatus_evidencia_fila(fila)
     secuencia = numero_secuencia_actividad(fila.get("SECUENCIA"))
     actividad = texto_visible(fila.get("DESCRIPCION DE LA ACTIVIDAD") or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD"), "")
@@ -8842,11 +9794,10 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
         (i for i, op in enumerate(opciones_cuadrilla) if clave_cuadrilla_oficial(op) == clave_actual),
         0,
     )
-    ubic_actual = str(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or "").strip()
-    opciones_ubic = [op for op in opciones_ubicacion_catalogo() if op != OPCION_UBICACION_NUEVA]
-    if ubic_actual and ubic_actual not in opciones_ubic:
-        opciones_ubic.insert(0, ubic_actual)
-    indice_ubic = opciones_ubic.index(ubic_actual) if ubic_actual in opciones_ubic else None
+    ubic_actual = str(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or fila.get("POZO") or "").strip()
+    zona_act, numero_act = descomponer_tag_pozo(ubic_actual)
+    opciones_ubic = opciones_secciones_operativas()
+    indice_ubic = opciones_ubic.index(zona_act) if zona_act in opciones_ubic else None
     secuencia_actual = numero_secuencia_actividad(fila.get("SECUENCIA")) or 1
     descripcion_actual = texto_visible(
         fila.get("DESCRIPCION DE LA ACTIVIDAD") or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD"), ""
@@ -8868,28 +9819,34 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
             )
         with c3:
             nueva_secuencia = st.number_input("Secuencia", min_value=1, step=1, value=int(secuencia_actual))
-        c4, c5 = st.columns([1.4, 1])
+        c4, c5, c6 = st.columns([1.2, 0.8, 1])
         with c4:
             nueva_ubic = st.selectbox(
-                "Ubicación / Pozo",
+                "Zona operativa",
                 opciones_ubic,
                 index=indice_ubic,
-                filter_mode="contains",
-                accept_new_options=True,
-                placeholder="Escribe o elige el pozo",
+                placeholder="Selecciona la zona",
             )
         with c5:
+            nuevo_numero = st.text_input(
+                "Número de pozo",
+                value=numero_act,
+                placeholder="Ej. 190",
+            )
+        with c6:
             nuevo_personal = st.text_input("Ficha / Personal", value=personal_actual)
         nueva_desc = st.text_area("Descripción de la actividad", value=descripcion_actual, height=110)
         nuevos_coment = st.text_area("Comentarios", value=comentarios_actual, height=80)
         guardar = st.form_submit_button("💾 Guardar Cambios en Bitácora", type="primary")
     if not guardar:
         return
+    captura = resolver_captura_ubicacion(nueva_ubic, nuevo_numero, "")
+    ubicacion_guardada = captura["ubicacion"]
     cambios = {
         "fecha": nueva_fecha,
         "cuadrilla": nueva_cuadrilla,
         "secuencia": int(nueva_secuencia),
-        "ubicacion": str(nueva_ubic or "").strip(),
+        "ubicacion": ubicacion_guardada,
         "personal": nuevo_personal,
         "descripcion": nueva_desc,
         "comentarios": nuevos_coment,
@@ -9822,7 +10779,7 @@ def reportes_cuadrilla_en_fecha(df: pd.DataFrame | None, dia: date, cuadrilla: s
             fila.get("DESCRIPCION DE LA ACTIVIDAD") or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD"),
             "Sin descripción",
         )
-        ubicacion = texto_visible(
+        ubicacion = etiqueta_ubicacion_fila(fila) or texto_visible(
             fila.get("UBICACIÓN") or fila.get("POZO") or fila.get("SECTOR") or fila.get("EQUIPO/UBICACIÓN"),
             "",
         )
@@ -10547,7 +11504,24 @@ def render_registro_actividad_bitacora() -> None:
                 format="DD/MM/YYYY",
                 key=f"bit_reg_fecha_{epoch}",
             )
-            ubicacion_sel, ubicacion_nueva = selector_ubicacion_oficial(f"bit_reg_equipo_{epoch}")
+            ubicacion_sel = st.selectbox(
+                "Ubicación / Equipo — zona",
+                ["PS Soledad", "PA Aragón", "PGA Gallo", "PSN", "PPB", "PC"],
+                index=None,
+                placeholder="Paso 1: elige la zona",
+                key=f"bit_reg_zona_paso1_{epoch}",
+            )
+            ubicacion_nueva = st.text_input(
+                "Número de pozo",
+                placeholder="Paso 2: ej. 190",
+                key=f"bit_reg_numero_paso2_{epoch}",
+                disabled=not bool(ubicacion_sel),
+            )
+            tag_instalacion = componer_tag_pozo(ubicacion_sel, ubicacion_nueva)
+            if tag_instalacion:
+                st.caption(f"Se guardará: **{tag_instalacion}**")
+            elif ubicacion_sel:
+                st.caption("Escribe el número del pozo (ej. 190).")
 
     with col_o:
         with st.container(border=True):
@@ -10637,17 +11611,12 @@ def render_registro_actividad_bitacora() -> None:
     if not guardar:
         return
 
-    if ubicacion_sel == OPCION_UBICACION_NUEVA:
-        ubicacion = ubicacion_nueva.strip()
-    else:
-        ubicacion = str(ubicacion_sel or "").strip()
+    captura = resolver_captura_ubicacion(ubicacion_sel, ubicacion_nueva, tag_instalacion)
+    ubicacion = captura["ubicacion"]
     if not cuadrilla:
         st.error("Escribe la cuadrilla que realizó la actividad.")
     elif not ubicacion:
-        if ubicacion_sel == OPCION_UBICACION_NUEVA:
-            st.error("Escribe la nueva ubicación o el equipo.")
-        else:
-            st.error("Selecciona la ubicación o el equipo.")
+        st.error("Selecciona la zona y escribe el número de pozo (ej. PSN + 190 → PSN190).")
     elif not str(descripcion or "").strip():
         st.error("Escribe la descripción de la actividad realizada.")
     else:
@@ -11779,12 +12748,6 @@ def render_detalle_estado_pozo(ficha: dict, datos: dict) -> None:
     )
 
     hoy = date.today()
-    if st.session_state.get("ub_cal_pozo") != ficha["id"]:
-        st.session_state.ub_cal_pozo = ficha["id"]
-        st.session_state.ub_cal_anio = hoy.year
-        st.session_state.ub_cal_mes = hoy.month
-        st.session_state.ub_cal_dia = None
-
     actualizado = ficha.get("actualizado") or "sin actualizaciones de ficha"
     st.markdown(
         f"""
@@ -11820,15 +12783,39 @@ def render_detalle_estado_pozo(ficha: dict, datos: dict) -> None:
     df_pozo = bitacora_de_pozo(cargar_bitacora(), ficha)
     cambios = cambios_de_pozo(datos, ficha)
     programados = programados_ordenados_pozo(ficha)
-    eventos = eventos_historial_pozo(df_pozo, cambios)
-    dias_bit = fechas_bitacora_pozo(df_pozo)
+    eventos_hist = eventos_historial_campo_pozo(ficha)
+    eventos = sorted(
+        eventos_historial_pozo(df_pozo, cambios) + eventos_hist,
+        key=lambda item: item.get("sort") or "0000-00-00",
+        reverse=True,
+    )
+    dias_hist = {ev["fecha"] for ev in eventos_hist if ev.get("fecha")}
+    dias_bit = fechas_bitacora_pozo(df_pozo) | dias_hist
     dias_prog = {fch for item in programados if (fch := fecha_de_programado(item))}
     pendientes = [p for p in programados if p.get("estatus") in {"No Cumplido", "Reprogramado"}]
 
-    m1, m2, m3 = st.columns(3)
+    if st.session_state.get("ub_cal_pozo") != ficha["id"]:
+        st.session_state.ub_cal_pozo = ficha["id"]
+        fechas = dias_bit | dias_prog
+        if fechas:
+            ultimo = max(fechas)
+            st.session_state.ub_cal_anio = ultimo.year
+            st.session_state.ub_cal_mes = ultimo.month
+        else:
+            st.session_state.ub_cal_anio = hoy.year
+            st.session_state.ub_cal_mes = hoy.month
+        st.session_state.ub_cal_dia = None
+
+    m1, m2, m3, m4 = st.columns(4)
     m1.metric("Actividades en bitácora", len(df_pozo))
-    m2.metric("Cambios de MCI / UB", len(cambios))
-    m3.metric("Programados pendientes", len(pendientes))
+    m2.metric("Histórico jul–sep", len(eventos_hist))
+    m3.metric("Cambios de MCI / UB", len(cambios))
+    m4.metric("Programados pendientes", len(pendientes))
+    if eventos_hist:
+        st.caption(
+            "El mini reporte histórico sale de `assets/historial_pjp4.xlsx` "
+            "(julio y agosto-septiembre), cruzado con esta ficha del catálogo."
+        )
 
     anio, mes = _mes_calendario_pozo()
     clave_vista = clave_mes(anio, mes)
@@ -11895,7 +12882,10 @@ def render_detalle_estado_pozo(ficha: dict, datos: dict) -> None:
             st.caption(f"Filtrado al {dia_sel.strftime('%d/%m/%Y')}.")
             visibles = [e for e in eventos if e.get("fecha") == dia_sel]
         else:
-            st.caption("Actividades ejecutadas, de la más reciente a la más antigua, con insumos y cambios de equipo.")
+            st.caption(
+                "Actividades ejecutadas, de la más reciente a la más antigua, "
+                "incluyendo el histórico de campo julio–septiembre."
+            )
             visibles = eventos
 
         if not visibles:
@@ -11905,6 +12895,8 @@ def render_detalle_estado_pozo(ficha: dict, datos: dict) -> None:
                 cls = "hist-card"
                 if ev["tipo"] == "cambio":
                     cls += " cambio"
+                elif ev["tipo"] == "historial":
+                    cls += " historico"
                 elif ev.get("clase") == "No programado":
                     cls += " nprog"
                 chips_html = "".join(
@@ -11935,7 +12927,7 @@ def render_detalle_estado_pozo(ficha: dict, datos: dict) -> None:
                     )
                 desc = ev.get("descripcion") or ""
                 desc_html = f"<p>{html.escape(desc)}</p>" if desc else ""
-                equipo = ev.get("equipo") if ev["tipo"] == "bitacora" else ""
+                equipo = ev.get("equipo") if ev["tipo"] in {"bitacora", "historial"} else ""
                 equipo_html = f"<p>{html.escape(equipo)}</p>" if equipo else ""
                 tarjeta = (
                     f'<div class="{cls}">'
@@ -12857,11 +13849,13 @@ def ubicaciones_secuencia_bloque(bloque: pd.DataFrame) -> list[str]:
     filas = filas_secuencia_historial(bloque)
     sitios = []
     for indice, fila in enumerate(filas, start=1):
-        sitio = texto_visible(
+        sitio = etiqueta_ubicacion_fila(fila) or texto_visible(
             fila.get("UBICACIÓN") or fila.get("POZO") or fila.get("EQUIPO/UBICACIÓN") or fila.get("SECTOR"),
             "",
         )
         if not sitio or _sin_acentos(sitio).casefold() in {"sin pozo", "sin ubicacion"}:
+            continue
+        if sitios_operativos.es_vacio_sitio(sitio):
             continue
         numero = numero_secuencia_actividad(fila.get("SECUENCIA")) or indice
         sitios.append(f"{numero:02d} {sitio}")
@@ -13018,35 +14012,43 @@ def _texto_equipo_catalogo(valor: str) -> str:
 
 
 def ficha_por_ubicacion(datos: dict, ubicacion: str) -> dict | None:
-    ficha = encontrar_ficha(datos, ubicacion)
+    texto = str(ubicacion or "").strip()
+    if not texto:
+        return None
+    ficha = encontrar_ficha(datos, texto)
     if ficha:
         return ficha
-    plana = clave_pozo_plana(ubicacion)
-    if not plana:
-        return None
-    for item in datos.get("fichas", {}).values():
-        if plana in _claves_pozo(item.get("id"), item.get("nombre")):
-            return item
-    return None
+    indice = _indice_catalogo(datos)
+    for clave in _variantes_clave_ubicacion(texto, canonizar_nombre_ubicacion(texto)):
+        hallada = indice.get(clave)
+        if hallada:
+            return hallada
+    return ficha_infraestructura(texto)
 
 
 def equipo_catalogo_ubicacion(ubicacion: str, datos: dict | None = None) -> str:
     texto = str(ubicacion or "").strip()
-    if not texto or texto in {"—", "-", "nan", "None"}:
-        return "No especificado en catálogo"
+    if not texto or texto in {"—", "-", "nan", "None"} or sitios_operativos.es_vacio_sitio(texto):
+        return ""
     try:
         datos = datos if datos is not None else cargar_ubicaciones()
         ficha = ficha_por_ubicacion(datos, texto)
     except Exception:
-        return "No especificado en catálogo"
-    if not ficha:
-        return "No especificado en catálogo"
-    partes = [
-        _texto_equipo_catalogo(ficha.get("equipo_mci")),
-        _texto_equipo_catalogo(ficha.get("equipo_ub")),
-    ]
-    partes = [parte for parte in partes if parte]
-    return " · ".join(partes) if partes else "No especificado en catálogo"
+        ficha = None
+    if ficha:
+        partes = [
+            _texto_equipo_catalogo(ficha.get("equipo_mci")),
+            _texto_equipo_catalogo(ficha.get("equipo_ub")),
+        ]
+        partes = [parte for parte in partes if parte]
+        if partes:
+            return " · ".join(partes)
+        if sitios_operativos.es_instalacion(texto) or sitios_operativos.es_instalacion(ficha.get("nombre")):
+            return ""
+        return ""
+    if sitios_operativos.es_instalacion(texto):
+        return ""
+    return "No especificado en catálogo"
 
 
 def render_actividad_cuadrilla_ot(
@@ -13057,14 +14059,20 @@ def render_actividad_cuadrilla_ot(
     datos_ubicaciones: dict | None = None,
 ) -> None:
     numero = numero_secuencia_actividad(fila.get("SECUENCIA")) or indice
-    ubicacion = texto_visible(
+    ubicacion = etiqueta_ubicacion_fila(fila) or texto_visible(
         fila.get("UBICACIÓN") or fila.get("POZO") or fila.get("SECTOR") or fila.get("EQUIPO/UBICACIÓN")
     )
     equipo = equipo_catalogo_ubicacion(ubicacion, datos_ubicaciones)
-    if equipo == "No especificado en catálogo":
+    if not equipo or equipo == "No especificado en catálogo":
         respaldo = texto_visible(fila.get("EQUIPO/UBICACIÓN"), "")
-        if respaldo and _sin_acentos(respaldo).casefold() != _sin_acentos(ubicacion).casefold():
+        if (
+            respaldo
+            and sitios_operativos.es_equipo_explicito(respaldo)
+            and _sin_acentos(respaldo).casefold() != _sin_acentos(ubicacion).casefold()
+        ):
             equipo = respaldo
+        else:
+            equipo = ""
     personal = texto_visible(fila.get("PERSONAL"), "")
     if not personal:
         personal = texto_par_personal(
@@ -13090,7 +14098,7 @@ def render_actividad_cuadrilla_ot(
                 <div class="ot-field ot-span"><div class="k">Descripción</div>
                 <div class="v">{html.escape(descripcion)}</div></div>
                 <div class="ot-field"><div class="k">Equipo</div>
-                <div class="v">{html.escape(equipo)}</div></div>
+                <div class="v">{html.escape(equipo or "—")}</div></div>
                 <div class="ot-field"><div class="k">Ubicación</div>
                 <div class="v">{html.escape(ubicacion)}</div></div>
                 <div class="ot-field ot-span"><div class="k">Personal</div>
@@ -13782,10 +14790,7 @@ def render_panel_ubicaciones(*, encabezado: bool = True) -> None:
         elif not auto.get("ok"):
             st.warning(auto.get("error") or "No se pudo importar el Excel de ubicaciones.")
 
-    datos = importar_pozos_bitacora(cargar_ubicaciones())
-    if len(datos["fichas"]) > len(ubicaciones_default()["fichas"]):
-        guardar_ubicaciones(datos)
-        datos = cargar_ubicaciones()
+    datos = catalogo_con_historial()
 
     sub = st.session_state.get("ub_sub_modulo")
     if not sub:
@@ -14164,7 +15169,7 @@ def etiqueta_secuencia_historial(fila, indice: int) -> str:
             "",
         )
         corto = (descripcion[:42] + "…") if len(descripcion) > 42 else (descripcion or "Actividad")
-    sitio = texto_visible(
+    sitio = etiqueta_ubicacion_fila(fila) or texto_visible(
         fila.get("UBICACIÓN") or fila.get("POZO") or fila.get("SECTOR") or fila.get("EQUIPO/UBICACIÓN"),
         "Sin ubicación",
     )
@@ -14216,7 +15221,7 @@ def render_reporte_cuadrilla(dia: date, cuadrilla: str, df_dia: pd.DataFrame) ->
     materiales = materiales_de_filas([fila])
     evidencias = fotos_de_filas([fila])
     sec = texto_secuencia_limpio(fila.get("SECUENCIA")) or str(indice + 1)
-    ubicacion = texto_visible(
+    ubicacion = etiqueta_ubicacion_fila(fila) or texto_visible(
         fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or fila.get("SECTOR") or fila.get("POZO")
     )
     personal_txt = texto_visible(fila.get("PERSONAL"))
@@ -14542,7 +15547,6 @@ def actividades_reporte_fotografico(inicio: date, fin: date) -> list[dict]:
         cuadrilla_bruta = str(fila.get("CUADRILLA") or "").strip()
         cuadrilla = etiqueta_cuadrilla_historial(cuadrilla_bruta)
         secuencia = numero_secuencia_actividad(fila.get("SECUENCIA")) or 0
-        ubicacion = formato_ubicacion_reporte(fila)
         descripcion = texto_visible(
             fila.get("DESCRIPCION DE LA ACTIVIDAD")
             or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD")
@@ -14550,6 +15554,16 @@ def actividades_reporte_fotografico(inicio: date, fin: date) -> list[dict]:
             or fila.get("TIPO DE ACTIVIDAD"),
             "",
         )
+        descripcion = sitios_operativos.quitar_ninguno(descripcion)
+        campos = textos_ubicacion_ot(fila)
+        ubicacion = etiqueta_ubicacion_fila(fila) or formato_ubicacion_reporte(fila)
+        if not ubicacion:
+            ubicacion = sitios_operativos.texto_ubicacion_final(
+                campos.get("pozo", ""),
+                campos.get("ubicacion", ""),
+                campos.get("equipo ubicacion", ""),
+                campos.get("sector", ""),
+            )
         if "AVANCE %" in fila.index:
             avance = avance_texto(fila.get("AVANCE %"))
         else:
@@ -14562,6 +15576,9 @@ def actividades_reporte_fotografico(inicio: date, fin: date) -> list[dict]:
                 "secuencia": secuencia,
                 "ot": etiqueta_secuencia_consecutiva(secuencia) if secuencia else "",
                 "ubicacion": ubicacion,
+                "pozo": campos.get("pozo", ""),
+                "sector": campos.get("sector", ""),
+                "equipo": campos.get("equipo ubicacion", ""),
                 "descripcion": descripcion,
                 "avance": avance,
                 "cuadrilla": cuadrilla,
@@ -14573,10 +15590,13 @@ def actividades_reporte_fotografico(inicio: date, fin: date) -> list[dict]:
 
 def modulo_reporte_fotografico():
     """Streamlit no recarga módulos ya importados; sin esto el PDF sale con el diseño anterior."""
-    mtime = _mtime_archivo(reporte_fotografico.__file__)
-    if getattr(reporte_fotografico, "_mtime_cargado", None) != mtime:
+    mtime_foto = _mtime_archivo(reporte_fotografico.__file__)
+    mtime_sitios = _mtime_archivo(sitios_operativos.__file__)
+    firma = (mtime_foto, mtime_sitios)
+    if getattr(reporte_fotografico, "_mtime_cargado", None) != firma:
+        importlib.reload(sitios_operativos)
         importlib.reload(reporte_fotografico)
-        reporte_fotografico._mtime_cargado = mtime
+        reporte_fotografico._mtime_cargado = firma
     return reporte_fotografico
 
 
@@ -19351,11 +20371,7 @@ def _partes_otros_insumos(valor) -> list[tuple[str, float]]:
 
 
 def _ubicacion_fila_refaccion(fila) -> str:
-    for columna in ("UBICACIÓN", "EQUIPO/UBICACIÓN", "POZO", "SECTOR"):
-        texto = texto_visible(fila.get(columna), "")
-        if texto:
-            return texto
-    return "Sin ubicación"
+    return etiqueta_ubicacion_fila(fila) or "Sin ubicación"
 
 
 def detalle_insumos_suministrados(df: pd.DataFrame | None) -> pd.DataFrame:
@@ -20188,11 +21204,11 @@ def texto_rango_registros(inicio: date, ultima: date | None) -> str:
 
 
 def ubicacion_de_registro(fila) -> str:
-    for col in ("POZO", "UBICACIÓN", "UBICACION"):
-        texto = texto_visible(fila.get(col), "")
-        if texto:
-            return texto
-    return texto_visible(fila.get("SECTOR"), "")
+    return etiqueta_ubicacion_fila(fila) or sitios_operativos.texto_ubicacion_final(
+        texto_visible(fila.get("POZO"), ""),
+        texto_visible(fila.get("UBICACIÓN") or fila.get("UBICACION"), ""),
+        texto_visible(fila.get("SECTOR"), ""),
+    )
 
 
 def es_pozo_de_campo(nombre: str) -> bool:
@@ -20944,8 +21960,10 @@ def _indice_pozos_planos() -> dict[str, dict]:
     for ficha in (cargar_ubicaciones().get("fichas") or {}).values():
         if not isinstance(ficha, dict):
             continue
-        for plana in _claves_pozo(ficha.get("id"), ficha.get("nombre")):
+        for plana in _claves_ficha(ficha):
             indice.setdefault(plana, ficha)
+    for plana, oficial in _indice_infraestructura().items():
+        indice[plana] = oficial
     _indice_pozos_planos.cache = (firma, indice)
     return indice
 
@@ -20964,11 +21982,20 @@ def _nombre_pozo_canonico(texto: str) -> str:
 
 
 def _pozo_fila_admin(fila) -> str:
+    sitio = formato_ubicacion_reporte(fila)
+    if sitio:
+        return sitio
     pozo = _texto_celda_admin(fila.get("POZO"))
-    if not pozo:
-        ubicacion = _texto_celda_admin(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN"))
-        partes = [parte.strip() for parte in ubicacion.split("·") if parte.strip()]
-        pozo = partes[1] if len(partes) >= 2 else (partes[0] if partes else "")
+    if sitios_operativos.es_vacio_sitio(pozo):
+        ubicacion = _texto_celda_admin(fila.get("UBICACIÓN")) or _texto_celda_admin(
+            fila.get("EQUIPO/UBICACIÓN")
+        )
+        partes = [
+            parte.strip()
+            for parte in ubicacion.split("·")
+            if parte.strip() and not sitios_operativos.es_vacio_sitio(parte)
+        ]
+        pozo = partes[-1] if partes else ""
     return _nombre_pozo_canonico(pozo)
 
 
@@ -21001,7 +22028,9 @@ def _descripcion_fila_admin(fila) -> str:
 
 
 def _ubicacion_fila_admin(fila) -> str:
-    return _texto_celda_admin(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN"))
+    return etiqueta_ubicacion_fila(fila) or _texto_celda_admin(
+        fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN")
+    )
 
 
 def _periodo_mes_calendario(ancla: date) -> tuple[date, date]:
@@ -22668,9 +23697,9 @@ def filas_reporte_ejecutivo(df: pd.DataFrame | None, criterio: str) -> list[dict
         base = {
             "ot": _ot_fila_reporte(fila),
             "fecha": dia,
-            "ubicacion": formato_ubicacion_reporte(fila),
+            "ubicacion": etiqueta_ubicacion_fila(fila) or formato_ubicacion_reporte(fila),
             "cuadrilla": _cuadrilla_personal_reporte(fila),
-            "descripcion": descripcion,
+            "descripcion": sitios_operativos.quitar_ninguno(descripcion),
         }
         if tipo == "insumo":
             for nombre, cantidad in insumos:

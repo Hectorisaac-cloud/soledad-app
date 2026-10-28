@@ -8,7 +8,9 @@
     "Bateria de Separacion Soledad Norte (BSNI)",
     "Bateria Palo Blanco (BPB)",
     "Coyotes (Coy)",
-    "Estacion de Compresion Soledad Norte (ECSII)",
+    "Estacion de Compresion Soledad II (ECSII)",
+    "Estacion de Compresion Soledad Norte (ECSN)",
+    "Base Soledad (BSE PJP4)",
     "Gallo (GA)",
     "Palo Blanco (PB)",
     "Soledad (S)",
@@ -22,7 +24,13 @@
     "Bateria de Separacion Soledad II (BSII)",
     "Bateria de Separacion Soledad Norte (BSNI)",
     "Bateria Palo Blanco (BPB)",
-    "Estacion de Compresion Soledad Norte (ECSII)"
+    "Estacion de Compresion Soledad II (ECSII)",
+    "Estacion de Compresion Soledad Norte (ECSN)",
+    "Base Soledad (BSE PJP4)",
+    "Modulo I Soledad Norte (MOD I)",
+    "Modulo II Soledad Norte (MOD II)",
+    "Modulo III Soledad Norte (MOD III)",
+    "Modulo IV Soledad Norte (MOD IV)"
   ],
   "equipos_mci": [
     "MCI tipo Arrow",

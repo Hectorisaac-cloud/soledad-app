@@ -16,6 +16,8 @@ from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+import sitios_operativos
+
 RAIZ = os.path.dirname(os.path.abspath(__file__))
 PLANTILLA_XLSX = os.path.join(RAIZ, "assets", "plantilla_reporte_ejecutivo.xlsx")
 HOJA_PLANTILLA = "Hoja2"
@@ -73,9 +75,9 @@ def _escribir_fila(ws: Worksheet, renglon: int, fila: dict, borde: Border) -> No
     valores = (
         _texto(fila.get("ot")),
         fila.get("fecha") if isinstance(fila.get("fecha"), date) else _texto(fila.get("fecha")),
-        _texto(fila.get("ubicacion")),
+        sitios_operativos.texto_ubicacion_final(fila.get("ubicacion")),
         _texto(fila.get("cuadrilla")),
-        _texto(fila.get("descripcion")),
+        sitios_operativos.quitar_ninguno(fila.get("descripcion")),
         _texto(fila.get("insumo")),
         _cantidad(fila.get("cantidad")),
     )
@@ -211,9 +213,9 @@ def generar_pdf_reporte_ejecutivo(filas: list[dict], criterio: str, periodo: str
             [
                 Paragraph(escape(_texto(fila.get("ot"))), cuerpo),
                 Paragraph(escape(_texto(fila.get("fecha"))), cuerpo),
-                Paragraph(escape(_texto(fila.get("ubicacion"))), cuerpo),
+                Paragraph(escape(sitios_operativos.texto_ubicacion_final(fila.get("ubicacion"))), cuerpo),
                 Paragraph(escape(_texto(fila.get("cuadrilla"))), cuerpo),
-                Paragraph(escape(_texto(fila.get("descripcion"))), cuerpo),
+                Paragraph(escape(sitios_operativos.quitar_ninguno(fila.get("descripcion"))), cuerpo),
                 Paragraph(escape(_texto(fila.get("insumo"))), cuerpo),
                 Paragraph("" if cantidad is None else escape(str(cantidad)), cuerpo),
             ]

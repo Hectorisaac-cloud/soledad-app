@@ -33,7 +33,9 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, Table, TableStyle
 
-VERSION_DISENO_PDF = 12
+import sitios_operativos
+
+VERSION_DISENO_PDF = 17
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -98,6 +100,10 @@ COLOR_MARCO_RGB = (255, 215, 0)
 GROSOR_LINEA_MARCO = 2
 SEPARACION_MARCO = 6
 COLOR_BARRA_FIRMAS = colors.HexColor("#E5A200")
+JPEG_CALIDAD_PDF = 72
+JPEG_CALIDAD_EXCEL = 78
+JPEG_DPI_PDF = 130
+MAX_LADO_FOTO_EXCEL_PX = 900
 
 
 def _ancho_columna_px(ws: Worksheet, columna: int) -> float:
@@ -137,6 +143,53 @@ def _ajustar_en_caja(ancho: int, alto: int, caja_ancho: float, caja_alto: float)
     desplazamiento_x = max(_MARGEN_RANURA, int((caja_ancho - nuevo_ancho) / 2))
     desplazamiento_y = max(_MARGEN_RANURA, int((caja_alto - nuevo_alto) / 2))
     return nuevo_ancho, nuevo_alto, desplazamiento_x, desplazamiento_y
+
+
+def _a_rgb(imagen: PILImage.Image) -> PILImage.Image:
+    if imagen.mode == "RGB":
+        return imagen
+    if imagen.mode == "RGBA":
+        fondo = PILImage.new("RGB", imagen.size, "white")
+        fondo.paste(imagen, mask=imagen.getchannel("A"))
+        return fondo
+    return imagen.convert("RGB")
+
+
+def _redimensionar_maximo(imagen: PILImage.Image, max_lado: int) -> PILImage.Image:
+    ancho, alto = imagen.size
+    mayor = max(ancho, alto)
+    if mayor <= max_lado:
+        return imagen
+    escala = max_lado / mayor
+    return imagen.resize(
+        (max(1, int(ancho * escala)), max(1, int(alto * escala))),
+        PILImage.Resampling.LANCZOS,
+    )
+
+
+def _jpeg_bytes(imagen: PILImage.Image, calidad: int, max_lado: int | None = None) -> io.BytesIO:
+    foto = _a_rgb(imagen)
+    if max_lado:
+        foto = _redimensionar_maximo(foto, max_lado)
+    buffer = io.BytesIO()
+    foto.save(buffer, format="JPEG", quality=calidad, optimize=True)
+    buffer.seek(0)
+    buffer.name = "evidencia.jpg"
+    return buffer
+
+
+def _jpeg_para_pdf(imagen: PILImage.Image, ancho_pt: float, alto_pt: float) -> io.BytesIO:
+    """Baja la foto al tamaño real de impresión (~130 dpi) y la guarda como JPEG."""
+    objetivo_w = max(1, int(ancho_pt * JPEG_DPI_PDF / 72))
+    objetivo_h = max(1, int(alto_pt * JPEG_DPI_PDF / 72))
+    escala = min(objetivo_w / max(imagen.width, 1), objetivo_h / max(imagen.height, 1), 1.0)
+    foto = imagen
+    if escala < 0.98:
+        foto = imagen.resize(
+            (max(1, int(imagen.width * escala)), max(1, int(imagen.height * escala))),
+            PILImage.Resampling.LANCZOS,
+        )
+    return _jpeg_bytes(foto, JPEG_CALIDAD_PDF)
 
 
 def _preparar_imagen(ruta: str, max_ancho: int, max_alto: int) -> tuple[PILImage.Image, int, int]:
@@ -300,10 +353,9 @@ def _anclar_foto(ws: Worksheet, imagen: PILImage.Image, ranura: tuple[int, int, 
         dy = max(_MARGEN_RANURA, int((caja_alto - alto) / 2))
     elif (ancho, alto) != imagen.size:
         imagen = imagen.resize((ancho, alto), PILImage.Resampling.LANCZOS)
-    buffer = io.BytesIO()
-    imagen.save(buffer, format="PNG")
-    buffer.seek(0)
-    buffer.name = "evidencia.png"
+    imagen = _redimensionar_maximo(imagen, MAX_LADO_FOTO_EXCEL_PX)
+    ancho, alto = imagen.size
+    buffer = _jpeg_bytes(imagen, JPEG_CALIDAD_EXCEL, MAX_LADO_FOTO_EXCEL_PX)
     dibujo = XLImage(buffer)
     dibujo.width = ancho
     dibujo.height = alto
@@ -413,12 +465,24 @@ def _agregar_firma(ws: Worksheet, firma: io.BytesIO | None, retenidas: list) -> 
         return
 
 
+def _campos_ubicacion_actividad(actividad: dict) -> tuple:
+    return (
+        actividad.get("ubicacion"),
+        actividad.get("pozo"),
+        actividad.get("sector"),
+        actividad.get("equipo"),
+        actividad.get("tag"),
+    )
+
+
 def _escribir_encabezado(ws: Worksheet, actividad: dict, continuacion: str) -> None:
-    descripcion = str(actividad.get("descripcion") or "").strip()
+    campos = _campos_ubicacion_actividad(actividad)
+    ubicacion = _ubicacion_tabla_pdf(*campos)
+    descripcion = _descripcion_tabla_pdf(actividad.get("descripcion") or "", ubicacion, *campos)
     if continuacion:
         descripcion = f"{descripcion} {continuacion}".strip()
     ws["A4"] = str(actividad.get("ot") or "")
-    ws["C4"] = _ubicacion_tabla_pdf(actividad.get("ubicacion"))
+    ws["C4"] = ubicacion or None
     fecha = actividad.get("fecha")
     if isinstance(fecha, datetime):
         fecha = fecha.date()
@@ -576,16 +640,15 @@ def _hoja_a_pdf(
 
     for imagen, caja in fotos:
         col_ini, fila_ini, col_fin, fila_fin = _ranura_de_caja(ws, caja)
-        buffer = io.BytesIO()
-        imagen.save(buffer, format="PNG")
-        buffer.seek(0)
+        ancho_pt = caja["ancho"] * 72 / 96 * escala
+        alto_pt = caja["alto"] * 72 / 96 * escala
         _dibujar_proporcion(
             pdf,
-            ImageReader(buffer),
+            ImageReader(_jpeg_para_pdf(imagen, ancho_pt, alto_pt)),
             x_pt(col_ini) + caja["dx"] * 72 / 96 * escala,
             y_pt(fila_ini, caja["dy"] + caja["alto"]),
-            caja["ancho"] * 72 / 96 * escala,
-            caja["alto"] * 72 / 96 * escala,
+            ancho_pt,
+            alto_pt,
         )
 
     caja_arriba = y_pt(62) + 4
@@ -695,24 +758,45 @@ def _es_sector_zona(texto: str) -> bool:
     return clave in {"base pjp4"} or clave.startswith(("almacen ", "bateria ", "estacion ", "sector "))
 
 
+_RE_NINGUNO_TEXTO = re.compile(r"\bninguno\b", re.I)
+
+
+def _sin_ninguno_pdf(valor) -> str:
+    texto = sitios_operativos.quitar_ninguno(valor)
+    texto = _RE_NINGUNO_TEXTO.sub(" ", texto)
+    texto = re.sub(r"\s+", " ", texto).strip(" ·|-/,;")
+    if not texto or sitios_operativos.es_vacio_sitio(texto) or texto.upper() == "NINGUNO":
+        return ""
+    return texto
+
+
 def _pozo_tabla_pdf(valor) -> str:
-    """Solo el pozo, para el sufijo de la descripción."""
-    texto = _texto_celda(valor).replace('"', "").replace("'", "").strip()
-    if " - " in texto:
-        derecha = texto.split(" - ")[-1].strip()
-        if derecha:
-            return derecha
-    partes = [parte.strip() for parte in texto.split("·") if parte.strip()]
-    if not partes:
+    """Nombre de la instalación o clave del pozo. Nunca 'Ninguno'."""
+    return _ubicacion_tabla_pdf(valor)
+
+
+def _ubicacion_tabla_pdf(*valores) -> str:
+    """Columna Ubicación: clave corta del catálogo (BSNI, BSI, BPB). Nunca NINGUNO."""
+    clave = sitios_operativos.clave_sitio_campos(*valores)
+    if clave and not sitios_operativos.es_vacio_sitio(clave):
+        return clave
+    texto = _sin_ninguno_pdf(sitios_operativos.texto_ubicacion_final(*valores))
+    if texto:
+        clave = sitios_operativos.clave_sitio(texto)
+        if clave:
+            return clave
         return texto
-    if len(partes) >= 2 and _es_sector_zona(partes[0]):
-        return partes[1]
-    return partes[0]
-
-
-def _ubicacion_tabla_pdf(valor) -> str:
-    """Columna Ubicación: solo la clave del pozo o sitio, sin el sector."""
-    return _pozo_tabla_pdf(valor).upper()
+    for valor in valores:
+        limpio = _sin_ninguno_pdf(valor)
+        if not limpio:
+            continue
+        clave = sitios_operativos.clave_sitio(limpio)
+        if clave:
+            return clave
+        if " " in limpio and len(limpio) > 32:
+            continue
+        return limpio
+    return ""
 
 
 def _tag_cuadrilla_pdf(valor) -> str:
@@ -726,14 +810,21 @@ def _tag_cuadrilla_pdf(valor) -> str:
     return texto.upper()
 
 
-def _descripcion_tabla_pdf(descripcion, ubicacion) -> str:
-    """Agrega el pozo al final de la descripción. Solo se usa al dibujar el PDF."""
-    texto = _texto_celda(descripcion)
-    pozo = _pozo_tabla_pdf(ubicacion)
-    if not pozo:
+def _descripcion_tabla_pdf(descripcion, *ubicaciones) -> str:
+    """Agrega la clave del sitio al final. Nunca escribe EN NINGUNO."""
+    texto = _sin_ninguno_pdf(descripcion)
+    clave = sitios_operativos.clave_sitio_campos(*ubicaciones)
+    if not clave:
+        tag = sitios_operativos.clave_o_nombre_sitio(" · ".join(str(u or "") for u in ubicaciones if u))
+        tag = _sin_ninguno_pdf(tag)
+        if tag and " " not in tag and tag.upper() != "NINGUNO":
+            clave = tag
+    if not clave or sitios_operativos.es_vacio_sitio(clave) or _RE_NINGUNO_TEXTO.search(clave):
         return texto
-    sufijo = f"EN {pozo}"
-    if texto.endswith(sufijo):
+    sufijo = f"EN {clave}"
+    if _RE_NINGUNO_TEXTO.search(sufijo):
+        return texto
+    if texto.upper().endswith(sufijo.upper()):
         return texto
     if not texto:
         return sufijo
@@ -747,7 +838,7 @@ def _valor_tabla_pdf(celda: str, valor, ubicacion=None) -> str:
         return _ubicacion_tabla_pdf(valor)
     if celda == "L4":
         return _tag_cuadrilla_pdf(valor)
-    return _texto_celda(valor)
+    return _sin_ninguno_pdf(_texto_celda(valor)) or _texto_celda(valor)
 
 
 def _parrafo_ajustado(texto: str, fuente: str, tamano: float, ancho: float, alto: float) -> Paragraph:
@@ -810,6 +901,9 @@ def generar_reporte_fotografico(
     ruta_plantilla: str = PLANTILLA_XLSX,
 ) -> tuple[bytes, bytes, dict]:
     """Devuelve el Excel, el PDF y un resumen de hojas, fotos y omisiones."""
+    import importlib
+
+    importlib.reload(sitios_operativos)
     if not actividades:
         raise ValueError("No hay actividades en el periodo seleccionado.")
     libro, plantilla, firma = _preparar_libro(ruta_plantilla)
@@ -876,6 +970,7 @@ def generar_reporte_fotografico(
         recursos_pdf.append((firma.read(), FIRMA_DERECHA))
     pdf_buffer = io.BytesIO()
     pdf = canvas.Canvas(pdf_buffer, pagesize=letter)
+    pdf.setPageCompression(1)
     for hoja, fotos_hoja in paginas_pdf:
         _hoja_a_pdf(pdf, hoja, fotos_hoja, recursos_pdf)
     pdf.save()
