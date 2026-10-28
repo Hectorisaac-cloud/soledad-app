@@ -35,7 +35,7 @@ from reportlab.platypus import Paragraph, Table, TableStyle
 
 import sitios_operativos
 
-VERSION_DISENO_PDF = 17
+VERSION_DISENO_PDF = 18
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -775,17 +775,29 @@ def _pozo_tabla_pdf(valor) -> str:
     return _ubicacion_tabla_pdf(valor)
 
 
+_RE_TAG_POZO_PDF = re.compile(r"\b((?:PSN|PGA|PPB|PS|PA|PB|PC)-?\d+[A-Z]?)\b", re.I)
+_RE_INFRA_PDF = re.compile(r"\b((?:GDO|CBN|OLD|OLG)-[A-Z0-9]+-IQ-SIN-\d+)\b", re.I)
+
+
+def _compactar_tag_pozo_pdf(tag: str) -> str:
+    texto = str(tag or "").strip().upper()
+    return re.sub(r"(?<=[A-Z])-(?=\d)", "", texto)
+
+
 def _ubicacion_tabla_pdf(*valores) -> str:
-    """Columna Ubicación: clave corta del catálogo (BSNI, BSI, BPB). Nunca NINGUNO."""
+    """Columna Ubicación: solo el tag corto (PSN77, BSNI, ECSN). Sin macrozona ni MCI."""
     clave = sitios_operativos.clave_sitio_campos(*valores)
     if clave and not sitios_operativos.es_vacio_sitio(clave):
         return clave
-    texto = _sin_ninguno_pdf(sitios_operativos.texto_ubicacion_final(*valores))
-    if texto:
-        clave = sitios_operativos.clave_sitio(texto)
-        if clave:
-            return clave
-        return texto
+    unidos = " ".join(_sin_ninguno_pdf(v) for v in valores if v)
+    pozo = _RE_TAG_POZO_PDF.search(unidos)
+    if pozo:
+        return _compactar_tag_pozo_pdf(pozo.group(1))
+    infra = _RE_INFRA_PDF.search(unidos.replace(" ", ""))
+    if not infra:
+        infra = _RE_INFRA_PDF.search(unidos)
+    if infra:
+        return infra.group(1).upper()
     for valor in valores:
         limpio = _sin_ninguno_pdf(valor)
         if not limpio:
@@ -793,7 +805,13 @@ def _ubicacion_tabla_pdf(*valores) -> str:
         clave = sitios_operativos.clave_sitio(limpio)
         if clave:
             return clave
-        if " " in limpio and len(limpio) > 32:
+        if sitios_operativos.es_equipo_explicito(limpio):
+            continue
+        primero = re.split(r"\s*[-·|/]+\s*", limpio)[0].strip()
+        pozo = _RE_TAG_POZO_PDF.match(primero)
+        if pozo:
+            return _compactar_tag_pozo_pdf(pozo.group(1))
+        if " " in limpio or len(limpio) > 24:
             continue
         return limpio
     return ""
