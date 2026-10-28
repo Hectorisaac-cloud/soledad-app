@@ -613,6 +613,30 @@ PREFIJOS_ZONA_CAPTURA = {
     "PPB": "PPB",
     "PC": "PC",
 }
+MACRO_BATERIAS = "Baterías"
+MACRO_ESTACION = "Estación de compresión"
+MACRO_AOPS = "AOPS"
+MACRO_BASE = "Base PJP4"
+CLAVE_BASE_PJP4 = "BSE PJP4"
+OPCIONES_MACRO_CAPTURA = (
+    *OPCIONES_SECCION_REGISTRO,
+    MACRO_BATERIAS,
+    MACRO_ESTACION,
+    MACRO_AOPS,
+    MACRO_BASE,
+)
+OPCIONES_BATERIAS_CAPTURA = ("MODI", "MODII", "MODIII", "MODIV", "BPB", "BSI", "BSII", "BSNI")
+OPCIONES_ESTACION_CAPTURA = ("ECSII", "ECSN")
+_CLAVE_A_OPCION_BATERIA = {
+    "MOD I": "MODI",
+    "MOD II": "MODII",
+    "MOD III": "MODIII",
+    "MOD IV": "MODIV",
+    "BPB": "BPB",
+    "BSI": "BSI",
+    "BSII": "BSII",
+    "BSNI": "BSNI",
+}
 DIAS_SEMANA_CAL = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 POZOS_SEMILLA = [
     ("PS-1", "soledad"),
@@ -2088,8 +2112,68 @@ def etiqueta_codigo_ubicacion(nombre: str) -> str:
 
 
 def opciones_secciones_operativas() -> list[str]:
-    """Únicamente las 6 zonas del desplegable macro de captura."""
-    return list(OPCIONES_SECCION_REGISTRO)
+    """Desplegable macro: 6 zonas de pozos más instalaciones especiales."""
+    return list(OPCIONES_MACRO_CAPTURA)
+
+
+def tipo_macro_captura(macro) -> str:
+    texto = str(macro or "").strip()
+    if texto in OPCIONES_SECCION_REGISTRO:
+        return "pozo"
+    if texto == MACRO_BATERIAS:
+        return "baterias"
+    if texto == MACRO_ESTACION:
+        return "estacion"
+    if texto == MACRO_AOPS:
+        return "aops"
+    if texto in {MACRO_BASE, CLAVE_BASE_PJP4, "Base Soledad"}:
+        return "base"
+    return ""
+
+
+def resolver_tag_macro(macro, detalle="") -> str:
+    """Convierte Paso 1 + Paso 2 en la clave limpia a guardar. Nunca Ninguno."""
+    tipo = tipo_macro_captura(macro)
+    if tipo == "pozo":
+        return componer_tag_pozo(macro, detalle)
+    if tipo == "baterias":
+        texto = str(detalle or "").strip()
+        if not texto:
+            return ""
+        clave = sitios_operativos.clave_sitio(texto)
+        opcion = _CLAVE_A_OPCION_BATERIA.get(clave, texto)
+        if opcion not in OPCIONES_BATERIAS_CAPTURA:
+            return ""
+        return clave
+    if tipo == "estacion":
+        texto = str(detalle or "").strip().upper()
+        if texto not in OPCIONES_ESTACION_CAPTURA:
+            return ""
+        return sitios_operativos.clave_sitio(texto) or texto
+    if tipo == "aops":
+        return MACRO_AOPS
+    if tipo == "base":
+        return CLAVE_BASE_PJP4
+    sitio = sitios_operativos.clave_sitio(detalle) or sitios_operativos.clave_sitio(macro)
+    return sitio or ""
+
+
+def descomponer_macro_captura(texto) -> tuple[str, str]:
+    """Recupera Paso 1 y Paso 2 a partir de un valor ya guardado."""
+    zona, numero = descomponer_tag_pozo(texto)
+    if zona:
+        return zona, numero
+    clave = sitios_operativos.clave_sitio(texto)
+    if clave == MACRO_AOPS:
+        return MACRO_AOPS, ""
+    if clave == CLAVE_BASE_PJP4:
+        return MACRO_BASE, ""
+    if clave in OPCIONES_ESTACION_CAPTURA:
+        return MACRO_ESTACION, clave
+    opcion_bateria = _CLAVE_A_OPCION_BATERIA.get(clave)
+    if opcion_bateria:
+        return MACRO_BATERIAS, opcion_bateria
+    return "", ""
 
 
 def prefijo_zona_captura(zona) -> str:
@@ -2189,8 +2273,7 @@ def etiqueta_selector_ubicacion(valor: str) -> str:
 
 
 def opciones_ubicacion_catalogo() -> list[str]:
-    """El registro solo admite las 6 secciones operativas."""
-    return list(OPCIONES_SECCION_REGISTRO)
+    return list(OPCIONES_MACRO_CAPTURA)
 
 
 def selector_tag_instalacion(key: str, ubicacion: str, actual: str = "") -> str:
@@ -2205,32 +2288,78 @@ def selector_tag_instalacion(key: str, ubicacion: str, actual: str = "") -> str:
     return clave
 
 
-def selector_ubicacion_oficial(key: str, etiqueta: str = "Zona operativa", tag_actual: str = ""):
-    """Paso 1: zona. Paso 2: número de pozo. El tag guardado es PSN190."""
-    opciones = ["PS Soledad", "PA Aragón", "PGA Gallo", "PSN", "PPB", "PC"]
-    zona_key = f"{key}_zona_paso1"
-    numero_key = f"{key}_numero_paso2"
-    zona = st.selectbox(
+def selector_ubicacion_oficial(key: str, etiqueta: str = "Ubicación / Equipo — zona", tag_actual: str = ""):
+    """Paso 1 macro; Paso 2 dinámico (pozo, batería, estación o clave fija)."""
+    return render_selector_ubicacion_captura(key, etiqueta=etiqueta, valor_actual=tag_actual)
+
+
+def render_selector_ubicacion_captura(
+    key: str,
+    etiqueta: str = "Ubicación / Equipo — zona",
+    valor_actual: str = "",
+) -> tuple[str, str, str]:
+    """Paso 1 ampliado y Paso 2 condicional. Devuelve (macro, detalle, tag limpio)."""
+    macro_key = f"{key}_macro_v3"
+    if valor_actual and macro_key not in st.session_state:
+        macro_prev, detalle_prev = descomponer_macro_captura(valor_actual)
+        if macro_prev:
+            st.session_state[macro_key] = macro_prev
+            tipo_prev = tipo_macro_captura(macro_prev)
+            if tipo_prev == "pozo" and detalle_prev:
+                st.session_state[f"{key}_numero_v3"] = detalle_prev
+            elif tipo_prev == "baterias" and detalle_prev:
+                st.session_state[f"{key}_bateria_v3"] = detalle_prev
+            elif tipo_prev == "estacion" and detalle_prev:
+                st.session_state[f"{key}_estacion_v3"] = detalle_prev
+
+    macro = st.selectbox(
         etiqueta,
-        opciones,
+        list(OPCIONES_MACRO_CAPTURA),
         index=None,
-        placeholder="Paso 1: elige la zona",
-        key=zona_key,
+        placeholder="Paso 1: elige zona o instalación",
+        key=macro_key,
     )
-    numero = st.text_input(
-        "Número de pozo",
-        placeholder="Paso 2: ej. 190",
-        key=numero_key,
-        disabled=not bool(zona),
-    )
-    tag = componer_tag_pozo(zona, numero)
+    tipo = tipo_macro_captura(macro)
+    detalle = ""
+    if tipo == "pozo":
+        detalle = st.text_input(
+            "Número de pozo",
+            placeholder="Paso 2: ej. 190",
+            key=f"{key}_numero_v3",
+        )
+    elif tipo == "baterias":
+        detalle = st.selectbox(
+            "Batería / módulo",
+            list(OPCIONES_BATERIAS_CAPTURA),
+            index=None,
+            placeholder="Paso 2: MODI a MODIV, BPB, BSI, BSII o BSNI",
+            key=f"{key}_bateria_v3",
+        ) or ""
+    elif tipo == "estacion":
+        detalle = st.selectbox(
+            "Estación de compresión",
+            list(OPCIONES_ESTACION_CAPTURA),
+            index=None,
+            placeholder="Paso 2: ECSII o ECSN",
+            key=f"{key}_estacion_v3",
+        ) or ""
+    elif tipo in {"aops", "base"}:
+        st.caption("No se pide un segundo paso: se guarda la clave de esta instalación.")
+
+    tag = resolver_tag_macro(macro, detalle)
     if tag:
         st.caption(f"Se guardará: **{tag}**")
-    return zona or "", numero or "", tag
+    elif tipo == "pozo":
+        st.caption("Escribe el número del pozo (ej. 190).")
+    elif tipo == "baterias":
+        st.caption("Elige el módulo o la batería.")
+    elif tipo == "estacion":
+        st.caption("Elige ECSII o ECSN.")
+    return macro or "", detalle or "", tag
 
 
 def opciones_ubicacion_estandar() -> list[str]:
-    return list(OPCIONES_SECCION_REGISTRO)
+    return list(OPCIONES_MACRO_CAPTURA)
 
 
 def resolver_ubicacion_catalogo(seleccion: str) -> tuple[str, str]:
@@ -2274,13 +2403,19 @@ def resolver_ubicacion_catalogo(seleccion: str) -> tuple[str, str]:
 
 
 def resolver_captura_ubicacion(seleccion, nueva="", tag="") -> dict:
-    """Guarda el tag concatenado (PSN190). Nunca Ninguno ni un campo vacío."""
-    tag_final = componer_tag_pozo(seleccion, nueva) or componer_tag_pozo(seleccion, tag)
+    """Guarda PSN190 o la clave de instalación (BSNI, ECSN, AOPS, BSE PJP4). Nunca Ninguno."""
+    tag_final = str(tag or "").strip()
+    if not tag_final or sitios_operativos.es_vacio_sitio(tag_final):
+        tag_final = resolver_tag_macro(seleccion, nueva)
     if not tag_final:
         for bruto in (tag, nueva, seleccion):
             plano = clave_pozo_plana(bruto)
             if _PATRON_CODIGO_POZO.match(plano):
                 tag_final = etiqueta_codigo_ubicacion(plano)
+                break
+            sitio = sitios_operativos.clave_sitio(bruto)
+            if sitio:
+                tag_final = sitio
                 break
     if not tag_final or sitios_operativos.es_vacio_sitio(tag_final):
         return {
@@ -2291,6 +2426,17 @@ def resolver_captura_ubicacion(seleccion, nueva="", tag="") -> dict:
             "pozo": "",
             "ubicacion": "",
             "tag": "",
+        }
+    sitio = sitios_operativos.clave_sitio(tag_final)
+    if sitio:
+        return {
+            "es_instalacion": True,
+            "es_seccion": False,
+            "clave": sitio,
+            "sector": sitio,
+            "pozo": sitio,
+            "ubicacion": sitio,
+            "tag": sitio,
         }
     zona, _numero = descomponer_tag_pozo(tag_final)
     return {
@@ -9431,24 +9577,9 @@ def render_captura_actividades_campo() -> None:
                 format="DD/MM/YYYY",
                 key=f"fecha_{form_id}",
             )
-            ubicacion_sel = st.selectbox(
-                "Ubicación / Equipo — zona",
-                ["PS Soledad", "PA Aragón", "PGA Gallo", "PSN", "PPB", "PC"],
-                index=None,
-                placeholder="Paso 1: elige la zona",
-                key=f"zona_macro_paso1_{form_id}",
+            ubicacion_sel, ubicacion_nueva, tag_instalacion = render_selector_ubicacion_captura(
+                f"captura_campo_{form_id}"
             )
-            ubicacion_nueva = st.text_input(
-                "Número de pozo",
-                placeholder="Paso 2: ej. 190",
-                key=f"numero_pozo_paso2_{form_id}",
-                disabled=not bool(ubicacion_sel),
-            )
-            tag_instalacion = componer_tag_pozo(ubicacion_sel, ubicacion_nueva)
-            if tag_instalacion:
-                st.caption(f"Se guardará: **{tag_instalacion}**")
-            elif ubicacion_sel:
-                st.caption("Escribe el número del pozo (ej. 190).")
 
         with col_o:
             st.markdown('<div class="section-title">🔧 Operación</div>', unsafe_allow_html=True)
@@ -9522,7 +9653,9 @@ def render_captura_actividades_campo() -> None:
                 st.caption("Esta cuadrilla no tiene catálogo oficial de actividades.")
 
     confirma_programa = False
-    ubicacion_programa = str(tag_instalacion or componer_tag_pozo(ubicacion_sel, ubicacion_nueva) or "").strip()
+    ubicacion_programa = str(
+        tag_instalacion or resolver_tag_macro(ubicacion_sel, ubicacion_nueva) or ""
+    ).strip()
     if tipo_actividad and tipo_actividad != "Otra":
         actividad_programa = str(tipo_actividad)
         oficial_programa = buscar_actividad_catalogo(cuadrilla, tipo_actividad)
@@ -9624,7 +9757,7 @@ def render_captura_actividades_campo() -> None:
     if not descripcion.strip():
         st.warning("Por favor escribe una descripción de la actividad antes de guardar.")
     elif not captura.get("ubicacion"):
-        st.warning("Selecciona la zona y escribe el número de pozo (ej. PSN + 190 → PSN190).")
+        st.warning("Completa la ubicación: zona y número de pozo, o la instalación especial.")
     elif opciones_act and tipo_actividad == "Otra" and not tipo_actividad_final:
         st.warning("Por favor escribe el nombre de la actividad.")
     elif opciones_act and not tipo_actividad_final:
@@ -9795,9 +9928,6 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
         0,
     )
     ubic_actual = str(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or fila.get("POZO") or "").strip()
-    zona_act, numero_act = descomponer_tag_pozo(ubic_actual)
-    opciones_ubic = opciones_secciones_operativas()
-    indice_ubic = opciones_ubic.index(zona_act) if zona_act in opciones_ubic else None
     secuencia_actual = numero_secuencia_actividad(fila.get("SECUENCIA")) or 1
     descripcion_actual = texto_visible(
         fila.get("DESCRIPCION DE LA ACTIVIDAD") or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD"), ""
@@ -9819,28 +9949,20 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
             )
         with c3:
             nueva_secuencia = st.number_input("Secuencia", min_value=1, step=1, value=int(secuencia_actual))
-        c4, c5, c6 = st.columns([1.2, 0.8, 1])
+        c4, c5 = st.columns([2, 1])
         with c4:
-            nueva_ubic = st.selectbox(
-                "Zona operativa",
-                opciones_ubic,
-                index=indice_ubic,
-                placeholder="Selecciona la zona",
+            nueva_ubic, nuevo_numero, _tag_edit = render_selector_ubicacion_captura(
+                f"rev_edit_{idx}_{ver}",
+                valor_actual=ubic_actual,
             )
         with c5:
-            nuevo_numero = st.text_input(
-                "Número de pozo",
-                value=numero_act,
-                placeholder="Ej. 190",
-            )
-        with c6:
             nuevo_personal = st.text_input("Ficha / Personal", value=personal_actual)
         nueva_desc = st.text_area("Descripción de la actividad", value=descripcion_actual, height=110)
         nuevos_coment = st.text_area("Comentarios", value=comentarios_actual, height=80)
         guardar = st.form_submit_button("💾 Guardar Cambios en Bitácora", type="primary")
     if not guardar:
         return
-    captura = resolver_captura_ubicacion(nueva_ubic, nuevo_numero, "")
+    captura = resolver_captura_ubicacion(nueva_ubic, nuevo_numero, _tag_edit)
     ubicacion_guardada = captura["ubicacion"]
     cambios = {
         "fecha": nueva_fecha,
@@ -11504,24 +11626,9 @@ def render_registro_actividad_bitacora() -> None:
                 format="DD/MM/YYYY",
                 key=f"bit_reg_fecha_{epoch}",
             )
-            ubicacion_sel = st.selectbox(
-                "Ubicación / Equipo — zona",
-                ["PS Soledad", "PA Aragón", "PGA Gallo", "PSN", "PPB", "PC"],
-                index=None,
-                placeholder="Paso 1: elige la zona",
-                key=f"bit_reg_zona_paso1_{epoch}",
+            ubicacion_sel, ubicacion_nueva, tag_instalacion = render_selector_ubicacion_captura(
+                f"bit_reg_{epoch}"
             )
-            ubicacion_nueva = st.text_input(
-                "Número de pozo",
-                placeholder="Paso 2: ej. 190",
-                key=f"bit_reg_numero_paso2_{epoch}",
-                disabled=not bool(ubicacion_sel),
-            )
-            tag_instalacion = componer_tag_pozo(ubicacion_sel, ubicacion_nueva)
-            if tag_instalacion:
-                st.caption(f"Se guardará: **{tag_instalacion}**")
-            elif ubicacion_sel:
-                st.caption("Escribe el número del pozo (ej. 190).")
 
     with col_o:
         with st.container(border=True):
@@ -11616,7 +11723,7 @@ def render_registro_actividad_bitacora() -> None:
     if not cuadrilla:
         st.error("Escribe la cuadrilla que realizó la actividad.")
     elif not ubicacion:
-        st.error("Selecciona la zona y escribe el número de pozo (ej. PSN + 190 → PSN190).")
+        st.error("Completa la ubicación: zona y número de pozo, o la instalación especial.")
     elif not str(descripcion or "").strip():
         st.error("Escribe la descripción de la actividad realizada.")
     else:
