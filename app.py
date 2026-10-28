@@ -2135,7 +2135,13 @@ def resolver_tag_macro(macro, detalle="") -> str:
     """Convierte Paso 1 + Paso 2 en la clave limpia a guardar. Nunca Ninguno."""
     tipo = tipo_macro_captura(macro)
     if tipo == "pozo":
-        return componer_tag_pozo(macro, detalle)
+        tag = componer_tag_pozo(macro, detalle)
+        if tag:
+            return tag
+        plano = clave_pozo_plana(detalle)
+        if _PATRON_CODIGO_POZO.match(plano):
+            return etiqueta_codigo_ubicacion(plano)
+        return ""
     if tipo == "baterias":
         texto = str(detalle or "").strip()
         if not texto:
@@ -2162,7 +2168,8 @@ def descomponer_macro_captura(texto) -> tuple[str, str]:
     """Recupera Paso 1 y Paso 2 a partir de un valor ya guardado."""
     zona, numero = descomponer_tag_pozo(texto)
     if zona:
-        return zona, numero
+        tag = componer_tag_pozo(zona, numero)
+        return zona, tag or etiqueta_codigo_ubicacion(texto)
     clave = sitios_operativos.clave_sitio(texto)
     if clave == MACRO_AOPS:
         return MACRO_AOPS, ""
@@ -2208,6 +2215,48 @@ def componer_tag_pozo(zona, numero) -> str:
             return etiqueta_codigo_ubicacion(plano)
         return ""
     return f"{prefijo}{digitos}"
+
+
+def zona_id_macro_captura(macro) -> str:
+    prefijo = prefijo_zona_captura(macro)
+    if not prefijo:
+        return ""
+    for seccion in SECCIONES_OPERATIVAS:
+        if seccion["prefijo"] == prefijo:
+            return seccion["id"]
+    return ""
+
+
+def opciones_pozos_zona_captura(macro) -> list[str]:
+    """Pozos oficiales de la zona, en tag limpio (PSN190). Sin texto libre."""
+    zona_id = zona_id_macro_captura(macro)
+    prefijo = prefijo_zona_captura(macro)
+    if not zona_id or not prefijo:
+        return []
+    vistos: set[str] = set()
+    opciones: list[str] = []
+    for ficha in fichas_de_zona(cargar_ubicaciones(), zona_id):
+        nombre = str(ficha.get("nombre") or "").strip()
+        if not nombre:
+            continue
+        if sitios_operativos.clave_sitio(nombre) and not _PATRON_CODIGO_POZO.match(clave_pozo_plana(nombre)):
+            continue
+        tag = componer_tag_pozo(macro, nombre)
+        if not tag:
+            plano = clave_pozo_plana(nombre)
+            if (
+                _PATRON_CODIGO_POZO.match(plano)
+                and plano.startswith(prefijo)
+                and plano[len(prefijo) :].isdigit()
+            ):
+                tag = etiqueta_codigo_ubicacion(plano)
+        if not tag or tag in vistos:
+            continue
+        if not (tag.startswith(prefijo) and tag[len(prefijo) :].isdigit()):
+            continue
+        vistos.add(tag)
+        opciones.append(tag)
+    return sorted(opciones, key=orden_natural_pozo)
 
 
 def descomponer_tag_pozo(texto) -> tuple[str, str]:
@@ -2306,7 +2355,8 @@ def render_selector_ubicacion_captura(
             st.session_state[macro_key] = macro_prev
             tipo_prev = tipo_macro_captura(macro_prev)
             if tipo_prev == "pozo" and detalle_prev:
-                st.session_state[f"{key}_numero_v3"] = detalle_prev
+                prefijo_prev = prefijo_zona_captura(macro_prev)
+                st.session_state[f"{key}_pozo_v4_{prefijo_prev or 'zona'}"] = detalle_prev
             elif tipo_prev == "baterias" and detalle_prev:
                 st.session_state[f"{key}_bateria_v3"] = detalle_prev
             elif tipo_prev == "estacion" and detalle_prev:
@@ -2322,11 +2372,21 @@ def render_selector_ubicacion_captura(
     tipo = tipo_macro_captura(macro)
     detalle = ""
     if tipo == "pozo":
-        detalle = st.text_input(
-            "Número de pozo",
-            placeholder="Paso 2: ej. 190",
-            key=f"{key}_numero_v3",
-        )
+        pozos = opciones_pozos_zona_captura(macro)
+        pozo_key = f"{key}_pozo_v4_{prefijo_zona_captura(macro) or 'zona'}"
+        actual_pozo = str(st.session_state.get(pozo_key) or "").strip()
+        if actual_pozo and actual_pozo not in pozos:
+            pozos = [actual_pozo, *pozos]
+        if not pozos:
+            st.caption("No hay pozos en el catálogo de esta zona.")
+        else:
+            detalle = st.selectbox(
+                "Pozo",
+                pozos,
+                index=None,
+                placeholder="Paso 2: elige el pozo",
+                key=pozo_key,
+            ) or ""
     elif tipo == "baterias":
         detalle = st.selectbox(
             "Batería / módulo",
@@ -2350,7 +2410,7 @@ def render_selector_ubicacion_captura(
     if tag:
         st.caption(f"Se guardará: **{tag}**")
     elif tipo == "pozo":
-        st.caption("Escribe el número del pozo (ej. 190).")
+        st.caption("Elige el pozo del catálogo de esta zona.")
     elif tipo == "baterias":
         st.caption("Elige el módulo o la batería.")
     elif tipo == "estacion":
@@ -9757,7 +9817,7 @@ def render_captura_actividades_campo() -> None:
     if not descripcion.strip():
         st.warning("Por favor escribe una descripción de la actividad antes de guardar.")
     elif not captura.get("ubicacion"):
-        st.warning("Completa la ubicación: zona y número de pozo, o la instalación especial.")
+        st.warning("Completa la ubicación: elige la zona y el pozo del catálogo, o la instalación especial.")
     elif opciones_act and tipo_actividad == "Otra" and not tipo_actividad_final:
         st.warning("Por favor escribe el nombre de la actividad.")
     elif opciones_act and not tipo_actividad_final:
@@ -11723,7 +11783,7 @@ def render_registro_actividad_bitacora() -> None:
     if not cuadrilla:
         st.error("Escribe la cuadrilla que realizó la actividad.")
     elif not ubicacion:
-        st.error("Completa la ubicación: zona y número de pozo, o la instalación especial.")
+        st.error("Completa la ubicación: elige la zona y el pozo del catálogo, o la instalación especial.")
     elif not str(descripcion or "").strip():
         st.error("Escribe la descripción de la actividad realizada.")
     else:
