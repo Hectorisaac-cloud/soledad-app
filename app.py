@@ -3564,7 +3564,9 @@ def excel_inventario_predeterminado() -> str:
 
 
 def _copia_excel_legible(ruta: str) -> str:
-    destino = os.path.join(tempfile.gettempdir(), "pjp4_" + os.path.basename(ruta))
+    """Copia fresca por mtime para no leer un temporal viejo si OneDrive bloquea el original."""
+    sello = str(int(_mtime_archivo(ruta) * 1000))
+    destino = os.path.join(tempfile.gettempdir(), f"pjp4_{sello}_{os.path.basename(ruta)}")
     try:
         shutil.copy2(ruta, destino)
         return destino
@@ -4182,12 +4184,22 @@ def programados_de_pozo(ficha: dict) -> list[dict]:
 
 
 def parsear_fecha_valor(valor) -> date | None:
-    if valor is None:
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
         return None
+    if isinstance(valor, pd.Timestamp):
+        if pd.isna(valor):
+            return None
+        return valor.date()
     if isinstance(valor, datetime):
         return valor.date()
     if isinstance(valor, date):
         return valor
+    if isinstance(valor, (int, float)) and not isinstance(valor, bool):
+        if 20000 <= float(valor) <= 80000:
+            dt = pd.to_datetime(float(valor), unit="D", origin="1899-12-30", errors="coerce")
+            if pd.isna(dt):
+                return None
+            return dt.date()
     texto = str(valor).strip()
     if not texto or texto.lower() in {"nan", "none", "nat", "<na>"}:
         return None
@@ -4446,6 +4458,33 @@ def bitacora_con_fechas(df: pd.DataFrame) -> pd.DataFrame:
     copia = df.copy()
     copia["_fecha"] = copia["FECHA"].map(parsear_fecha_valor)
     return copia
+
+
+def fechas_disponibles_operacion(df: pd.DataFrame | None = None) -> list[date]:
+    """Todas las jornadas de la bitácora y de las carpetas de evidencia, sin recorte."""
+    base = df if df is not None and "_fecha" in getattr(df, "columns", []) else bitacora_con_fechas(
+        df if df is not None else cargar_bitacora()
+    )
+    dias = {d for d in base.get("_fecha", pd.Series(dtype=object)).tolist() if isinstance(d, date)}
+    dias.update(fechas_carpetas_evidencia())
+    return sorted(dias, reverse=True)
+
+
+def fechas_carpetas_evidencia() -> set[date]:
+    dias: set[date] = set()
+    patron = re.compile(r"(\d{4}-\d{2}-\d{2})|(\d{2}[-/]\d{2}[-/]\d{4})")
+    for raiz in (EVIDENCIA_OCTUBRE_DIR, EVIDENCIAS_DIR):
+        if not os.path.isdir(raiz):
+            continue
+        for dirpath, dirnames, _archivos in os.walk(raiz):
+            for nombre in [os.path.basename(dirpath), *dirnames]:
+                hallado = patron.search(str(nombre or ""))
+                if not hallado:
+                    continue
+                dia = parsear_fecha_valor(hallado.group(0))
+                if dia and dia.year >= 2020:
+                    dias.add(dia)
+    return dias
 
 
 def bitacora_del_dia(df: pd.DataFrame, dia: date) -> pd.DataFrame:
@@ -6870,14 +6909,24 @@ def vista_revision_soledad(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 
+def _hoja_parece_bitacora(columnas) -> bool:
+    claves = {_clave_columna_bitacora(c) for c in columnas}
+    return "fecha" in claves and ("cuadrilla" in claves or "personal" in claves)
+
+
 def _leer_excel_crudo(ruta: str) -> pd.DataFrame:
     origen = _copia_excel_legible(ruta)
+    frames: list[pd.DataFrame] = []
     ultimo = None
     try:
         libro = pd.ExcelFile(origen)
-        hojas = [h for h in HOJAS_BITACORA if h in libro.sheet_names] or list(libro.sheet_names)
+        preferidas = [h for h in HOJAS_BITACORA if h in libro.sheet_names]
+        hojas = preferidas or list(libro.sheet_names)
+        extras = [h for h in libro.sheet_names if h not in hojas]
+        hojas = hojas + extras
     except Exception:
         hojas = list(HOJAS_BITACORA)
+        libro = None
     for hoja in hojas:
         for header in (0, 1, 2):
             try:
@@ -6887,9 +6936,11 @@ def _leer_excel_crudo(ruta: str) -> pd.DataFrame:
             if candidato is None or candidato.empty:
                 continue
             ultimo = candidato
-            claves = {_clave_columna_bitacora(c) for c in candidato.columns}
-            if "fecha" in claves and ("cuadrilla" in claves or "personal" in claves):
-                return candidato
+            if _hoja_parece_bitacora(candidato.columns):
+                frames.append(candidato)
+                break
+    if frames:
+        return pd.concat(frames, ignore_index=True, sort=False)
     if ultimo is not None:
         return ultimo
     raise FileNotFoundError(ruta)
@@ -6967,7 +7018,10 @@ def cargar_bitacora() -> pd.DataFrame:
     if not os.path.exists(EXCEL_FILE):
         return pd.DataFrame(columns=COLUMNAS_EXCEL)
     try:
-        return normalizar_dataframe(_leer_excel_crudo(EXCEL_FILE))
+        df = normalizar_dataframe(_leer_excel_crudo(EXCEL_FILE))
+        if df is not None and not df.empty and "ID_REGISTRO" in df.columns:
+            df = df.drop_duplicates(subset=["ID_REGISTRO"], keep="last")
+        return df
     except Exception:
         if os.path.exists(EXCEL_FILE_LEGACY):
             try:
@@ -6992,8 +7046,21 @@ def guardar_en_excel(df_final: pd.DataFrame, *, sincronizar: bool = True) -> Non
     fd, tmp = tempfile.mkstemp(suffix=".xlsx")
     os.close(fd)
     try:
-        with pd.ExcelWriter(tmp, engine="openpyxl", mode="w") as writer:
-            salida.to_excel(writer, sheet_name=SHEET_NAME, index=False)
+        if os.path.exists(EXCEL_FILE):
+            from openpyxl import load_workbook
+            from openpyxl.utils.dataframe import dataframe_to_rows
+
+            wb = load_workbook(_copia_excel_legible(EXCEL_FILE))
+            if SHEET_NAME in wb.sheetnames:
+                del wb[SHEET_NAME]
+            ws = wb.create_sheet(SHEET_NAME, 0)
+            for fila in dataframe_to_rows(salida, index=False, header=True):
+                ws.append(list(fila))
+            wb.save(tmp)
+            wb.close()
+        else:
+            with pd.ExcelWriter(tmp, engine="openpyxl", mode="w") as writer:
+                salida.to_excel(writer, sheet_name=SHEET_NAME, index=False)
         try:
             persistencia.copiar_seguro(tmp, EXCEL_FILE)
         except PermissionError:
@@ -9893,15 +9960,38 @@ def render_captura_actividades_campo() -> None:
         )
 
         try:
-            df_existente = cargar_bitacora()
-            if df_existente.empty:
-                df_final = pd.DataFrame([registro])
-            else:
-                df_final = pd.concat(
-                    [df_existente, pd.DataFrame([registro])],
-                    ignore_index=True,
+            personal = str(
+                (cobertura or {}).get("mecanico_real")
+                or (cobertura or {}).get("mecanico_titular")
+                or ""
+            ).strip()
+            nombres_consumo = [
+                str(item.get("nombre") or "").strip()
+                for item in consumos
+                if str(item.get("nombre") or "").strip()
+            ]
+            try:
+                agregar_registro_bitacora_soledad(
+                    fecha,
+                    cuadrilla,
+                    personal,
+                    captura.get("ubicacion") or pozo_final or sector_final,
+                    descripcion,
+                    ", ".join(nombres_consumo),
+                    "",
+                    limitar_fotos(list(archivos_foto or [])),
+                    secuencia=int(secuencia_n),
                 )
-            guardar_en_excel(df_final)
+            except Exception:
+                df_existente = cargar_bitacora()
+                if df_existente.empty:
+                    df_final = pd.DataFrame([registro])
+                else:
+                    df_final = pd.concat(
+                        [df_existente, pd.DataFrame([registro])],
+                        ignore_index=True,
+                    )
+                guardar_en_excel(df_final)
             registrar_consumos_campo(
                 fecha, secuencia_final, cuadrilla, sector_final, consumos
             )
@@ -10214,24 +10304,26 @@ def render_eliminar_registro_bitacora(df: pd.DataFrame, idx) -> None:
 def render_revision_bitacoras() -> None:
     render_captura_bitacora_admin()
     st.markdown('<div class="section-title">Revisión de bitácoras</div>', unsafe_allow_html=True)
-    st.caption(
-        f"Fuente operativa: `{EXCEL_FILE}`. "
-        f"Se muestran registros a partir del {FECHA_MIN_BITACORA_SOLEDAD.strftime('%d/%m/%Y')}."
-    )
+    marca = datetime.fromtimestamp(_mtime_archivo(EXCEL_FILE)).strftime("%d/%m/%Y %H:%M") if os.path.exists(EXCEL_FILE) else "sin archivo"
     df = bitacora_con_fechas(cargar_bitacora())
+    disponibles = fechas_disponibles_operacion(df)
+    rango = (
+        f"{disponibles[-1].strftime('%d/%m/%Y')} a {disponibles[0].strftime('%d/%m/%Y')}"
+        if disponibles
+        else "sin fechas"
+    )
+    st.caption(
+        f"Fuente operativa: `{EXCEL_FILE}` (actualizado {marca}). "
+        f"Se listan todas las jornadas disponibles ({rango})."
+    )
     if df.empty:
         st.info(f"Aún no hay registros en {EXCEL_FILE}.")
         return
 
     base = df.copy()
-    if "_fecha" in base.columns:
-        base = base.loc[base["_fecha"].isna() | (base["_fecha"] >= FECHA_MIN_BITACORA_SOLEDAD)].copy()
 
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
-    fechas = sorted(
-        {d.strftime("%d/%m/%Y") for d in base.get("_fecha", pd.Series(dtype=object)) if isinstance(d, date)},
-        key=lambda t: parsear_fecha_valor(t) or date.min,
-    )
+    fechas = [d.strftime("%d/%m/%Y") for d in fechas_disponibles_operacion(base)]
     ubicaciones = sorted(
         {
             str(v).strip()
@@ -15264,6 +15356,12 @@ def fechas_fotos_cuadrilla(cuadrilla: str) -> set[date]:
         fecha = parsear_fecha_valor(item.get("fecha"))
         if fecha:
             dias.add(fecha)
+    carpeta = carpeta_cuadrilla_octubre(cuadrilla)
+    if os.path.isdir(carpeta):
+        for nombre in os.listdir(carpeta):
+            dia = parsear_fecha_valor(nombre)
+            if dia:
+                dias.add(dia)
     return dias
 
 
@@ -15841,6 +15939,15 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
         "Al descargar el Excel o el PDF, esas fotografías se retiran del servidor. "
         "La bitácora (fecha, pozo, actividad, insumos y estatus) se conserva."
     )
+    disponibles = fechas_disponibles_operacion()
+    ultima = disponibles[0] if disponibles else date.today()
+    primera = disponibles[-1] if disponibles else date.today()
+    if disponibles:
+        st.caption(
+            "Jornadas en bitácora/evidencia: "
+            + ", ".join(d.strftime("%d/%m/%Y") for d in disponibles[:12])
+            + ("…" if len(disponibles) > 12 else "")
+        )
     modo = st.radio(
         "Periodo",
         ["Un día", "Rango de fechas"],
@@ -15848,26 +15955,36 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
         key=f"{key_prefix}_modo",
     )
     if modo == "Un día":
-        dia = st.date_input(
-            "Día",
-            value=date.today(),
-            format="DD/MM/YYYY",
-            key=f"{key_prefix}_dia",
+        etiquetas = [d.strftime("%d/%m/%Y") for d in disponibles]
+        etiquetas.append("Otra fecha…")
+        elegido = st.selectbox(
+            "Día con registros",
+            etiquetas,
+            key=f"{key_prefix}_dia_lista",
         )
+        if elegido == "Otra fecha…":
+            dia = st.date_input(
+                "Fecha",
+                value=ultima,
+                format="DD/MM/YYYY",
+                key=f"{key_prefix}_dia",
+            )
+        else:
+            dia = parsear_fecha_valor(elegido) or ultima
         inicio = fin = dia
     else:
         col_desde, col_hasta = st.columns(2)
         with col_desde:
             inicio = st.date_input(
                 "Desde",
-                value=date.today(),
+                value=primera,
                 format="DD/MM/YYYY",
                 key=f"{key_prefix}_desde",
             )
         with col_hasta:
             fin = st.date_input(
                 "Hasta",
-                value=date.today(),
+                value=ultima,
                 format="DD/MM/YYYY",
                 key=f"{key_prefix}_hasta",
             )
