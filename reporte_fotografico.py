@@ -35,7 +35,7 @@ from reportlab.platypus import Paragraph, Table, TableStyle
 
 import sitios_operativos
 
-VERSION_DISENO_PDF = 18
+VERSION_DISENO_PDF = 19
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -100,10 +100,12 @@ COLOR_MARCO_RGB = (255, 215, 0)
 GROSOR_LINEA_MARCO = 2
 SEPARACION_MARCO = 6
 COLOR_BARRA_FIRMAS = colors.HexColor("#E5A200")
-JPEG_CALIDAD_PDF = 72
-JPEG_CALIDAD_EXCEL = 78
-JPEG_DPI_PDF = 130
-MAX_LADO_FOTO_EXCEL_PX = 900
+JPEG_CALIDAD_PDF = 85
+JPEG_CALIDAD_EXCEL = 85
+JPEG_DPI_PDF = 110
+MAX_ANCHO_FOTO_PX = 1000
+MAX_ALTO_FOTO_PX = 1000
+MAX_LADO_FOTO_EXCEL_PX = 1000
 
 
 def _ancho_columna_px(ws: Worksheet, columna: int) -> float:
@@ -167,46 +169,70 @@ def _redimensionar_maximo(imagen: PILImage.Image, max_lado: int) -> PILImage.Ima
     )
 
 
-def _jpeg_bytes(imagen: PILImage.Image, calidad: int, max_lado: int | None = None) -> io.BytesIO:
-    foto = _a_rgb(imagen)
-    if max_lado:
-        foto = _redimensionar_maximo(foto, max_lado)
+def _limitar_tamano_foto(imagen: PILImage.Image) -> PILImage.Image:
+    """Si el ancho o el alto superan 1000 px, baja la imagen conservando proporción."""
+    ancho, alto = imagen.size
+    escala = min(1.0, MAX_ANCHO_FOTO_PX / max(ancho, 1), MAX_ALTO_FOTO_PX / max(alto, 1))
+    if escala >= 1:
+        return imagen
+    return imagen.resize(
+        (max(1, int(ancho * escala)), max(1, int(alto * escala))),
+        PILImage.Resampling.LANCZOS,
+    )
+
+
+def _comprimir_foto_reporte(origen, calidad: int = JPEG_CALIDAD_PDF) -> io.BytesIO:
+    """Abre la foto, la recorta a 1000 px y la deja como JPEG 85 en memoria."""
+    if isinstance(origen, PILImage.Image):
+        imagen = origen
+        if imagen.mode not in {"RGB", "RGBA"}:
+            imagen = imagen.convert("RGB")
+        elif imagen.mode == "RGBA":
+            imagen = _a_rgb(imagen)
+        else:
+            imagen = imagen.copy()
+    else:
+        with PILImage.open(origen) as crudo:
+            imagen = ImageOps.exif_transpose(crudo)
+            imagen = _a_rgb(imagen.copy())
+    imagen = _limitar_tamano_foto(imagen)
     buffer = io.BytesIO()
-    foto.save(buffer, format="JPEG", quality=calidad, optimize=True)
+    imagen.save(buffer, format="JPEG", quality=int(calidad), optimize=True)
     buffer.seek(0)
     buffer.name = "evidencia.jpg"
     return buffer
 
 
+def _jpeg_bytes(imagen: PILImage.Image, calidad: int, max_lado: int | None = None) -> io.BytesIO:
+    foto = _a_rgb(imagen)
+    if max_lado:
+        foto = _redimensionar_maximo(foto, max_lado)
+    return _comprimir_foto_reporte(foto, calidad)
+
+
 def _jpeg_para_pdf(imagen: PILImage.Image, ancho_pt: float, alto_pt: float) -> io.BytesIO:
-    """Baja la foto al tamaño real de impresión (~130 dpi) y la guarda como JPEG."""
+    """Comprime la foto al tamaño de impresión y la entrega como JPEG en memoria."""
     objetivo_w = max(1, int(ancho_pt * JPEG_DPI_PDF / 72))
     objetivo_h = max(1, int(alto_pt * JPEG_DPI_PDF / 72))
     escala = min(objetivo_w / max(imagen.width, 1), objetivo_h / max(imagen.height, 1), 1.0)
-    foto = imagen
+    foto = _a_rgb(imagen)
     if escala < 0.98:
-        foto = imagen.resize(
+        foto = foto.resize(
             (max(1, int(imagen.width * escala)), max(1, int(imagen.height * escala))),
             PILImage.Resampling.LANCZOS,
         )
-    return _jpeg_bytes(foto, JPEG_CALIDAD_PDF)
+    return _comprimir_foto_reporte(foto, JPEG_CALIDAD_PDF)
 
 
 def _preparar_imagen(ruta: str, max_ancho: int, max_alto: int) -> tuple[PILImage.Image, int, int]:
-    with PILImage.open(ruta) as origen:
-        imagen = ImageOps.exif_transpose(origen)
-        if imagen.mode not in ("RGB", "RGBA"):
-            imagen = imagen.convert("RGB")
-        else:
-            imagen = imagen.copy()
+    with PILImage.open(_comprimir_foto_reporte(ruta, JPEG_CALIDAD_EXCEL)) as origen:
+        imagen = origen.convert("RGB")
     ancho, alto = imagen.size
-    nuevo_ancho, nuevo_alto, _, _ = _ajustar_en_caja(ancho, alto, max_ancho + (2 * _MARGEN_RANURA), max_alto + (2 * _MARGEN_RANURA))
-    if (nuevo_ancho, nuevo_alto) != (ancho, alto):
+    nuevo_ancho, nuevo_alto, _, _ = _ajustar_en_caja(
+        ancho, alto, max_ancho + (2 * _MARGEN_RANURA), max_alto + (2 * _MARGEN_RANURA)
+    )
+    if nuevo_ancho < ancho or nuevo_alto < alto:
         imagen = imagen.resize((nuevo_ancho, nuevo_alto), PILImage.Resampling.LANCZOS)
-    if imagen.mode == "RGBA":
-        fondo = PILImage.new("RGB", imagen.size, "white")
-        fondo.paste(imagen, mask=imagen.getchannel("A"))
-        imagen = fondo
     return imagen, imagen.size[0], imagen.size[1]
 
 
