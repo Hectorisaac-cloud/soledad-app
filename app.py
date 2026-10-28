@@ -6909,6 +6909,60 @@ def vista_revision_soledad(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 
+def _valor_fecha_exportacion(valor):
+    dia = parsear_fecha_valor(valor)
+    return datetime(dia.year, dia.month, dia.day) if dia else ""
+
+
+def columnas_oficiales_exportacion_bitacora(df: pd.DataFrame) -> list[str]:
+    columnas = list(COLUMNAS_BITACORA_SOLEDAD)
+    for extra in ("REVISIÓN", "OBSERVACIÓN REVISIÓN", "EVIDENCIA"):
+        if extra in df.columns and extra not in columnas:
+            columnas.append(extra)
+    return columnas
+
+
+def excel_bitacora_filtrada(df: pd.DataFrame) -> bytes:
+    """Excel con las columnas oficiales y solo las filas que se ven en pantalla."""
+    origen = pd.DataFrame() if df is None else df.drop(columns=["_fecha"], errors="ignore")
+    columnas = columnas_oficiales_exportacion_bitacora(origen)
+    salida = pd.DataFrame(index=origen.index)
+    for col in columnas:
+        if col in origen.columns:
+            salida[col] = origen[col]
+        else:
+            salida[col] = ""
+    if "FECHA" in salida.columns:
+        salida["FECHA"] = salida["FECHA"].map(_valor_fecha_exportacion)
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        salida.to_excel(writer, sheet_name=SHEET_NAME, index=False)
+    return buffer.getvalue()
+
+
+def nombre_excel_bitacora_filtrada(filtro_fecha: str, df: pd.DataFrame) -> str:
+    dia = parsear_fecha_valor(filtro_fecha) if filtro_fecha and filtro_fecha != "Todas" else None
+    if dia is None and df is not None and not df.empty:
+        origen_fechas = df["_fecha"] if "_fecha" in df.columns else df.get("FECHA")
+        unicas = sorted(
+            {
+                parsear_fecha_valor(valor)
+                for valor in (origen_fechas.tolist() if origen_fechas is not None else [])
+            }
+            - {None}
+        )
+        if len(unicas) == 1:
+            dia = unicas[0]
+        elif len(unicas) >= 2:
+            return (
+                f"bitacora_filtrada_{unicas[0].strftime('%Y-%m-%d')}"
+                f"_{unicas[-1].strftime('%Y-%m-%d')}.xlsx"
+            )
+    if dia is None:
+        dia = date.today()
+    return f"bitacora_filtrada_{dia.strftime('%Y-%m-%d')}.xlsx"
+
+
 def _hoja_parece_bitacora(columnas) -> bool:
     claves = {_clave_columna_bitacora(c) for c in columnas}
     return "fecha" in claves and ("cuadrilla" in claves or "personal" in claves)
@@ -10365,6 +10419,34 @@ def render_revision_bitacoras() -> None:
     if filtro_evidencia != "Todas":
         mask_ev = filtrado.apply(lambda r: estatus_evidencia_fila(r) == filtro_evidencia, axis=1)
         filtrado = filtrado.loc[mask_ev]
+
+    firma_export = hashlib.md5(
+        "|".join(
+            [
+                str(filtro_fecha),
+                str(filtro_ubi),
+                str(filtro_cuadrilla),
+                str(filtro_revision),
+                str(filtro_evidencia),
+                str(len(filtrado)),
+            ]
+        ).encode()
+    ).hexdigest()[:8]
+    col_exp, col_exp_info = st.columns([1, 2])
+    with col_exp:
+        st.download_button(
+            "⬇️ Exportar Excel filtrado",
+            data=excel_bitacora_filtrada(filtrado),
+            file_name=nombre_excel_bitacora_filtrada(filtro_fecha, filtrado),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key=f"rev_descargar_excel_{firma_export}",
+            disabled=filtrado.empty,
+        )
+    with col_exp_info:
+        st.caption(
+            f"{len(filtrado)} registro(s) visibles. El archivo usa las columnas de `{EXCEL_FILE}`."
+        )
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Registros", len(filtrado))
