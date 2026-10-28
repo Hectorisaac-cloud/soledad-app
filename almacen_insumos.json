@@ -534,6 +534,24 @@
       "tipo_insumo": "Consumible",
       "id": "b57d300039",
       "registrado": "2026-10-27 18:19"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-27",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "alternador",
+      "insumo": "Alternador",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Componente Rotativo / Reparable",
+      "condicion_instalada": "Reparado por PJP4",
+      "destino_retirada": "Enviada a Taller de Reparación",
+      "id": "651e750d8a",
+      "registrado": "2026-10-28 14:45"
     }
   ]
 }
