@@ -96,7 +96,7 @@ FIRMANTES_PDF = (
     ("LUIS CARMELO CAMPOS BRITO", "COORDINADOR Y/O GERENTE DE PJP4"),
     ("GERARDO BERNABE RICARDEZ", "COORDINADOR DE OPS"),
 )
-COLOR_MARCO_RGB = (255, 215, 0)
+COLOR_MARCO_RGB = (204, 0, 0)  # #CC0000
 GROSOR_LINEA_MARCO = 2
 SEPARACION_MARCO = 6
 COLOR_BARRA_FIRMAS = colors.HexColor("#E5A200")
@@ -342,7 +342,7 @@ def _enmarcar_foto(
     linea: int = GROSOR_LINEA_MARCO,
     separacion: int = SEPARACION_MARCO,
 ) -> PILImage.Image:
-    """Línea amarilla delgada con un margen blanco entre la foto y el marco."""
+    """Línea roja delgada con un margen blanco entre la foto y el marco."""
     if imagen.mode != "RGB":
         imagen = imagen.convert("RGB")
     linea = max(1, int(linea))
