@@ -785,6 +785,22 @@
       "tipo_insumo": "Consumible",
       "id": "75e0acd987",
       "registrado": "2026-10-29 16:33"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-28",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PSN",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 3.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "c241c623f3",
+      "registrado": "2026-10-29 16:36"
     }
   ]
 }
