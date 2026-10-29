@@ -35,7 +35,7 @@ from reportlab.platypus import Paragraph, Table, TableStyle
 
 import sitios_operativos
 
-VERSION_DISENO_PDF = 19
+VERSION_DISENO_PDF = 21
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -99,7 +99,6 @@ FIRMANTES_PDF = (
 COLOR_MARCO_RGB = (204, 0, 0)  # #CC0000
 GROSOR_LINEA_MARCO = 2
 SEPARACION_MARCO = 6
-COLOR_BARRA_FIRMAS = colors.HexColor("#E5A200")
 JPEG_CALIDAD_PDF = 85
 JPEG_CALIDAD_EXCEL = 85
 JPEG_DPI_PDF = 110
@@ -577,6 +576,83 @@ def _preparar_libro(ruta_plantilla: str) -> tuple[Workbook, Worksheet, io.BytesI
     return libro, plantilla, firma
 
 
+def _dibujar_rubrica(pdf, lector, x: float, y: float, ancho: float, alto: float) -> None:
+    """Apoya la rúbrica sobre la línea, centrada y sin deformarla."""
+    try:
+        imagen_ancho, imagen_alto = lector.getSize()
+    except Exception:
+        return
+    if not imagen_ancho or not imagen_alto:
+        return
+    escala = min(ancho / imagen_ancho, alto / imagen_alto)
+    dibujo_ancho = imagen_ancho * escala
+    dibujo_alto = imagen_alto * escala
+    pdf.drawImage(
+        lector,
+        x + (ancho - dibujo_ancho) / 2,
+        y,
+        width=dibujo_ancho,
+        height=dibujo_alto,
+        preserveAspectRatio=True,
+        mask="auto",
+    )
+
+
+def _dibujar_bloque_firmas(
+    pdf: canvas.Canvas,
+    ws: Worksheet,
+    tabla_x: float,
+    tabla_ancho: float,
+    firmas: list[tuple[bytes, int]],
+    fuente: str,
+    fuente_negrita: str,
+) -> None:
+    """Recuadro bajo para la rúbrica. Nombre y cargo quedan debajo, fuera."""
+    y_cargo = 16.0
+    y_nombre = 29.0
+    y_caja = 44.0
+    alto_caja = 78.0
+    y_tope = y_caja + alto_caja
+    y_leyenda = y_tope - 13.0
+    y_imagen = y_caja + 4.0
+    alto_imagen = max(36.0, y_leyenda - 6.0 - y_imagen)
+    por_columna: dict[int, bytes] = {}
+    for datos, columna in firmas:
+        por_columna[0 if columna < 7 else 1] = datos
+    pdf.setStrokeColorRGB(0, 0, 0)
+    pdf.setLineWidth(1)
+    pdf.rect(tabla_x, y_caja, tabla_ancho, alto_caja, stroke=1, fill=0)
+    mitad = tabla_x + tabla_ancho / 2
+    pdf.setLineWidth(0.7)
+    pdf.line(mitad, y_caja, mitad, y_tope)
+    for indice, (nombre, cargo) in enumerate(FIRMANTES_PDF):
+        x_columna = tabla_x + indice * tabla_ancho / 2
+        ancho_columna = tabla_ancho / 2
+        centro = x_columna + ancho_columna / 2
+        margen = 8.0
+        datos = por_columna.get(indice)
+        if datos:
+            try:
+                _dibujar_rubrica(
+                    pdf,
+                    ImageReader(io.BytesIO(datos)),
+                    x_columna + margen,
+                    y_imagen,
+                    ancho_columna - 2 * margen,
+                    alto_imagen,
+                )
+            except Exception:
+                pass
+        etiqueta = _texto_celda(ws["A62" if indice == 0 else "H62"].value) or "APROBADO:"
+        pdf.setFillColorRGB(0.1, 0.14, 0.12)
+        pdf.setFont(fuente, 7)
+        pdf.drawCentredString(centro, y_leyenda, etiqueta)
+        pdf.setFont(fuente_negrita, 8)
+        pdf.drawCentredString(centro, y_nombre, nombre)
+        pdf.setFont(fuente, 7)
+        pdf.drawCentredString(centro, y_cargo, cargo)
+
+
 def _hoja_a_pdf(
     pdf: canvas.Canvas,
     ws: Worksheet,
@@ -609,7 +685,11 @@ def _hoja_a_pdf(
     pdf.setFillColorRGB(1, 1, 1)
     pdf.rect(0, 0, ancho_hoja, alto_hoja, stroke=0, fill=1)
 
+    firmas: list[tuple[bytes, int]] = []
     for datos, ancla in recursos:
+        if ancla._from.row >= 50:
+            firmas.append((datos, ancla._from.col))
+            continue
         try:
             lector = ImageReader(io.BytesIO(datos))
         except Exception:
@@ -677,27 +757,7 @@ def _hoja_a_pdf(
             alto_pt,
         )
 
-    caja_arriba = y_pt(62) + 4
-    caja_abajo = y_pt(70)
-    mitad = tabla_x + tabla_ancho / 2
-    pdf.setFillColor(COLOR_BARRA_FIRMAS)
-    pdf.rect(tabla_x, caja_arriba + 6, tabla_ancho, 7, stroke=0, fill=1)
-    pdf.setStrokeColorRGB(0, 0, 0)
-    pdf.setLineWidth(1)
-    pdf.rect(tabla_x, caja_abajo, tabla_ancho, caja_arriba - caja_abajo, stroke=1, fill=0)
-    pdf.line(mitad, caja_arriba, mitad, caja_abajo)
-    pdf.setLineWidth(0.6)
-    for indice, (nombre, cargo) in enumerate(FIRMANTES_PDF):
-        x_columna = tabla_x + indice * tabla_ancho / 2
-        centro = x_columna + tabla_ancho / 4
-        pdf.line(x_columna + tabla_ancho * 0.08, y_pt(68) + 1, x_columna + tabla_ancho * 0.42, y_pt(68) + 1)
-        pdf.setFillColorRGB(0.1, 0.14, 0.12)
-        pdf.setFont(fuente, 7)
-        pdf.drawCentredString(centro, y_pt(62) - 6, _texto_celda(ws["A62" if indice == 0 else "H62"].value) or "APROBADO:")
-        pdf.setFont(fuente_negrita, 8)
-        pdf.drawCentredString(centro, y_pt(68) - 10, nombre)
-        pdf.setFont(fuente, 7)
-        pdf.drawCentredString(centro, y_pt(69) - 9, cargo)
+    _dibujar_bloque_firmas(pdf, ws, tabla_x, tabla_ancho, firmas, fuente, fuente_negrita)
     pdf.showPage()
 
 
