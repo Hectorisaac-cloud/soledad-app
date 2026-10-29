@@ -35,7 +35,7 @@ from reportlab.platypus import Paragraph, Table, TableStyle
 
 import sitios_operativos
 
-VERSION_DISENO_PDF = 21
+VERSION_DISENO_PDF = 22
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -99,6 +99,7 @@ FIRMANTES_PDF = (
 COLOR_MARCO_RGB = (204, 0, 0)  # #CC0000
 GROSOR_LINEA_MARCO = 2
 SEPARACION_MARCO = 6
+COLOR_BARRA_FIRMAS = colors.HexColor("#E5A200")
 JPEG_CALIDAD_PDF = 85
 JPEG_CALIDAD_EXCEL = 85
 JPEG_DPI_PDF = 110
@@ -607,18 +608,21 @@ def _dibujar_bloque_firmas(
     fuente: str,
     fuente_negrita: str,
 ) -> None:
-    """Recuadro bajo para la rúbrica. Nombre y cargo quedan debajo, fuera."""
-    y_cargo = 16.0
-    y_nombre = 29.0
-    y_caja = 44.0
-    alto_caja = 78.0
+    """Barra amarilla y recuadro bajo. Nombre y cargo quedan debajo, fuera."""
+    y_cargo = 26.0
+    y_nombre = 39.0
+    y_caja = 56.0
+    alto_caja = 58.0
+    alto_barra = 7.0
     y_tope = y_caja + alto_caja
-    y_leyenda = y_tope - 13.0
-    y_imagen = y_caja + 4.0
-    alto_imagen = max(36.0, y_leyenda - 6.0 - y_imagen)
+    y_leyenda = y_tope - 12.0
+    y_imagen = y_caja + 3.0
+    alto_imagen = max(28.0, y_leyenda - 5.0 - y_imagen)
     por_columna: dict[int, bytes] = {}
     for datos, columna in firmas:
         por_columna[0 if columna < 7 else 1] = datos
+    pdf.setFillColor(COLOR_BARRA_FIRMAS)
+    pdf.rect(tabla_x, y_tope, tabla_ancho, alto_barra, stroke=0, fill=1)
     pdf.setStrokeColorRGB(0, 0, 0)
     pdf.setLineWidth(1)
     pdf.rect(tabla_x, y_caja, tabla_ancho, alto_caja, stroke=1, fill=0)
