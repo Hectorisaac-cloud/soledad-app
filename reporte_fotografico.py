@@ -35,7 +35,7 @@ from reportlab.platypus import Paragraph, Table, TableStyle
 
 import sitios_operativos
 
-VERSION_DISENO_PDF = 22
+VERSION_DISENO_PDF = 23
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -607,14 +607,29 @@ def _dibujar_bloque_firmas(
     firmas: list[tuple[bytes, int]],
     fuente: str,
     fuente_negrita: str,
+    y_fotos: float,
 ) -> None:
-    """Barra amarilla y recuadro bajo. Nombre y cargo quedan debajo, fuera."""
-    y_cargo = 26.0
-    y_nombre = 39.0
-    y_caja = 56.0
-    alto_caja = 58.0
+    """Barra amarilla separada y recuadro bajo. El blanco queda al pie de la hoja."""
+    separacion_fotos = 20.0
     alto_barra = 7.0
-    y_tope = y_caja + alto_caja
+    separacion_barra = 12.0
+    alto_caja = 58.0
+    separacion_nombre = 16.0
+    separacion_cargo = 13.0
+    margen_inferior = 56.0
+    y_barra = y_fotos - separacion_fotos - alto_barra
+    y_tope = y_barra - separacion_barra
+    y_caja = y_tope - alto_caja
+    y_nombre = y_caja - separacion_nombre
+    y_cargo = y_nombre - separacion_cargo
+    if y_cargo < margen_inferior:
+        libre = y_fotos - (y_barra + alto_barra)
+        ajuste = min(margen_inferior - y_cargo, max(0.0, libre - 12.0))
+        y_barra += ajuste
+        y_tope += ajuste
+        y_caja += ajuste
+        y_nombre += ajuste
+        y_cargo += ajuste
     y_leyenda = y_tope - 12.0
     y_imagen = y_caja + 3.0
     alto_imagen = max(28.0, y_leyenda - 5.0 - y_imagen)
@@ -622,7 +637,7 @@ def _dibujar_bloque_firmas(
     for datos, columna in firmas:
         por_columna[0 if columna < 7 else 1] = datos
     pdf.setFillColor(COLOR_BARRA_FIRMAS)
-    pdf.rect(tabla_x, y_tope, tabla_ancho, alto_barra, stroke=0, fill=1)
+    pdf.rect(tabla_x, y_barra, tabla_ancho, alto_barra, stroke=0, fill=1)
     pdf.setStrokeColorRGB(0, 0, 0)
     pdf.setLineWidth(1)
     pdf.rect(tabla_x, y_caja, tabla_ancho, alto_caja, stroke=1, fill=0)
@@ -761,7 +776,16 @@ def _hoja_a_pdf(
             alto_pt,
         )
 
-    _dibujar_bloque_firmas(pdf, ws, tabla_x, tabla_ancho, firmas, fuente, fuente_negrita)
+    _dibujar_bloque_firmas(
+        pdf,
+        ws,
+        tabla_x,
+        tabla_ancho,
+        firmas,
+        fuente,
+        fuente_negrita,
+        y_pt(54),
+    )
     pdf.showPage()
 
 
