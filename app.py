@@ -5329,6 +5329,96 @@ def primer_registro_jornada(fecha: date, cuadrilla: str):
     return del_dia.loc[orden.sort_values(kind="stable").index[0]]
 
 
+def _id_jornada_personal(fecha: date, cuadrilla: str) -> str:
+    clave = clave_cuadrilla_oficial(cuadrilla) or str(cuadrilla or "").strip().casefold()
+    return f"{fecha.isoformat()}|{clave}"
+
+
+def guardar_memoria_jornada(fecha: date, cuadrilla: str, datos: dict) -> None:
+    """Conserva la dotación elegida para las siguientes actividades del mismo día."""
+    if not str(cuadrilla or "").strip():
+        return
+    memoria = dict(st.session_state.get("_memoria_jornada_personal") or {})
+    clave = _id_jornada_personal(fecha, cuadrilla)
+    actual = dict(memoria.get(clave) or {})
+    actual.update({k: v for k, v in datos.items() if v is not None})
+    actual["cuadrilla"] = cuadrilla
+    memoria[clave] = actual
+    memoria["__ultima__"] = {"fecha": fecha.isoformat(), "cuadrilla": cuadrilla}
+    st.session_state["_memoria_jornada_personal"] = memoria
+
+
+def memoria_jornada(fecha: date, cuadrilla: str) -> dict:
+    memoria = st.session_state.get("_memoria_jornada_personal") or {}
+    return dict(memoria.get(_id_jornada_personal(fecha, cuadrilla)) or {})
+
+
+def cuadrilla_recordada(fecha: date, opciones: list[str]) -> str:
+    ultima = (st.session_state.get("_memoria_jornada_personal") or {}).get("__ultima__") or {}
+    if ultima.get("fecha") != fecha.isoformat():
+        return ""
+    nombre = str(ultima.get("cuadrilla") or "")
+    return nombre if nombre in opciones else ""
+
+
+def sincronizar_memoria_dotacion(fecha: date, cuadrilla: str, form_id: int, secuencia: int | None = None) -> None:
+    modo = st.session_state.get(f"cobertura_modo_{form_id}_{cuadrilla}")
+    if modo not in {"Personal titular", "Cobertura / sustitución"}:
+        return
+    datos: dict = {"modo": modo}
+    if secuencia:
+        datos["secuencia"] = int(secuencia)
+    if modo == "Cobertura / sustitución":
+        for base in ("mec_real", "ayu_real", "apoyo_real"):
+            clave = f"{base}_{form_id}_{cuadrilla}"
+            if clave in st.session_state:
+                datos[base] = st.session_state.get(clave) or ""
+            otro = f"{clave}_otro"
+            if otro in st.session_state:
+                datos[f"{base}_otro"] = st.session_state.get(otro) or ""
+    guardar_memoria_jornada(fecha, cuadrilla, datos)
+
+
+def _volcar_dotacion_memoria(valores: dict, form_id: int, cuadrilla: str, mem: dict) -> None:
+    modo = mem.get("modo")
+    if modo not in {"Personal titular", "Cobertura / sustitución"}:
+        return
+    valores[f"cobertura_modo_{form_id}_{cuadrilla}"] = modo
+    if modo != "Cobertura / sustitución":
+        return
+    item = posicion_personal_cuadrilla(cuadrilla)
+    bases = (("mec_real", item["mecanico"]), ("ayu_real", item["ayudante"]), ("apoyo_real", item["apoyo"]))
+    for base, titular in bases:
+        if base == "apoyo_real" and not titular:
+            continue
+        elegido = str(mem.get(base) or "").strip()
+        otro = str(mem.get(f"{base}_otro") or "").strip()
+        if not elegido and not otro:
+            continue
+        clave = f"{base}_{form_id}_{cuadrilla}"
+        opciones = opciones_personal_turno(titular)
+        if elegido in opciones:
+            valores[clave] = elegido
+            if elegido == PERSONAL_OTRO and otro:
+                valores[f"{clave}_otro"] = otro
+        else:
+            valores[clave] = PERSONAL_OTRO
+            valores[f"{clave}_otro"] = otro or elegido
+
+
+def _nombres_fila_personal(fila) -> list[str]:
+    mecanico = str(fila.get("MECANICO EN TURNO") or "").strip()
+    ayudantes = [p.strip() for p in str(fila.get("AYUDANTE EN TURNO") or "").split("·") if p.strip()]
+    if mecanico or ayudantes:
+        return [mecanico, *ayudantes]
+    return [p.strip() for p in str(fila.get("PERSONAL") or "").split("·") if p.strip()]
+
+
+def _dotacion_distinta(nombres: list[str], item: dict) -> bool:
+    bases = [str(item.get("mecanico") or ""), str(item.get("ayudante") or ""), str(item.get("apoyo") or "")]
+    return any(nombre and nombre != base for nombre, base in zip(nombres, bases))
+
+
 def aplicar_precarga_jornada(marca: str, firma: tuple, calcular) -> dict:
     """Siembra los widgets una sola vez por jornada; luego el usuario puede cambiarlos."""
     previa = st.session_state.get(marca) or {}
@@ -5346,45 +5436,55 @@ def aplicar_precarga_jornada(marca: str, firma: tuple, calcular) -> dict:
 
 
 def valores_precarga_campo(form_id: int, fecha: date, cuadrilla: str, equipos: list[str]) -> dict:
-    fila = primer_registro_jornada(fecha, cuadrilla)
-    if fila is None:
-        return {}
     valores: dict = {}
-    if str(fila.get("COBERTURA") or "").strip().casefold() in {"sí", "si"}:
-        valores[f"cobertura_modo_{form_id}_{cuadrilla}"] = "Cobertura / sustitución"
+    mem = memoria_jornada(fecha, cuadrilla)
+    if mem.get("modo"):
+        _volcar_dotacion_memoria(valores, form_id, cuadrilla, mem)
+    fila = primer_registro_jornada(fecha, cuadrilla)
+    if fila is not None and f"cobertura_modo_{form_id}_{cuadrilla}" not in valores:
+        cobertura_txt = str(fila.get("COBERTURA") or "").strip().casefold()
         item = posicion_personal_cuadrilla(cuadrilla)
-        ayudantes = [p.strip() for p in str(fila.get("AYUDANTE EN TURNO") or "").split("·")]
-        nombres = [str(fila.get("MECANICO EN TURNO") or "").strip(), *ayudantes[:2]]
-        bases = [("mec_real", item["mecanico"]), ("ayu_real", item["ayudante"]), ("apoyo_real", item["apoyo"])]
-        for (base, titular), nombre in zip(bases, nombres):
-            if not nombre or (base == "apoyo_real" and not titular):
-                continue
-            clave = f"{base}_{form_id}_{cuadrilla}"
-            if nombre in opciones_personal_turno(titular):
-                valores[clave] = nombre
-            else:
-                valores[clave] = PERSONAL_OTRO
-                valores[f"{clave}_otro"] = nombre
-    elif str(fila.get("COBERTURA") or "").strip():
-        valores[f"cobertura_modo_{form_id}_{cuadrilla}"] = "Personal titular"
-    equipo = str(fila.get("EQUIPO/UBICACIÓN") or "").strip()
-    if equipo in equipos:
-        valores[f"equipo_{form_id}_{cuadrilla}"] = equipo
-    if valores:
-        valores["_secuencia"] = numero_secuencia_actividad(fila.get("SECUENCIA")) or 1
+        nombres = _nombres_fila_personal(fila)
+        if cobertura_txt in {"sí", "si"} or _dotacion_distinta(nombres, item):
+            _volcar_dotacion_memoria(
+                valores,
+                form_id,
+                cuadrilla,
+                {
+                    "modo": "Cobertura / sustitución",
+                    "mec_real": nombres[0] if nombres else "",
+                    "ayu_real": nombres[1] if len(nombres) > 1 else "",
+                    "apoyo_real": nombres[2] if len(nombres) > 2 else "",
+                },
+            )
+        elif cobertura_txt or nombres:
+            valores[f"cobertura_modo_{form_id}_{cuadrilla}"] = "Personal titular"
+    if fila is not None:
+        equipo = str(fila.get("EQUIPO/UBICACIÓN") or "").strip()
+        if equipo in equipos:
+            valores[f"equipo_{form_id}_{cuadrilla}"] = equipo
+        if valores:
+            valores["_secuencia"] = numero_secuencia_actividad(fila.get("SECUENCIA")) or int(mem.get("secuencia") or 1)
+    elif valores:
+        valores["_secuencia"] = int(mem.get("secuencia") or 1)
     return valores
 
 
 def valores_precarga_ficha(epoch: int, fecha: date, cuadrilla: str) -> dict:
-    fila = primer_registro_jornada(fecha, cuadrilla)
-    if fila is None:
-        return {}
-    ficha = str(fila.get("PERSONAL") or fila.get("MECANICO EN TURNO") or "").strip()
+    mem = memoria_jornada(fecha, cuadrilla)
+    ficha = str(mem.get("ficha") or "").strip()
+    secuencia = int(mem.get("secuencia") or 0)
+    if not ficha:
+        fila = primer_registro_jornada(fecha, cuadrilla)
+        if fila is None:
+            return {}
+        ficha = str(fila.get("PERSONAL") or fila.get("MECANICO EN TURNO") or "").strip()
+        secuencia = numero_secuencia_actividad(fila.get("SECUENCIA")) or 1
     if not ficha:
         return {}
     return {
         f"bit_reg_personal_{epoch}": ficha,
-        "_secuencia": numero_secuencia_actividad(fila.get("SECUENCIA")) or 1,
+        "_secuencia": secuencia or 1,
     }
 
 
@@ -9812,11 +9912,16 @@ def render_captura_actividades_campo() -> None:
 
         with col_o:
             st.markdown('<div class="section-title">🔧 Operación</div>', unsafe_allow_html=True)
+            clave_cuadrilla = f"cuadrilla_{form_id}"
+            if clave_cuadrilla not in st.session_state:
+                recordada = cuadrilla_recordada(fecha, list(CUADRILLAS))
+                if recordada:
+                    st.session_state[clave_cuadrilla] = recordada
             cuadrilla = st.selectbox(
                 "Cuadrilla / posición oficial",
                 CUADRILLAS,
                 format_func=etiqueta_cuadrilla_historial,
-                key=f"cuadrilla_{form_id}",
+                key=clave_cuadrilla,
                 help="Etiqueta que audita OPS (Mecánico 1, 2, 3, 4…). No cambia aunque haya cobertura.",
             )
             siguiente = siguiente_secuencia_turno(fecha, cuadrilla)
@@ -9838,6 +9943,7 @@ def render_captura_actividades_campo() -> None:
             )
             aviso_precarga_jornada(precarga)
             cobertura = render_bloque_cobertura(form_id, cuadrilla)
+            sincronizar_memoria_dotacion(fecha, cuadrilla, form_id, int(secuencia_n))
             if tag_instalacion:
                 st.caption(f"Ubicación del registro: **{tag_instalacion}**. El MCI/UBM es opcional.")
             equipo_sel = st.selectbox(
@@ -10014,11 +10120,14 @@ def render_captura_actividades_campo() -> None:
         )
 
         try:
-            personal = str(
-                (cobertura or {}).get("mecanico_real")
-                or (cobertura or {}).get("mecanico_titular")
-                or ""
-            ).strip()
+            personal = " · ".join(
+                parte.strip()
+                for parte in [
+                    str((cobertura or {}).get("mecanico_real") or ""),
+                    str((cobertura or {}).get("ayudante_real") or ""),
+                ]
+                if parte.strip()
+            )
             nombres_consumo = [
                 str(item.get("nombre") or "").strip()
                 for item in consumos
@@ -11915,11 +12024,16 @@ def render_registro_actividad_bitacora() -> None:
     with col_o:
         with st.container(border=True):
             st.markdown('<div class="section-title">🔧 Operación</div>', unsafe_allow_html=True)
+            clave_cuadrilla_reg = f"bit_reg_cuadrilla_{epoch}"
+            if clave_cuadrilla_reg not in st.session_state:
+                recordada = cuadrilla_recordada(fecha, opciones)
+                if recordada:
+                    st.session_state[clave_cuadrilla_reg] = recordada
             cuadrilla_sel = st.selectbox(
                 "Cuadrilla",
                 opciones + [otra],
                 format_func=lambda nombre: nombre if nombre == otra else etiqueta_cuadrilla_historial(nombre),
-                key=f"bit_reg_cuadrilla_{epoch}",
+                key=clave_cuadrilla_reg,
             )
             cuadrilla_libre = ""
             if cuadrilla_sel == otra:
@@ -11955,6 +12069,12 @@ def render_registro_actividad_bitacora() -> None:
                 placeholder="Ej. 1705-2107",
                 key=f"bit_reg_personal_{epoch}",
             )
+            if cuadrilla:
+                guardar_memoria_jornada(
+                    fecha,
+                    cuadrilla,
+                    {"ficha": personal, "secuencia": int(secuencia_n)},
+                )
             descripcion = st.text_area(
                 "Descripción de la actividad realizada",
                 height=120,
