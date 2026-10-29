@@ -833,6 +833,22 @@
       "tipo_insumo": "Consumible",
       "id": "9013849e58",
       "registrado": "2026-10-29 16:39"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-28",
+      "secuencia": "Act. 4",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PSN",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 3.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "02558d778a",
+      "registrado": "2026-10-29 16:42"
     }
   ]
 }
