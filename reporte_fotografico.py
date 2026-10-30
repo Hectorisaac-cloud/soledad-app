@@ -35,7 +35,7 @@ from reportlab.platypus import Paragraph, Table, TableStyle
 
 import sitios_operativos
 
-VERSION_DISENO_PDF = 29
+VERSION_DISENO_PDF = 30
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -986,7 +986,7 @@ def _compactar_tag_pozo_pdf(tag: str) -> str:
 
 
 _NOMBRE_FORMAL_UBICACION_PDF = {
-    "AOPS": "Almacén OPS",
+    "AOPS": "ALMACÉN OPS",
 }
 
 
