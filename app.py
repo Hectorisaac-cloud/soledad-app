@@ -7162,11 +7162,12 @@ def avance_texto(valor) -> str:
     texto = str(valor).strip()
     if not texto or texto.lower() in {"nan", "none", "<na>"}:
         return ""
+    ya_tiene_porcentaje = "%" in texto
     try:
         num = float(texto.replace("%", "").replace(",", "."))
     except ValueError:
         return texto
-    if 0 < num < 1:
+    if not ya_tiene_porcentaje and 0 < num <= 1:
         return f"{int(round(num * 100))}%"
     return f"{int(round(num))}%"
 

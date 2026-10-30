@@ -35,7 +35,7 @@ from reportlab.platypus import Paragraph, Table, TableStyle
 
 import sitios_operativos
 
-VERSION_DISENO_PDF = 27
+VERSION_DISENO_PDF = 28
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -1051,14 +1051,17 @@ def _descripcion_tabla_pdf(descripcion, *ubicaciones) -> str:
 
 
 def _texto_avance_pdf(valor) -> str:
-    texto = _texto_celda(valor).replace("%", "").strip()
-    if not texto:
+    """Pinta el avance como se capturó. El 1 de una celda con formato % de Excel es 100%."""
+    bruto = _texto_celda(valor).strip()
+    if not bruto:
         return ""
+    ya_tiene_porcentaje = "%" in bruto
+    texto = bruto.replace("%", "").strip()
     try:
         numero = float(texto.replace(",", "."))
     except ValueError:
-        return _texto_celda(valor)
-    if 0 < numero < 1:
+        return bruto
+    if not ya_tiene_porcentaje and 0 < numero <= 1:
         numero *= 100
     return f"{int(round(numero))}%"
 
