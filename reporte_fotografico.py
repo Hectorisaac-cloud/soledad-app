@@ -20,7 +20,7 @@ from openpyxl.utils.units import pixels_to_EMU
 from openpyxl.workbook.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from PIL import Image as PILImage
-from PIL import ImageDraw, ImageOps
+from PIL import ImageDraw, ImageFilter, ImageOps
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -35,7 +35,7 @@ from reportlab.platypus import Paragraph, Table, TableStyle
 
 import sitios_operativos
 
-VERSION_DISENO_PDF = 24
+VERSION_DISENO_PDF = 26
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -577,6 +577,26 @@ def _preparar_libro(ruta_plantilla: str) -> tuple[Workbook, Worksheet, io.BytesI
     return libro, plantilla, firma
 
 
+def _oscurecer_firma_png(datos: bytes) -> bytes:
+    """Convierte la tinta clara de la firma de OPS en un trazo negro más grueso."""
+    try:
+        with PILImage.open(io.BytesIO(datos)) as origen:
+            imagen = origen.convert("RGBA")
+    except Exception:
+        return datos
+    rojo, verde, azul, alfa = imagen.split()
+    blancura = PILImage.merge("RGB", (rojo, verde, azul)).convert("L")
+    tinta = blancura.point(lambda valor: 255 - valor)
+    tinta = PILImage.composite(tinta, PILImage.new("L", tinta.size, 0), alfa)
+    tinta = tinta.point(lambda valor: 0 if valor < 8 else min(255, int(valor * 3.2)))
+    tinta = tinta.filter(ImageFilter.MaxFilter(5))
+    negro = PILImage.new("L", imagen.size, 0)
+    salida = PILImage.merge("RGBA", (negro, negro, negro, tinta))
+    buffer = io.BytesIO()
+    salida.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def _dibujar_rubrica(pdf, lector, x: float, y: float, ancho: float, alto: float) -> None:
     """Apoya la rúbrica sobre la línea, centrada y sin deformarla."""
     try:
@@ -650,14 +670,17 @@ def _dibujar_bloque_firmas(
         centro = x_columna + ancho_columna / 2
         margen = 8.0
         datos = por_columna.get(indice)
+        if datos and indice == 1:
+            datos = _oscurecer_firma_png(datos)
         if datos:
             try:
+                margen_firma = 2.0 if indice == 1 else margen
                 _dibujar_rubrica(
                     pdf,
                     ImageReader(io.BytesIO(datos)),
-                    x_columna + margen,
+                    x_columna + margen_firma,
                     y_imagen,
-                    ancho_columna - 2 * margen,
+                    ancho_columna - 2 * margen_firma,
                     alto_imagen,
                 )
             except Exception:
@@ -831,17 +854,22 @@ def _hoja_a_pdf(
     tabla.wrapOn(pdf, tabla_ancho, tabla_arriba - tabla_abajo)
     tabla.drawOn(pdf, tabla_x, tabla_abajo)
 
+    margen_pt = _MARGEN_RANURA * 72 / 96 * escala
+    cajas_ranura = [ancho_pt(c0, c1) for c0, _f0, c1, _f1 in RANURAS]
+    altos_ranura = [alto_pt(f0, f1) for _c0, f0, _c1, f1 in RANURAS]
+    ancho_fijo = max(1.0, min(cajas_ranura) - 2 * margen_pt)
+    alto_fijo = max(1.0, min(altos_ranura) - 2 * margen_pt)
     for imagen, caja in fotos:
         col_ini, fila_ini, col_fin, fila_fin = _ranura_de_caja(ws, caja)
-        ancho_pt = caja["ancho"] * 72 / 96 * escala
-        alto_pt = caja["alto"] * 72 / 96 * escala
-        _dibujar_proporcion(
+        slot_ancho = ancho_pt(col_ini, col_fin)
+        slot_alto = alto_pt(fila_ini, fila_fin)
+        _dibujar_foto_uniforme(
             pdf,
-            ImageReader(_jpeg_para_pdf(imagen, ancho_pt, alto_pt)),
-            x_pt(col_ini) + caja["dx"] * 72 / 96 * escala,
-            y_pt(fila_ini, caja["dy"] + caja["alto"]),
-            ancho_pt,
-            alto_pt,
+            ImageReader(_jpeg_para_pdf(imagen, ancho_fijo, alto_fijo)),
+            x_pt(col_ini) + (slot_ancho - ancho_fijo) / 2,
+            y_pt(fila_fin + 1) + (slot_alto - alto_fijo) / 2,
+            ancho_fijo,
+            alto_fijo,
         )
 
     _dibujar_bloque_firmas(
@@ -876,6 +904,20 @@ def _caja_proporcion(lector, x, y, ancho, alto) -> tuple[float, float, float, fl
         y + (alto - dibujo_alto) / 2,
         dibujo_ancho,
         dibujo_alto,
+    )
+
+
+def _dibujar_foto_uniforme(pdf, lector, x: float, y: float, ancho: float, alto: float) -> None:
+    """Caja fija de la cuadrícula: conserva la proporción y centra la foto."""
+    pdf.drawImage(
+        lector,
+        x,
+        y,
+        width=ancho,
+        height=alto,
+        preserveAspectRatio=True,
+        anchor="c",
+        mask="auto",
     )
 
 
