@@ -35,7 +35,7 @@ from reportlab.platypus import Paragraph, Table, TableStyle
 
 import sitios_operativos
 
-VERSION_DISENO_PDF = 23
+VERSION_DISENO_PDF = 24
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -199,7 +199,7 @@ def _comprimir_foto_reporte(origen, calidad: int = JPEG_CALIDAD_PDF) -> io.Bytes
     buffer = io.BytesIO()
     imagen.save(buffer, format="JPEG", quality=int(calidad), optimize=True)
     buffer.seek(0)
-    buffer.name = "evidencia.jpg"
+    buffer.name = f"evidencia_{id(buffer)}.jpg"
     return buffer
 
 
@@ -672,12 +672,80 @@ def _dibujar_bloque_firmas(
         pdf.drawCentredString(centro, y_cargo, cargo)
 
 
+def _clave_foto(ruta: str) -> str:
+    texto = str(ruta or "").strip()
+    if not texto:
+        return ""
+    if os.path.isfile(texto):
+        return os.path.normcase(os.path.abspath(texto))
+    return os.path.normcase(texto)
+
+
+def _bloques_fotos(rutas: list[str]) -> list[list[str]]:
+    """Cada página recibe solo fotos que todavía no se usaron en la actividad."""
+    vistas: set[str] = set()
+    unicas: list[str] = []
+    for ruta in rutas:
+        clave = _clave_foto(ruta)
+        if not clave or clave in vistas:
+            continue
+        vistas.add(clave)
+        unicas.append(str(ruta).strip())
+    if not unicas:
+        return [[]]
+    return [list(unicas[i : i + FOTOS_POR_HOJA]) for i in range(0, len(unicas), FOTOS_POR_HOJA)]
+
+
+def _limpiar_fotos_cuadricula(hoja: Worksheet) -> None:
+    """Quita fotos de evidencia heredadas antes de armar esta página."""
+    conservadas = []
+    for imagen in list(getattr(hoja, "_images", []) or []):
+        ancla = getattr(imagen, "anchor", None)
+        origen = getattr(ancla, "_from", None)
+        fila = getattr(origen, "row", None)
+        if isinstance(fila, int) and 8 <= fila <= 52:
+            continue
+        conservadas.append(imagen)
+    hoja._images = conservadas
+
+
+def _fotos_de_bloque(hoja: Worksheet, bloque: list[str]) -> tuple[list[tuple[PILImage.Image, dict]], int]:
+    """Carga solo el bloque de esta página, en una lista nueva."""
+    fotos_hoja: list[tuple[PILImage.Image, dict]] = []
+    omitidas = 0
+    for posicion, ruta in enumerate(list(bloque)[:FOTOS_POR_HOJA]):
+        if not os.path.isfile(ruta):
+            omitidas += 1
+            continue
+        ranura = RANURAS[posicion]
+        caja_ancho, caja_alto = _tamano_rango_px(hoja, *ranura)
+        try:
+            imagen, _, _ = _preparar_imagen(
+                ruta,
+                max(1, int(caja_ancho) - 2 * _MARGEN_RANURA),
+                max(1, int(caja_alto) - 2 * _MARGEN_RANURA),
+            )
+        except Exception:
+            omitidas += 1
+            continue
+        caja = _anclar_foto(hoja, imagen, ranura)
+        caja["dx"] = caja["x"] - caja["ranura"][0]
+        caja["dy"] = caja["y"] - caja["ranura"][1]
+        caja["ranura_idx"] = ranura
+        propia = caja["imagen"].copy()
+        caja["imagen"] = propia
+        caja["origen"] = (propia.size[0], propia.size[1])
+        fotos_hoja.append((propia, caja))
+    return fotos_hoja, omitidas
+
+
 def _hoja_a_pdf(
     pdf: canvas.Canvas,
     ws: Worksheet,
     fotos: list[tuple[PILImage.Image, dict]],
     recursos: list[tuple[bytes, TwoCellAnchor]],
 ) -> None:
+    fotos = list(fotos or [])
     ancho_hoja, alto_hoja = letter
     margen = 8
     ancho_contenido = sum(_ancho_columna_px(ws, c) for c in range(1, 15)) * 72 / 96
@@ -1065,7 +1133,7 @@ def generar_reporte_fotografico(
     hojas = 0
     for indice, actividad in enumerate(_ordenar(actividades), start=1):
         rutas = [str(ruta) for ruta in (actividad.get("fotos") or []) if str(ruta).strip()]
-        bloques = [rutas[i : i + FOTOS_POR_HOJA] for i in range(0, len(rutas), FOTOS_POR_HOJA)] or [[]]
+        bloques = _bloques_fotos(rutas)
         for parte, bloque in enumerate(bloques):
             hoja = libro.copy_worksheet(plantilla)
             _quitar_metaarchivos(hoja)
@@ -1084,31 +1152,12 @@ def generar_reporte_fotografico(
             for indice_recurso, (datos, ancla) in enumerate(recursos):
                 _colocar_recurso(hoja, datos, ancla, retenidas, f"recurso_{indice_recurso}.png")
             _agregar_firma(hoja, firma, retenidas)
-            fotos_hoja = []
-            for posicion, ruta in enumerate(bloque[:FOTOS_POR_FILA * 3]):
-                if not os.path.isfile(ruta):
-                    fotos_omitidas += 1
-                    continue
-                ranura = RANURAS[posicion]
-                caja_ancho, caja_alto = _tamano_rango_px(hoja, *ranura)
-                try:
-                    imagen, _, _ = _preparar_imagen(
-                        ruta,
-                        max(1, int(caja_ancho) - 2 * _MARGEN_RANURA),
-                        max(1, int(caja_alto) - 2 * _MARGEN_RANURA),
-                    )
-                except Exception:
-                    fotos_omitidas += 1
-                    continue
-                caja = _anclar_foto(hoja, imagen, ranura)
-                caja["dx"] = caja["x"] - caja["ranura"][0]
-                caja["dy"] = caja["y"] - caja["ranura"][1]
-                caja["ranura_idx"] = ranura
-                enmarcada = caja["imagen"]
-                caja["origen"] = (enmarcada.size[0], enmarcada.size[1])
-                fotos_hoja.append((enmarcada, caja))
-                fotos_insertadas += 1
-            paginas_pdf.append((hoja, fotos_hoja))
+            _limpiar_fotos_cuadricula(hoja)
+            fotos_hoja, omitidas_bloque = _fotos_de_bloque(hoja, list(bloque))
+            fotos_omitidas += omitidas_bloque
+            fotos_insertadas += len(fotos_hoja)
+            paginas_pdf.append((hoja, list(fotos_hoja)))
+            fotos_hoja.clear()
             hojas += 1
     libro.remove(plantilla)
     recursos_pdf = list(recursos)
