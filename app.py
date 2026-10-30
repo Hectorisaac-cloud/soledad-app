@@ -892,6 +892,8 @@ COLUMNAS_BITACORA_SOLEDAD = [
     "PERSONAL",
     "UBICACIÓN",
     "EQUIPO",
+    "TIPO DE ACTIVIDAD",
+    "ACTIVIDAD CORTA",
     "DESCRIPCION DE LA ACTIVIDAD",
     "ACEITE SAE 50 PJP4",
     "BANDAS C144 PJP4",
@@ -6224,12 +6226,25 @@ def grupo_actividades_cuadrilla(cuadrilla: str) -> str | None:
     return None
 
 
-def _item_actividad(nombre: str, corto: str = "") -> dict:
+def actividad_esta_activa(item: dict) -> bool:
+    if not isinstance(item, dict):
+        return False
+    valor = item.get("activa", True)
+    if isinstance(valor, str):
+        return valor.strip().casefold() not in {"", "0", "false", "no", "inactiva", "inactivo"}
+    return bool(valor)
+
+
+def _item_actividad(nombre: str, corto: str = "", activa=True, id_item: str = "") -> dict:
     nombre = str(nombre or "").strip()
     corto = str(corto or "").strip()
-    if not nombre:
+    if not nombre or nombre.casefold() == "otra":
         return {}
-    return {"nombre": nombre, "corto": corto or nombre}
+    fila = {"nombre": nombre, "corto": corto or nombre, "activa": actividad_esta_activa({"activa": activa})}
+    ident = str(id_item or "").strip()
+    if ident:
+        fila["id"] = ident
+    return fila
 
 
 def catalogo_actividades_default() -> dict[str, list[dict]]:
@@ -6253,7 +6268,7 @@ def normalizar_catalogo_actividades(datos) -> dict[str, list[dict]]:
             if isinstance(item, str):
                 fila = _item_actividad(item)
             elif isinstance(item, dict):
-                fila = _item_actividad(item.get("nombre"), item.get("corto"))
+                fila = _item_actividad(item.get("nombre"), item.get("corto"), item.get("activa", True), item.get("id"))
             else:
                 continue
             clave = fila.get("nombre", "").casefold()
@@ -6261,7 +6276,9 @@ def normalizar_catalogo_actividades(datos) -> dict[str, list[dict]]:
                 continue
             vistos.add(clave)
             limpios.append(fila)
-        if limpios:
+        if isinstance(datos, dict) and grupo in datos:
+            base[grupo] = limpios
+        elif limpios:
             base[grupo] = limpios
     return base
 
@@ -6281,28 +6298,75 @@ def guardar_catalogo_actividades(datos: dict) -> None:
     escribir_json(ACTIVIDADES_FILE, limpios)
 
 
-def actividades_de_cuadrilla(cuadrilla: str) -> list[dict]:
+def actividades_de_cuadrilla(cuadrilla: str, *, incluir_inactivas: bool = False) -> list[dict]:
     grupo = grupo_actividades_cuadrilla(cuadrilla)
     if not grupo:
         return []
-    return list(cargar_catalogo_actividades().get(grupo) or [])
+    items = list(cargar_catalogo_actividades().get(grupo) or [])
+    if incluir_inactivas:
+        return items
+    return [item for item in items if actividad_esta_activa(item)]
 
 
 def nombres_actividad_cuadrilla(cuadrilla: str) -> list[str]:
+    if not grupo_actividades_cuadrilla(cuadrilla):
+        return []
     nombres = [item["nombre"] for item in actividades_de_cuadrilla(cuadrilla)]
-    if nombres and "Otra" not in nombres:
+    if "Otra" not in nombres:
         nombres.append("Otra")
     return nombres
 
 
 def buscar_actividad_catalogo(cuadrilla: str, nombre: str) -> dict | None:
     objetivo = str(nombre or "").strip().casefold()
-    if not objetivo:
+    if not objetivo or objetivo == "otra":
         return None
-    for item in actividades_de_cuadrilla(cuadrilla):
-        if item["nombre"].casefold() == objetivo:
+    for item in actividades_de_cuadrilla(cuadrilla, incluir_inactivas=True):
+        if item["nombre"].casefold() == objetivo and actividad_esta_activa(item):
             return item
     return None
+
+
+def render_selector_actividad_cuadrilla(key: str, cuadrilla: str) -> tuple:
+    """Selector de actividad oficial. Lee el catálogo activo de la cuadrilla."""
+    if not str(cuadrilla or "").strip() or not grupo_actividades_cuadrilla(cuadrilla):
+        if str(cuadrilla or "").strip():
+            st.caption("Esta cuadrilla no tiene catálogo oficial de actividades.")
+        return None, "", ""
+    opciones = nombres_actividad_cuadrilla(cuadrilla)
+    if st.session_state.get(key) not in opciones:
+        st.session_state.pop(key, None)
+    grupo = grupo_actividades_cuadrilla(cuadrilla) or ""
+    etiqueta = ETIQUETAS_GRUPO_ACTIVIDAD.get(grupo, grupo)
+    tipo = st.selectbox(
+        "Actividad oficial",
+        opciones,
+        index=None,
+        placeholder="Seleccionar...",
+        key=key,
+        persist_state="session",
+        help=f"Catálogo maestro {etiqueta}. Solo se listan las actividades activas de esta cuadrilla.",
+    )
+    otro = ""
+    corto = ""
+    if tipo == "Otra":
+        otro = st.text_input(
+            "Nombre de la actividad",
+            placeholder="Escribe el nombre oficial completo",
+            key=f"{key}_otra",
+            persist_state="session",
+        )
+        corto = st.text_input(
+            "Nombre corto",
+            placeholder="Ej. MTTO TIERRA FISICA SKID ICI",
+            key=f"{key}_corta",
+            persist_state="session",
+        )
+    elif tipo:
+        oficial = buscar_actividad_catalogo(cuadrilla, tipo)
+        if oficial:
+            st.caption(f"Nombre corto: **{oficial['corto']}**")
+    return tipo, otro, corto
 
 
 def resolver_actividad_catalogo(
@@ -7533,6 +7597,18 @@ def _guardar_libro_bitacora(wb, destino: str) -> None:
         wb.close()
 
 
+def _escribir_texto_catalogo(ws, fila_header: int, encabezados: list, fila: int, valor, titulo: str) -> None:
+    texto = str(valor or "").strip()
+    if not texto:
+        return
+    col = _columna_encabezado(encabezados, titulo)
+    if not col:
+        col = max((columna for columna, _nombre in encabezados), default=0) + 1
+        ws.cell(fila_header, col).value = titulo
+        encabezados.append((col, titulo))
+    ws.cell(fila, col).value = texto
+
+
 def agregar_registro_bitacora_soledad(
     fecha: date,
     cuadrilla: str,
@@ -7547,6 +7623,8 @@ def agregar_registro_bitacora_soledad(
     secuencia: int | None = None,
     avance: int | float | None = None,
     equipo: str = "",
+    tipo_actividad: str = "",
+    actividad_corta: str = "",
 ) -> dict:
     """Agrega una fila a la hoja original de la bitácora y conserva el resto del Excel."""
     destino = ruta or EXCEL_FILE
@@ -7605,6 +7683,10 @@ def agregar_registro_bitacora_soledad(
                 col_equipo = max((col for col, _nombre in encabezados), default=0) + 1
                 ws.cell(fila_header, col_equipo).value = "EQUIPO"
             ws.cell(fila, col_equipo).value = equipo_final
+        _escribir_texto_catalogo(ws, fila_header, encabezados, fila, tipo_actividad, "TIPO DE ACTIVIDAD")
+        _escribir_texto_catalogo(
+            ws, fila_header, encabezados, fila, actividad_corta, "ACTIVIDAD CORTA"
+        )
         _guardar_libro_bitacora(wb, destino)
     except Exception:
         for ruta_foto in rutas:
@@ -8903,7 +8985,7 @@ def _actividades_grupo_demo(cuadrilla: str) -> list[dict]:
         items = CATALOGO_ACTIVIDADES_DEFAULT.get(grupo or "MECANICOS", [])
     limpios = []
     for item in items:
-        if isinstance(item, dict) and item.get("nombre"):
+        if isinstance(item, dict) and item.get("nombre") and actividad_esta_activa(item):
             limpios.append({"nombre": str(item["nombre"]), "corto": str(item.get("corto") or item["nombre"])})
     return limpios or [{"nombre": "Revisión a MCI", "corto": "REV MCI"}]
 
@@ -10097,38 +10179,11 @@ def render_captura_actividades_campo() -> None:
                 st.caption(f"Ubicación del registro: **{tag_instalacion}**.")
             equipo_sel = render_selector_equipo_ubicacion(f"equipo_{form_id}", tag_instalacion)
 
-            tipo_actividad = None
-            tipo_actividad_otro = ""
-            actividad_corta_otro = ""
+            tipo_actividad, tipo_actividad_otro, actividad_corta_otro = render_selector_actividad_cuadrilla(
+                f"tipo_actividad_{form_id}_{cuadrilla}",
+                cuadrilla,
+            )
             opciones_act = nombres_actividad_cuadrilla(cuadrilla)
-            grupo_act = grupo_actividades_cuadrilla(cuadrilla)
-            if opciones_act:
-                etiqueta_grupo = ETIQUETAS_GRUPO_ACTIVIDAD.get(grupo_act or "", grupo_act or "")
-                tipo_actividad = st.selectbox(
-                    "Actividad oficial",
-                    opciones_act,
-                    index=None,
-                    placeholder="Seleccionar...",
-                    key=f"tipo_actividad_{form_id}_{cuadrilla}",
-                    help=f"Catálogo maestro {etiqueta_grupo}. Solo se listan las actividades de esta cuadrilla.",
-                )
-                if tipo_actividad == "Otra":
-                    tipo_actividad_otro = st.text_input(
-                        "Nombre de la actividad",
-                        placeholder="Escribe el nombre oficial completo",
-                        key=f"tipo_actividad_otra_{form_id}_{cuadrilla}",
-                    )
-                    actividad_corta_otro = st.text_input(
-                        "Nombre corto",
-                        placeholder="Ej. MTTO TIERRA FISICA SKID ICI",
-                        key=f"actividad_corta_otra_{form_id}_{cuadrilla}",
-                    )
-                elif tipo_actividad:
-                    oficial = buscar_actividad_catalogo(cuadrilla, tipo_actividad)
-                    if oficial:
-                        st.caption(f"Nombre corto: **{oficial['corto']}**")
-            else:
-                st.caption("Esta cuadrilla no tiene catálogo oficial de actividades.")
 
     confirma_programa = False
     ubicacion_programa = str(
@@ -10299,6 +10354,8 @@ def render_captura_actividades_campo() -> None:
                     secuencia=int(secuencia_n),
                     avance=porcentaje_avance,
                     equipo=equipo_final,
+                    tipo_actividad=tipo_actividad_final,
+                    actividad_corta=actividad_corta_final,
                 )
             except Exception:
                 df_existente = cargar_bitacora()
@@ -10919,47 +10976,126 @@ def render_gestion_catalogos() -> None:
         render_editor_personal_cuadrillas()
 
 
-def render_editor_actividades_cuadrilla() -> None:
-    st.markdown("**Catálogo maestro de actividades**")
+def _ids_actividades(items: list[dict]) -> list[dict]:
+    cambio = False
+    for item in items:
+        if not str(item.get("id") or "").strip():
+            item["id"] = uuid.uuid4().hex[:10]
+            cambio = True
+    return items if cambio else items
+
+
+def _guardar_grupo_actividades(grupo: str, items: list[dict]) -> None:
+    datos = cargar_catalogo_actividades()
+    datos[grupo] = items
+    guardar_catalogo_actividades(datos)
+
+
+def _nombre_actividad_repetido(items: list[dict], nombre: str, id_item: str = "") -> bool:
+    clave = str(nombre or "").strip().casefold()
+    return any(
+        str(item.get("nombre") or "").casefold() == clave and str(item.get("id") or "") != id_item
+        for item in items
+    )
+
+
+def render_gestionar_actividades() -> None:
+    st.markdown('<div class="section-title">Gestionar Actividades</div>', unsafe_allow_html=True)
     st.caption(
-        f"Nombre oficial y nombre corto por cuadrilla. Se guarda en {ACTIVIDADES_FILE} "
-        "y alimenta el selector de Captura de Actividades de Campo."
+        f"Catálogo de mantenimiento por especialidad. Cada alta, edición o baja se guarda en "
+        f"`{ACTIVIDADES_FILE}` y el selector de la bitácora usa las actividades activas de inmediato."
     )
     datos = cargar_catalogo_actividades()
-    pestanas = st.tabs([ETIQUETAS_GRUPO_ACTIVIDAD[g] for g in GRUPOS_ACTIVIDAD])
-    editados: dict[str, pd.DataFrame] = {}
-    for tab, grupo in zip(pestanas, GRUPOS_ACTIVIDAD):
-        with tab:
-            filas = datos.get(grupo) or []
-            df = pd.DataFrame(filas) if filas else pd.DataFrame(columns=["nombre", "corto"])
-            if "nombre" not in df.columns:
-                df["nombre"] = ""
-            if "corto" not in df.columns:
-                df["corto"] = ""
-            df = df.rename(columns={"nombre": "Nombre de la Actividad", "corto": "Nombre Corto"})
-            editados[grupo] = st.data_editor(
-                df[["Nombre de la Actividad", "Nombre Corto"]],
-                num_rows="dynamic",
-                use_container_width=True,
-                hide_index=True,
-                key=f"editor_act_{grupo}",
-                column_config={
-                    "Nombre de la Actividad": st.column_config.TextColumn(required=True),
-                    "Nombre Corto": st.column_config.TextColumn(),
-                },
+    grupo = st.selectbox(
+        "Especialidad",
+        GRUPOS_ACTIVIDAD,
+        format_func=lambda clave: ETIQUETAS_GRUPO_ACTIVIDAD.get(clave, clave),
+        key="gact_grupo",
+        persist_state="session",
+    )
+    items = [dict(item) for item in (datos.get(grupo) or [])]
+    if _ids_actividades(items) and any(not str(origen.get("id") or "") for origen in (datos.get(grupo) or [])):
+        _guardar_grupo_actividades(grupo, items)
+        items = [dict(item) for item in (cargar_catalogo_actividades().get(grupo) or [])]
+    activas = sum(1 for item in items if actividad_esta_activa(item))
+    st.caption(f"{activas} activa(s) · {len(items) - activas} inactiva(s) en {ETIQUETAS_GRUPO_ACTIVIDAD.get(grupo, grupo)}.")
+
+    with st.form("gact_alta", clear_on_submit=True):
+        st.markdown("**Nueva actividad**")
+        c1, c2 = st.columns(2)
+        nombre_nuevo = c1.text_input("Nombre de la actividad", placeholder="Nombre oficial completo")
+        corto_nuevo = c2.text_input("Nombre corto", placeholder="Ej. MTTO BIM MCI")
+        agregar = st.form_submit_button("Agregar actividad", type="primary")
+    if agregar:
+        nueva = _item_actividad(nombre_nuevo, corto_nuevo, True, uuid.uuid4().hex[:10])
+        if not nueva:
+            st.warning("Escribe el nombre de la actividad. «Otra» queda reservada para captura libre.")
+        elif _nombre_actividad_repetido(items, nueva["nombre"]):
+            st.warning("Esa actividad ya está en esta especialidad.")
+        else:
+            items.append(nueva)
+            _guardar_grupo_actividades(grupo, items)
+            st.success("Actividad agregada. Ya aparece en el selector de la bitácora.")
+            st.rerun()
+
+    def _alternar_actividad(grupo_cb: str, ident_cb: str) -> None:
+        clave = f"gact_{grupo_cb}_{ident_cb}_on"
+        vigentes = [dict(actual) for actual in (cargar_catalogo_actividades().get(grupo_cb) or [])]
+        for actual in vigentes:
+            if str(actual.get("id") or "") == ident_cb:
+                actual["activa"] = bool(st.session_state.get(clave))
+        _guardar_grupo_actividades(grupo_cb, vigentes)
+
+    st.markdown("**Catálogo vigente**")
+    if not items:
+        st.info("No hay actividades en esta especialidad. Agrega la primera arriba.")
+    for item in items:
+        ident = str(item.get("id") or "")
+        with st.container(border=True):
+            c_nom, c_cor = st.columns([1.4, 1])
+            clave_nom = f"gact_{grupo}_{ident}_nom"
+            clave_cor = f"gact_{grupo}_{ident}_cor"
+            clave_on = f"gact_{grupo}_{ident}_on"
+            if clave_nom not in st.session_state:
+                st.session_state[clave_nom] = item.get("nombre") or ""
+            if clave_cor not in st.session_state:
+                st.session_state[clave_cor] = item.get("corto") or ""
+            if clave_on not in st.session_state:
+                st.session_state[clave_on] = actividad_esta_activa(item)
+            nombre_edit = c_nom.text_input("Nombre de la actividad", key=clave_nom)
+            corto_edit = c_cor.text_input("Nombre corto", key=clave_cor)
+            c_on, c_save, c_del = st.columns([1, 1, 1])
+            activa = c_on.checkbox(
+                "Activa en bitácora",
+                key=clave_on,
+                on_change=_alternar_actividad,
+                args=(grupo, ident),
             )
-    if st.button("💾 Guardar catálogo de actividades", type="primary", key="btn_guardar_actividades"):
-        nuevo = {}
-        for grupo, tabla in editados.items():
-            items = []
-            for _, fila in tabla.iterrows():
-                item = _item_actividad(fila.get("Nombre de la Actividad"), fila.get("Nombre Corto"))
-                if item:
-                    items.append(item)
-            nuevo[grupo] = items
-        guardar_catalogo_actividades(nuevo)
-        st.success(f"Catálogo actualizado en {ACTIVIDADES_FILE}. El formulario de campo usará estas listas.")
-        st.rerun()
+            if not activa:
+                c_on.caption("No se lista en el registro.")
+            if c_save.button("Guardar cambios", key=f"gact_{grupo}_{ident}_save", use_container_width=True):
+                editada = _item_actividad(nombre_edit, corto_edit, activa, ident)
+                if not editada:
+                    st.warning("El nombre no puede quedar vacío ni llamarse «Otra».")
+                elif _nombre_actividad_repetido(items, editada["nombre"], ident):
+                    st.warning("Ya hay otra actividad con ese nombre en esta especialidad.")
+                else:
+                    reemplazo = [editada if str(actual.get("id") or "") == ident else actual for actual in items]
+                    _guardar_grupo_actividades(grupo, reemplazo)
+                    st.success("Cambios guardados en el catálogo.")
+                    st.rerun()
+            if c_del.button("Eliminar", key=f"gact_{grupo}_{ident}_del", use_container_width=True):
+                restantes = [actual for actual in items if str(actual.get("id") or "") != ident]
+                _guardar_grupo_actividades(grupo, restantes)
+                st.session_state.pop(clave_nom, None)
+                st.session_state.pop(clave_cor, None)
+                st.session_state.pop(clave_on, None)
+                st.success("Actividad eliminada del catálogo.")
+                st.rerun()
+
+
+def render_editor_actividades_cuadrilla() -> None:
+    render_gestionar_actividades()
 
 
 def render_editor_personal_cuadrillas() -> None:
@@ -12267,6 +12403,10 @@ def render_registro_actividad_bitacora() -> None:
                     cuadrilla,
                     {"ficha": personal, "secuencia": int(secuencia_n)},
                 )
+            tipo_actividad, tipo_actividad_otro, actividad_corta_otro = render_selector_actividad_cuadrilla(
+                f"bit_reg_act_{epoch}_{clave_cuadrilla_oficial(cuadrilla) or 'sin'}",
+                cuadrilla,
+            )
             descripcion = st.text_area(
                 "Descripción de la actividad realizada",
                 height=120,
@@ -12314,12 +12454,17 @@ def render_registro_actividad_bitacora() -> None:
 
     captura = resolver_captura_ubicacion(ubicacion_sel, ubicacion_nueva, tag_instalacion)
     ubicacion = captura["ubicacion"]
+    tipo_actividad_final, actividad_corta_final = resolver_actividad_catalogo(
+        cuadrilla, tipo_actividad, tipo_actividad_otro, actividad_corta_otro
+    )
     if not cuadrilla:
         st.error("Escribe la cuadrilla que realizó la actividad.")
     elif not ubicacion:
         st.error("Completa la ubicación: elige la zona y el pozo del catálogo, o la instalación especial.")
     elif not str(descripcion or "").strip():
         st.error("Escribe la descripción de la actividad realizada.")
+    elif nombres_actividad_cuadrilla(cuadrilla) and not tipo_actividad_final:
+        st.error("Selecciona una actividad oficial de la cuadrilla.")
     else:
         error_rotativo = validar_piezas_rotativas(seleccion_insumos["rotativos"])
         if error_rotativo:
@@ -12342,6 +12487,8 @@ def render_registro_actividad_bitacora() -> None:
                 limitar_fotos(list(fotos or [])),
                 secuencia=int(secuencia_n),
                 equipo=equipo_sel,
+                tipo_actividad=tipo_actividad_final,
+                actividad_corta=actividad_corta_final,
             )
         except PermissionError:
             st.error("No se pudo guardar la bitácora. Cierra el Excel si lo tienes abierto e inténtalo de nuevo.")
@@ -21675,6 +21822,12 @@ MODULOS_ADMIN = [
         "descripcion": "Revisión de bitácoras, gestión de catálogos y control de permisos.",
     },
     {
+        "id": "gestionar_actividades",
+        "icono": "📋",
+        "titulo": "Gestionar Actividades",
+        "descripcion": "Alta, edición y baja del catálogo de actividades de mantenimiento por especialidad.",
+    },
+    {
         "id": "cuadrillas",
         "icono": "👷",
         "titulo": "Historial de Cuadrillas",
@@ -21769,8 +21922,8 @@ SUBMENUS_CATALOGOS = [
     {
         "id": "actividades",
         "icono": "📋",
-        "titulo": "Actividades por cuadrilla",
-        "descripcion": "Catálogo maestro: nombre oficial y nombre corto por ELÉCTRICO, INSTRUMENTOS, MECÁNICOS, MONTAJE y SOLDADURA.",
+        "titulo": "Gestionar Actividades",
+        "descripcion": "Agrega, edita, desactiva o elimina actividades. El cambio entra de inmediato en la bitácora.",
     },
     {
         "id": "personal",
@@ -23383,7 +23536,7 @@ def _actividades_programadas_suministros() -> set[str]:
     for items in catalogo.values():
         for item in items or []:
             nombre = str((item or {}).get("nombre") or "")
-            if _es_mantenimiento_preventivo_catalogo(nombre):
+            if actividad_esta_activa(item) and _es_mantenimiento_preventivo_catalogo(nombre):
                 nombres.add(_clave_actividad_oficial(nombre))
     return nombres
 
@@ -24870,6 +25023,8 @@ def render_panel_administrativo() -> None:
         render_reportes_ejecutivos()
     elif modulo_id == "auditoria":
         render_auditoria_accesos()
+    elif modulo_id == "gestionar_actividades":
+        render_gestionar_actividades()
     elif modulo_id == "calendario_asistencia":
         render_calendario_asistencia()
     elif modulo_id == "cuadrillas":
