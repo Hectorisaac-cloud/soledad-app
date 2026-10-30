@@ -891,6 +891,7 @@ COLUMNAS_BITACORA_SOLEDAD = [
     "CUADRILLA",
     "PERSONAL",
     "UBICACIÓN",
+    "EQUIPO",
     "DESCRIPCION DE LA ACTIVIDAD",
     "ACEITE SAE 50 PJP4",
     "BANDAS C144 PJP4",
@@ -2393,12 +2394,89 @@ def selector_ubicacion_oficial(key: str, etiqueta: str = "Ubicación / Equipo �
     return render_selector_ubicacion_captura(key, etiqueta=etiqueta, valor_actual=tag_actual)
 
 
+def _catalogo_equipos_estandar() -> list[str]:
+    """Nombres oficiales de MCI, UBM y otros, en el orden del catálogo."""
+    cat = obtener_catalogos()
+    orden: list[str] = []
+    vistos: set[str] = set()
+    for grupo in ("equipos_mci", "equipos_ub", "equipos_otros"):
+        for item in list(cat.get(grupo) or []):
+            texto = str(item).strip()
+            clave = texto.casefold()
+            if not texto or sitios_operativos.es_vacio_sitio(texto) or clave in vistos:
+                continue
+            vistos.add(clave)
+            orden.append(texto)
+    return orden
+
+
+def nombre_equipo_catalogo(valor) -> str:
+    """Devuelve el nombre estandarizado del catálogo, o vacío si no pertenece a él."""
+    bruto = str(valor or "").strip()
+    if not bruto or sitios_operativos.es_vacio_sitio(bruto):
+        return ""
+    por_clave = {item.casefold(): item for item in _catalogo_equipos_estandar()}
+    if bruto.casefold() in por_clave:
+        return por_clave[bruto.casefold()]
+    for candidato in (normalizar_mci_excel(bruto), normalizar_ub_excel(bruto)):
+        clave = str(candidato or "").strip().casefold()
+        if clave in por_clave and clave != bruto.casefold():
+            return por_clave[clave]
+    return ""
+
+
+def opciones_equipo_de_ubicacion(ubicacion: str) -> list[str]:
+    """MCI y UBM que el catálogo maestro asocia a esta ubicación."""
+    texto = str(ubicacion or "").strip()
+    if not texto or sitios_operativos.es_vacio_sitio(texto):
+        return []
+    _recargar_sitios_operativos()
+    ficha = ficha_por_ubicacion(cargar_ubicaciones(), texto)
+    if not ficha:
+        return []
+    opciones: list[str] = []
+    vistos: set[str] = set()
+    for campo in ("equipo_mci", "equipo_ub"):
+        nombre = nombre_equipo_catalogo(ficha.get(campo))
+        clave = nombre.casefold()
+        if nombre and clave not in vistos:
+            vistos.add(clave)
+            opciones.append(nombre)
+    return opciones
+
+
+def render_selector_equipo_ubicacion(key: str, ubicacion: str) -> str:
+    """Equipo del catálogo maestro filtrado por la ubicación elegida."""
+    tag = str(ubicacion or "").strip()
+    opciones = opciones_equipo_de_ubicacion(tag)
+    if not tag:
+        st.caption("Elige la ubicación del catálogo para listar sus equipos.")
+        return ""
+    if not opciones:
+        st.caption("Esta ubicación no tiene MCI ni UBM en el catálogo maestro.")
+        return ""
+    clave = f"{key}_{clave_pozo_plana(tag)}"
+    if st.session_state.get(clave) not in opciones:
+        st.session_state.pop(clave, None)
+    return st.selectbox(
+        "Equipo",
+        opciones,
+        index=None,
+        placeholder="Seleccionar equipo del catálogo",
+        key=clave,
+        persist_state="session",
+        help="Solo el MCI y la unidad de bombeo registrados para esta ubicación.",
+    ) or ""
+
+
 def render_selector_ubicacion_captura(
     key: str,
     etiqueta: str = "Ubicación / Equipo — zona",
     valor_actual: str = "",
 ) -> tuple[str, str, str]:
-    """Paso 1 = tarjetas oficiales. Paso 2 = catálogo de ese bloque."""
+    """Paso 1 = zonas del catálogo. Paso 2 = fichas de ese bloque."""
+    _recargar_sitios_operativos()
+    opciones_macro = opciones_macro_captura()
     macro_key = f"{key}_macro_v5"
     if valor_actual and macro_key not in st.session_state:
         macro_prev, detalle_prev = descomponer_macro_captura(valor_actual)
@@ -2408,22 +2486,28 @@ def render_selector_ubicacion_captura(
             zona_prev = zona_id_macro_captura(macro_prev) or tipo_prev
             if tipo_prev in {"pozo", "bloque"} and detalle_prev:
                 st.session_state[f"{key}_item_v5_{zona_prev}"] = detalle_prev
+    if st.session_state.get(macro_key) not in opciones_macro:
+        st.session_state.pop(macro_key, None)
 
     macro = st.selectbox(
         etiqueta,
-        opciones_macro_captura(),
+        opciones_macro,
         index=None,
         placeholder="Paso 1: elige zona, INS, NTE, SUR u otra ubicación",
         key=macro_key,
+        persist_state="session",
     )
     tipo = tipo_macro_captura(macro)
     detalle = ""
     if tipo in {"pozo", "bloque"}:
-        items = opciones_items_macro_captura(macro)
+        items = list(opciones_items_macro_captura(macro))
         item_key = f"{key}_item_v5_{zona_id_macro_captura(macro) or tipo}"
-        actual_item = str(st.session_state.get(item_key) or "").strip()
-        if actual_item and actual_item not in items:
-            items = [actual_item, *items]
+        if valor_actual:
+            macro_prev, detalle_prev = descomponer_macro_captura(valor_actual)
+            if macro_prev == macro and detalle_prev and detalle_prev not in items:
+                items = [detalle_prev, *items]
+        if st.session_state.get(item_key) not in items:
+            st.session_state.pop(item_key, None)
         etiqueta_paso2 = "Pozo" if tipo == "pozo" else "Ubicación / equipo del bloque"
         if not items:
             st.caption("No hay elementos en el catálogo de este bloque.")
@@ -2434,6 +2518,7 @@ def render_selector_ubicacion_captura(
                 index=None,
                 placeholder="Paso 2: elige el elemento de este bloque",
                 key=item_key,
+                persist_state="session",
             ) or ""
     elif tipo in {"aops", "base"}:
         st.caption("No se pide un segundo paso: se guarda la clave de esta instalación.")
@@ -5456,7 +5541,20 @@ def aplicar_precarga_jornada(marca: str, firma: tuple, calcular) -> dict:
     return valores
 
 
-def valores_precarga_campo(form_id: int, fecha: date, cuadrilla: str, equipos: list[str]) -> dict:
+def _misma_ubicacion_catalogo(izquierda, derecha) -> bool:
+    a = str(izquierda or "").strip()
+    b = str(derecha or "").strip()
+    if not a or not b:
+        return False
+    if clave_pozo_plana(a) == clave_pozo_plana(b):
+        return True
+    datos = cargar_ubicaciones()
+    ficha_a = ficha_por_ubicacion(datos, a)
+    ficha_b = ficha_por_ubicacion(datos, b)
+    return bool(ficha_a and ficha_b and ficha_a.get("id") == ficha_b.get("id"))
+
+
+def valores_precarga_campo(form_id: int, fecha: date, cuadrilla: str, ubicacion: str = "") -> dict:
     valores: dict = {}
     mem = memoria_jornada(fecha, cuadrilla)
     if mem.get("modo"):
@@ -5481,9 +5579,15 @@ def valores_precarga_campo(form_id: int, fecha: date, cuadrilla: str, equipos: l
         elif cobertura_txt or nombres:
             valores[f"cobertura_modo_{form_id}_{cuadrilla}"] = "Personal titular"
     if fila is not None:
-        equipo = str(fila.get("EQUIPO/UBICACIÓN") or "").strip()
-        if equipo in equipos:
-            valores[f"equipo_{form_id}_{cuadrilla}"] = equipo
+        ubic_fila = str(fila.get("UBICACIÓN") or fila.get("POZO") or "").strip()
+        opciones_equipo = opciones_equipo_de_ubicacion(ubicacion)
+        equipo = nombre_equipo_catalogo(fila.get("EQUIPO") or "")
+        if (
+            equipo
+            and equipo in opciones_equipo
+            and _misma_ubicacion_catalogo(ubicacion, ubic_fila)
+        ):
+            valores[f"equipo_{form_id}_{clave_pozo_plana(ubicacion)}"] = equipo
         if valores:
             valores["_secuencia"] = numero_secuencia_actividad(fila.get("SECUENCIA")) or int(mem.get("secuencia") or 1)
     elif valores:
@@ -7448,6 +7552,7 @@ def agregar_registro_bitacora_soledad(
     raiz_fotos: str | None = None,
     secuencia: int | None = None,
     avance: int | float | None = None,
+    equipo: str = "",
 ) -> dict:
     """Agrega una fila a la hoja original de la bitácora y conserva el resto del Excel."""
     destino = ruta or EXCEL_FILE
@@ -7497,7 +7602,15 @@ def agregar_registro_bitacora_soledad(
             if not col_avance:
                 col_avance = max((col for col, _nombre in encabezados), default=0) + 1
                 ws.cell(fila_header, col_avance).value = "AVANCE %"
+                encabezados.append((col_avance, "AVANCE %"))
             ws.cell(fila, col_avance).value = _porcentaje_avance_registro(avance)
+        equipo_final = nombre_equipo_catalogo(equipo)
+        if equipo_final:
+            col_equipo = _columna_encabezado(encabezados, "EQUIPO")
+            if not col_equipo:
+                col_equipo = max((col for col, _nombre in encabezados), default=0) + 1
+                ws.cell(fila_header, col_equipo).value = "EQUIPO"
+            ws.cell(fila, col_equipo).value = equipo_final
         _guardar_libro_bitacora(wb, destino)
     except Exception:
         for ruta_foto in rutas:
@@ -8637,6 +8750,7 @@ def construir_registro(
     rutas = list(fotos) + [""] * MAX_FOTOS
     pozo = "" if sitios_operativos.es_vacio_sitio(pozo) else str(pozo or "").strip()
     equipo = "" if sitios_operativos.es_vacio_sitio(equipo) else str(equipo or "").strip()
+    equipo_catalogo = nombre_equipo_catalogo(equipo)
     sector = "" if sitios_operativos.es_vacio_sitio(sector) else str(sector or "").strip()
     tag_pozo = componer_tag_pozo(sector, pozo)
     if not tag_pozo and _PATRON_CODIGO_POZO.match(clave_pozo_plana(pozo)):
@@ -8676,6 +8790,7 @@ def construir_registro(
         "MECANICO EN TURNO": str((cobertura or {}).get("mecanico_real") or ""),
         "AYUDANTE EN TURNO": str((cobertura or {}).get("ayudante_real") or ""),
         "COBERTURA": str((cobertura or {}).get("cobertura") or "No"),
+        "EQUIPO": equipo_catalogo,
         "EQUIPO/UBICACIÓN": equipo,
         "TIPO DE ACTIVIDAD": tipo_actividad.strip(),
         "ACTIVIDAD CORTA": actividad_corta.strip() or tipo_actividad.strip(),
@@ -9917,7 +10032,6 @@ def render_historial_operativo() -> None:
 
 def render_captura_actividades_campo() -> None:
     form_id = st.session_state.form_id
-    equipos = equipos_actuales()
     origen = str(st.session_state.get("op_origen") or "")
     unidad_sel = str(st.session_state.get("hangar_unidad") or "")
     if origen == "evidencia":
@@ -9980,20 +10094,14 @@ def render_captura_actividades_campo() -> None:
             precarga = aplicar_precarga_jornada(
                 f"_precarga_campo_{form_id}",
                 (fecha.isoformat(), cuadrilla),
-                lambda: valores_precarga_campo(form_id, fecha, cuadrilla, equipos),
+                lambda: valores_precarga_campo(form_id, fecha, cuadrilla, tag_instalacion),
             )
             aviso_precarga_jornada(precarga)
             cobertura = render_bloque_cobertura(form_id, cuadrilla)
             sincronizar_memoria_dotacion(fecha, cuadrilla, form_id, int(secuencia_n))
             if tag_instalacion:
-                st.caption(f"Ubicación del registro: **{tag_instalacion}**. El MCI/UBM es opcional.")
-            equipo_sel = st.selectbox(
-                "Equipo",
-                equipos,
-                index=None,
-                placeholder="Seleccionar...",
-                key=f"equipo_{form_id}_{cuadrilla}",
-            )
+                st.caption(f"Ubicación del registro: **{tag_instalacion}**.")
+            equipo_sel = render_selector_equipo_ubicacion(f"equipo_{form_id}", tag_instalacion)
 
             tipo_actividad = None
             tipo_actividad_otro = ""
@@ -10196,6 +10304,7 @@ def render_captura_actividades_campo() -> None:
                     limitar_fotos(list(archivos_foto or [])),
                     secuencia=int(secuencia_n),
                     avance=porcentaje_avance,
+                    equipo=equipo_final,
                 )
             except Exception:
                 df_existente = cargar_bitacora()
@@ -12100,6 +12209,7 @@ def render_registro_actividad_bitacora() -> None:
             ubicacion_sel, ubicacion_nueva, tag_instalacion = render_selector_ubicacion_captura(
                 f"bit_reg_{epoch}"
             )
+            equipo_sel = render_selector_equipo_ubicacion(f"bit_reg_equipo_{epoch}", tag_instalacion)
 
     with col_o:
         with st.container(border=True):
@@ -12237,6 +12347,7 @@ def render_registro_actividad_bitacora() -> None:
                 comentarios,
                 limitar_fotos(list(fotos or [])),
                 secuencia=int(secuencia_n),
+                equipo=equipo_sel,
             )
         except PermissionError:
             st.error("No se pudo guardar la bitácora. Cierra el Excel si lo tienes abierto e inténtalo de nuevo.")
