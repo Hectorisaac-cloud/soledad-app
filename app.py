@@ -2445,8 +2445,21 @@ def opciones_equipo_de_ubicacion(ubicacion: str) -> list[str]:
     return opciones
 
 
+def mci_preseleccionado(opciones: list[str]) -> str:
+    """MCI del catálogo maestro presente en las opciones de esta ubicación."""
+    oficiales = {
+        str(item).strip().casefold()
+        for item in (obtener_catalogos().get("equipos_mci") or [])
+        if str(item).strip()
+    }
+    for opcion in opciones:
+        if str(opcion).casefold() in oficiales:
+            return opcion
+    return ""
+
+
 def render_selector_equipo_ubicacion(key: str, ubicacion: str) -> str:
-    """Equipo del catálogo maestro filtrado por la ubicación elegida."""
+    """Equipo del catálogo de la ubicación. Al abrir o reiniciar queda el MCI."""
     tag = str(ubicacion or "").strip()
     opciones = opciones_equipo_de_ubicacion(tag)
     if not tag:
@@ -2458,14 +2471,18 @@ def render_selector_equipo_ubicacion(key: str, ubicacion: str) -> str:
     clave = f"{key}_{clave_pozo_plana(tag)}"
     if st.session_state.get(clave) not in opciones:
         st.session_state.pop(clave, None)
+    if clave not in st.session_state:
+        mci = mci_preseleccionado(opciones)
+        if mci:
+            st.session_state[clave] = mci
     return st.selectbox(
         "Equipo",
         opciones,
-        index=None,
         placeholder="Seleccionar equipo del catálogo",
         key=clave,
         persist_state="session",
-        help="Solo el MCI y la unidad de bombeo registrados para esta ubicación.",
+        help="Empieza con el MCI de esta ubicación. Puedes cambiarlo por otro equipo del catálogo.",
+        **({} if clave in st.session_state else {"index": None}),
     ) or ""
 
 
@@ -5541,20 +5558,7 @@ def aplicar_precarga_jornada(marca: str, firma: tuple, calcular) -> dict:
     return valores
 
 
-def _misma_ubicacion_catalogo(izquierda, derecha) -> bool:
-    a = str(izquierda or "").strip()
-    b = str(derecha or "").strip()
-    if not a or not b:
-        return False
-    if clave_pozo_plana(a) == clave_pozo_plana(b):
-        return True
-    datos = cargar_ubicaciones()
-    ficha_a = ficha_por_ubicacion(datos, a)
-    ficha_b = ficha_por_ubicacion(datos, b)
-    return bool(ficha_a and ficha_b and ficha_a.get("id") == ficha_b.get("id"))
-
-
-def valores_precarga_campo(form_id: int, fecha: date, cuadrilla: str, ubicacion: str = "") -> dict:
+def valores_precarga_campo(form_id: int, fecha: date, cuadrilla: str) -> dict:
     valores: dict = {}
     mem = memoria_jornada(fecha, cuadrilla)
     if mem.get("modo"):
@@ -5578,18 +5582,8 @@ def valores_precarga_campo(form_id: int, fecha: date, cuadrilla: str, ubicacion:
             )
         elif cobertura_txt or nombres:
             valores[f"cobertura_modo_{form_id}_{cuadrilla}"] = "Personal titular"
-    if fila is not None:
-        ubic_fila = str(fila.get("UBICACIÓN") or fila.get("POZO") or "").strip()
-        opciones_equipo = opciones_equipo_de_ubicacion(ubicacion)
-        equipo = nombre_equipo_catalogo(fila.get("EQUIPO") or "")
-        if (
-            equipo
-            and equipo in opciones_equipo
-            and _misma_ubicacion_catalogo(ubicacion, ubic_fila)
-        ):
-            valores[f"equipo_{form_id}_{clave_pozo_plana(ubicacion)}"] = equipo
-        if valores:
-            valores["_secuencia"] = numero_secuencia_actividad(fila.get("SECUENCIA")) or int(mem.get("secuencia") or 1)
+    if fila is not None and valores:
+        valores["_secuencia"] = numero_secuencia_actividad(fila.get("SECUENCIA")) or int(mem.get("secuencia") or 1)
     elif valores:
         valores["_secuencia"] = int(mem.get("secuencia") or 1)
     return valores
@@ -10094,7 +10088,7 @@ def render_captura_actividades_campo() -> None:
             precarga = aplicar_precarga_jornada(
                 f"_precarga_campo_{form_id}",
                 (fecha.isoformat(), cuadrilla),
-                lambda: valores_precarga_campo(form_id, fecha, cuadrilla, tag_instalacion),
+                lambda: valores_precarga_campo(form_id, fecha, cuadrilla),
             )
             aviso_precarga_jornada(precarga)
             cobertura = render_bloque_cobertura(form_id, cuadrilla)
