@@ -1260,6 +1260,22 @@
       "tipo_insumo": "Consumible",
       "id": "e23f881b75",
       "registrado": "2026-10-30 17:20"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-29",
+      "secuencia": "Act. 3",
+      "cuadrilla": "Mecanico 4",
+      "sector": "PC",
+      "insumo_id": "banda-c-144",
+      "insumo": "BANDA C-144",
+      "cantidad": 2.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "69cfa47e71",
+      "registrado": "2026-10-30 17:30"
     }
   ]
 }
