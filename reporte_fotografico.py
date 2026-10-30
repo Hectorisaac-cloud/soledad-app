@@ -20,7 +20,7 @@ from openpyxl.utils.units import pixels_to_EMU
 from openpyxl.workbook.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from PIL import Image as PILImage
-from PIL import ImageDraw, ImageFilter, ImageOps
+from PIL import ImageDraw, ImageOps
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -35,7 +35,7 @@ from reportlab.platypus import Paragraph, Table, TableStyle
 
 import sitios_operativos
 
-VERSION_DISENO_PDF = 26
+VERSION_DISENO_PDF = 27
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -577,26 +577,6 @@ def _preparar_libro(ruta_plantilla: str) -> tuple[Workbook, Worksheet, io.BytesI
     return libro, plantilla, firma
 
 
-def _oscurecer_firma_png(datos: bytes) -> bytes:
-    """Convierte la tinta clara de la firma de OPS en un trazo negro más grueso."""
-    try:
-        with PILImage.open(io.BytesIO(datos)) as origen:
-            imagen = origen.convert("RGBA")
-    except Exception:
-        return datos
-    rojo, verde, azul, alfa = imagen.split()
-    blancura = PILImage.merge("RGB", (rojo, verde, azul)).convert("L")
-    tinta = blancura.point(lambda valor: 255 - valor)
-    tinta = PILImage.composite(tinta, PILImage.new("L", tinta.size, 0), alfa)
-    tinta = tinta.point(lambda valor: 0 if valor < 8 else min(255, int(valor * 3.2)))
-    tinta = tinta.filter(ImageFilter.MaxFilter(5))
-    negro = PILImage.new("L", imagen.size, 0)
-    salida = PILImage.merge("RGBA", (negro, negro, negro, tinta))
-    buffer = io.BytesIO()
-    salida.save(buffer, format="PNG")
-    return buffer.getvalue()
-
-
 def _dibujar_rubrica(pdf, lector, x: float, y: float, ancho: float, alto: float) -> None:
     """Apoya la rúbrica sobre la línea, centrada y sin deformarla."""
     try:
@@ -670,17 +650,14 @@ def _dibujar_bloque_firmas(
         centro = x_columna + ancho_columna / 2
         margen = 8.0
         datos = por_columna.get(indice)
-        if datos and indice == 1:
-            datos = _oscurecer_firma_png(datos)
         if datos:
             try:
-                margen_firma = 2.0 if indice == 1 else margen
                 _dibujar_rubrica(
                     pdf,
                     ImageReader(io.BytesIO(datos)),
-                    x_columna + margen_firma,
+                    x_columna + margen,
                     y_imagen,
-                    ancho_columna - 2 * margen_firma,
+                    ancho_columna - 2 * margen,
                     alto_imagen,
                 )
             except Exception:
