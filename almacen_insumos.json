@@ -125,6 +125,15 @@
       "tipo": "Consumible",
       "precargado": false,
       "activo": true
+    },
+    {
+      "id": "banda-c-144",
+      "nombre": "BANDA C-144",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Consumible",
+      "precargado": false,
+      "activo": true
     }
   ],
   "movimientos": [
@@ -1235,6 +1244,22 @@
       "tipo_insumo": "Consumible",
       "id": "59dca1c3ce",
       "registrado": "2026-10-30 17:15"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-29",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Mecanico 4",
+      "sector": "AOPS",
+      "insumo_id": "otros",
+      "insumo": "1 BOTON PUSH PARA MOTOR VORTC V8",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "e23f881b75",
+      "registrado": "2026-10-30 17:20"
     }
   ]
 }
