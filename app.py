@@ -6893,6 +6893,16 @@ def texto_secuencia_limpio(valor) -> str:
     return texto
 
 
+def _porcentaje_avance_registro(valor) -> int:
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        numero = 100
+    if 0 < numero < 1:
+        numero *= 100
+    return max(0, min(100, int(round(numero))))
+
+
 def avance_texto(valor) -> str:
     if texto_visible(valor, "") == "":
         return ""
@@ -6903,7 +6913,7 @@ def avance_texto(valor) -> str:
         num = float(texto.replace("%", "").replace(",", "."))
     except ValueError:
         return texto
-    if 0 <= num <= 1:
+    if 0 < num < 1:
         return f"{int(round(num * 100))}%"
     return f"{int(round(num))}%"
 
@@ -7416,6 +7426,7 @@ def agregar_registro_bitacora_soledad(
     ruta: str | None = None,
     raiz_fotos: str | None = None,
     secuencia: int | None = None,
+    avance: int | float | None = None,
 ) -> dict:
     """Agrega una fila a la hoja original de la bitácora y conserva el resto del Excel."""
     destino = ruta or EXCEL_FILE
@@ -7460,6 +7471,12 @@ def agregar_registro_bitacora_soledad(
             texto_coment = f"{texto_coment} · {extra}" if texto_coment else extra
         if col_coment and texto_coment:
             ws.cell(fila, col_coment).value = texto_coment
+        if avance is not None:
+            col_avance = _columna_encabezado(encabezados, "AVANCE %", "AVANCE")
+            if not col_avance:
+                col_avance = max((col for col, _nombre in encabezados), default=0) + 1
+                ws.cell(fila_header, col_avance).value = "AVANCE %"
+            ws.cell(fila, col_avance).value = _porcentaje_avance_registro(avance)
         _guardar_libro_bitacora(wb, destino)
     except Exception:
         for ruta_foto in rutas:
@@ -8592,6 +8609,7 @@ def construir_registro(
     fotos: list[str] | None = None,
     cobertura: dict[str, str] | None = None,
     programado: str = "",
+    porcentaje_avance: int | float = 100,
 ) -> dict:
     insumos = insumos or {}
     fotos = fotos or []
@@ -8657,7 +8675,7 @@ def construir_registro(
         ),
         "UBICACIÓN": sitio or sitios_operativos.texto_ubicacion_final(*partes_ubicacion),
         "COMENTARIOS": "",
-        "AVANCE %": 1,
+        "AVANCE %": _porcentaje_avance_registro(porcentaje_avance),
         "ID_REGISTRO": "",
         "EVIDENCIA": EVIDENCIA_PENDIENTE,
         COLUMNA_PROGRAMADO: _normalizar_marca_programado(programado),
@@ -10055,7 +10073,7 @@ def render_captura_actividades_campo() -> None:
     st.markdown("---")
     st.markdown("#### 📝 Estatus y actividad")
 
-    col_desc, col_est = st.columns([3, 1], gap="medium")
+    col_desc, col_est, col_avance = st.columns([2.6, 1.15, 1.15], gap="medium")
     with col_desc:
         descripcion = st.text_area(
             "Descripción de la actividad",
@@ -10068,6 +10086,15 @@ def render_captura_actividades_campo() -> None:
             "Estatus del equipo",
             ESTATUS_OPCIONES,
             key=f"estatus_{form_id}",
+        )
+    with col_avance:
+        porcentaje_avance = st.number_input(
+            "Porcentaje de avance (%)",
+            min_value=0,
+            max_value=100,
+            value=100,
+            step=1,
+            key=f"avance_{form_id}",
         )
 
     st.markdown("")
@@ -10117,6 +10144,7 @@ def render_captura_actividades_campo() -> None:
             fotos=guardar_evidencias(fecha, secuencia_final, archivos_foto),
             cobertura=cobertura,
             programado="Sí" if confirma_programa else "No",
+            porcentaje_avance=porcentaje_avance,
         )
 
         try:
@@ -10144,6 +10172,7 @@ def render_captura_actividades_campo() -> None:
                     "",
                     limitar_fotos(list(archivos_foto or [])),
                     secuencia=int(secuencia_n),
+                    avance=porcentaje_avance,
                 )
             except Exception:
                 df_existente = cargar_bitacora()

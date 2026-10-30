@@ -516,7 +516,7 @@ def _escribir_encabezado(ws: Worksheet, actividad: dict, continuacion: str) -> N
     if isinstance(fecha, date):
         ws["D4"].number_format = "DD/MM/YYYY"
     ws["E3"] = descripcion
-    ws["K4"] = str(actividad.get("avance") or "")
+    ws["K4"] = _texto_avance_pdf(actividad.get("avance"))
     ws["L4"] = str(actividad.get("cuadrilla") or "")
     for coordenada in ("C4", "E3", "L4"):
         ws[coordenada].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -963,7 +963,22 @@ def _descripcion_tabla_pdf(descripcion, *ubicaciones) -> str:
     return f"{texto} {sufijo}"
 
 
+def _texto_avance_pdf(valor) -> str:
+    texto = _texto_celda(valor).replace("%", "").strip()
+    if not texto:
+        return ""
+    try:
+        numero = float(texto.replace(",", "."))
+    except ValueError:
+        return _texto_celda(valor)
+    if 0 < numero < 1:
+        numero *= 100
+    return f"{int(round(numero))}%"
+
+
 def _valor_tabla_pdf(celda: str, valor, ubicacion=None) -> str:
+    if celda == "K4":
+        return _texto_avance_pdf(valor)
     if celda == "E3":
         return _descripcion_tabla_pdf(valor, ubicacion)
     if celda == "C4":
