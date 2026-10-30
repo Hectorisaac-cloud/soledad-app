@@ -24062,7 +24062,10 @@ def _aceite_en_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[s
         )
         if not destino:
             continue
-        pozo = nombre_largo_excel(_pozo_fila_admin(fila) or "Sin pozo", diccionario)
+        tag = _ubicacion_fila_refaccion(fila)
+        if not tag or tag == "Sin ubicación":
+            tag = _texto_celda_admin(fila.get("POZO")) or _texto_celda_admin(fila.get("UBICACIÓN"))
+        pozo = nombre_largo_excel(tag or "Sin pozo", diccionario)
         cuadrilla = _cuadrilla_plantilla_suministros(fila.get("CUADRILLA"))
         if destino == "programado":
             ubm, motor = _ubm_y_motor(_equipo_fila_suministros(fila))
