@@ -5221,12 +5221,19 @@ def _selector_nombre_turno(etiqueta: str, default: str, key: str) -> str:
         st.session_state.pop(key, None)
     if key in st.session_state:
         indice = None
-    elegido = st.selectbox(etiqueta, opciones, index=indice, key=key)
+    elegido = st.selectbox(
+        etiqueta,
+        opciones,
+        index=indice,
+        key=key,
+        persist_state="session",
+    )
     if elegido == PERSONAL_OTRO:
         return st.text_input(
             f"Nombre real · {etiqueta}",
             placeholder="Escribe el nombre de quien cubrió",
             key=f"{key}_otro",
+            persist_state="session",
         ).strip()
     return str(elegido or "").strip()
 
@@ -5264,6 +5271,7 @@ def render_bloque_cobertura(form_id: int, cuadrilla: str) -> dict:
         ["Personal titular", "Cobertura / sustitución"],
         horizontal=True,
         key=f"cobertura_modo_{form_id}_{cuadrilla}",
+        persist_state="session",
         help="Si alguien cubre por falta o reasignación OPS, elige cobertura y cambia solo el nombre real.",
     )
     apoyo_real = apoyo_tit
@@ -5419,18 +5427,31 @@ def _dotacion_distinta(nombres: list[str], item: dict) -> bool:
     return any(nombre and nombre != base for nombre, base in zip(nombres, bases))
 
 
+def _sembrar_estado_jornada(valores: dict, *, solo_faltantes: bool) -> None:
+    for clave, valor in valores.items():
+        if str(clave).startswith("_"):
+            continue
+        if solo_faltantes and clave in st.session_state:
+            continue
+        st.session_state[clave] = valor
+
+
 def aplicar_precarga_jornada(marca: str, firma: tuple, calcular) -> dict:
-    """Siembra los widgets una sola vez por jornada; luego el usuario puede cambiarlos."""
+    """Siembra cuadrilla y personal una vez por jornada y los recupera si la sección se ocultó."""
     previa = st.session_state.get(marca) or {}
     if previa.get("firma") == firma:
-        return previa.get("valores") or {}
+        guardados = previa.get("valores") or {}
+        if any(not str(clave).startswith("_") and clave not in st.session_state for clave in guardados):
+            valores = calcular() or {}
+            _sembrar_estado_jornada(valores, solo_faltantes=True)
+            st.session_state[marca] = {"firma": firma, "valores": valores}
+            return valores
+        return guardados
     for clave, valor in (previa.get("valores") or {}).items():
-        if not clave.startswith("_") and st.session_state.get(clave) == valor:
+        if not str(clave).startswith("_") and st.session_state.get(clave) == valor:
             st.session_state.pop(clave, None)
     valores = calcular() or {}
-    for clave, valor in valores.items():
-        if not clave.startswith("_"):
-            st.session_state[clave] = valor
+    _sembrar_estado_jornada(valores, solo_faltantes=False)
     st.session_state[marca] = {"firma": firma, "valores": valores}
     return valores
 
@@ -9923,6 +9944,7 @@ def render_captura_actividades_campo() -> None:
                 value=date.today(),
                 format="DD/MM/YYYY",
                 key=f"fecha_{form_id}",
+                persist_state="session",
             )
             ubicacion_sel, ubicacion_nueva, tag_instalacion = render_selector_ubicacion_captura(
                 f"captura_campo_{form_id}"
@@ -9940,6 +9962,7 @@ def render_captura_actividades_campo() -> None:
                 CUADRILLAS,
                 format_func=etiqueta_cuadrilla_historial,
                 key=clave_cuadrilla,
+                persist_state="session",
                 help="Etiqueta que audita OPS (Mecánico 1, 2, 3, 4…). No cambia aunque haya cobertura.",
             )
             siguiente = siguiente_secuencia_turno(fecha, cuadrilla)
@@ -10331,11 +10354,23 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
         with c1:
             nueva_fecha = st.date_input("Fecha", value=dia, format="DD/MM/YYYY")
         with c2:
+            clave_cuad_edit = f"rev_edit_cuadrilla_{idx}"
+            if clave_cuad_edit in st.session_state and st.session_state[clave_cuad_edit] not in opciones_cuadrilla:
+                st.session_state.pop(clave_cuad_edit, None)
+            if clave_cuad_edit not in st.session_state:
+                coincidencia = next(
+                    (op for op in opciones_cuadrilla if clave_cuadrilla_oficial(op) == clave_actual),
+                    None,
+                )
+                if coincidencia:
+                    st.session_state[clave_cuad_edit] = coincidencia
             nueva_cuadrilla = st.selectbox(
                 "Cuadrilla",
                 opciones_cuadrilla,
-                index=indice_cuadrilla,
+                index=None if clave_cuad_edit in st.session_state else indice_cuadrilla,
                 format_func=etiqueta_cuadrilla_historial,
+                key=clave_cuad_edit,
+                persist_state="session",
             )
         with c3:
             nueva_secuencia = st.number_input("Secuencia", min_value=1, step=1, value=int(secuencia_actual))
@@ -10346,7 +10381,14 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
                 valor_actual=ubic_actual,
             )
         with c5:
-            nuevo_personal = st.text_input("Ficha / Personal", value=personal_actual)
+            clave_personal_edit = f"rev_edit_personal_{idx}"
+            if clave_personal_edit not in st.session_state:
+                st.session_state[clave_personal_edit] = personal_actual
+            nuevo_personal = st.text_input(
+                "Ficha / Personal",
+                key=clave_personal_edit,
+                persist_state="session",
+            )
         nueva_desc = st.text_area("Descripción de la actividad", value=descripcion_actual, height=110)
         nuevos_coment = st.text_area("Comentarios", value=comentarios_actual, height=80)
         guardar = st.form_submit_button("💾 Guardar Cambios en Bitácora", type="primary")
@@ -10532,7 +10574,15 @@ def render_revision_bitacoras() -> None:
     with col_f2:
         filtro_ubi = st.selectbox("Ubicación", ["Todas"] + ubicaciones)
     with col_f3:
-        filtro_cuadrilla = st.selectbox("Cuadrilla", ["Todas"] + cuadrillas)
+        opciones_filtro_cuadrilla = ["Todas"] + cuadrillas
+        if st.session_state.get("rev_filtro_cuadrilla") not in opciones_filtro_cuadrilla:
+            st.session_state.pop("rev_filtro_cuadrilla", None)
+        filtro_cuadrilla = st.selectbox(
+            "Cuadrilla",
+            opciones_filtro_cuadrilla,
+            key="rev_filtro_cuadrilla",
+            persist_state="session",
+        )
     with col_f4:
         filtro_revision = st.selectbox("Revisión", ["Todas"] + ESTADOS_REVISION)
     filtro_evidencia = st.selectbox(
@@ -12045,6 +12095,7 @@ def render_registro_actividad_bitacora() -> None:
                 value=date.today(),
                 format="DD/MM/YYYY",
                 key=f"bit_reg_fecha_{epoch}",
+                persist_state="session",
             )
             ubicacion_sel, ubicacion_nueva, tag_instalacion = render_selector_ubicacion_captura(
                 f"bit_reg_{epoch}"
@@ -12063,6 +12114,7 @@ def render_registro_actividad_bitacora() -> None:
                 opciones + [otra],
                 format_func=lambda nombre: nombre if nombre == otra else etiqueta_cuadrilla_historial(nombre),
                 key=clave_cuadrilla_reg,
+                persist_state="session",
             )
             cuadrilla_libre = ""
             if cuadrilla_sel == otra:
@@ -12070,6 +12122,7 @@ def render_registro_actividad_bitacora() -> None:
                     "Nombre de la cuadrilla",
                     placeholder="Escribe la cuadrilla",
                     key=f"bit_reg_cuadrilla_libre_{epoch}",
+                    persist_state="session",
                 )
             cuadrilla = cuadrilla_libre.strip() if cuadrilla_sel == otra else str(cuadrilla_sel or "").strip()
             siguiente = siguiente_secuencia_turno(fecha, cuadrilla) if cuadrilla else 1
@@ -12093,10 +12146,16 @@ def render_registro_actividad_bitacora() -> None:
                 lambda: valores_precarga_ficha(epoch, fecha, cuadrilla),
             )
             aviso_precarga_jornada(precarga)
+            clave_personal_reg = f"bit_reg_personal_{epoch}"
+            if clave_personal_reg not in st.session_state and cuadrilla:
+                ficha_recordada = str(memoria_jornada(fecha, cuadrilla).get("ficha") or "")
+                if ficha_recordada:
+                    st.session_state[clave_personal_reg] = ficha_recordada
             personal = st.text_input(
                 "Ficha / Personal a cargo",
                 placeholder="Ej. 1705-2107",
-                key=f"bit_reg_personal_{epoch}",
+                key=clave_personal_reg,
+                persist_state="session",
             )
             if cuadrilla:
                 guardar_memoria_jornada(
