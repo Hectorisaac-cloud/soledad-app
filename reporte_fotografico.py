@@ -35,7 +35,7 @@ from reportlab.platypus import Paragraph, Table, TableStyle
 
 import sitios_operativos
 
-VERSION_DISENO_PDF = 28
+VERSION_DISENO_PDF = 29
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -985,11 +985,21 @@ def _compactar_tag_pozo_pdf(tag: str) -> str:
     return re.sub(r"(?<=[A-Z])-(?=\d)", "", texto)
 
 
+_NOMBRE_FORMAL_UBICACION_PDF = {
+    "AOPS": "Almacén OPS",
+}
+
+
+def _nombre_ubicacion_pdf(clave: str) -> str:
+    """El almacén se imprime completo; el resto de sitios conserva su clave corta."""
+    return _NOMBRE_FORMAL_UBICACION_PDF.get(str(clave or "").strip(), str(clave or "").strip())
+
+
 def _ubicacion_tabla_pdf(*valores) -> str:
-    """Columna Ubicación: solo el tag corto (PSN77, BSNI, ECSN). Sin macrozona ni MCI."""
+    """Columna Ubicación: tag corto (PSN77, BSNI, ECSN), salvo Almacén OPS."""
     clave = sitios_operativos.clave_sitio_campos(*valores)
     if clave and not sitios_operativos.es_vacio_sitio(clave):
-        return clave
+        return _nombre_ubicacion_pdf(clave)
     unidos = " ".join(_sin_ninguno_pdf(v) for v in valores if v)
     pozo = _RE_TAG_POZO_PDF.search(unidos)
     if pozo:
@@ -1005,7 +1015,7 @@ def _ubicacion_tabla_pdf(*valores) -> str:
             continue
         clave = sitios_operativos.clave_sitio(limpio)
         if clave:
-            return clave
+            return _nombre_ubicacion_pdf(clave)
         if sitios_operativos.es_equipo_explicito(limpio):
             continue
         primero = re.split(r"\s*[-·|/]+\s*", limpio)[0].strip()
@@ -1040,7 +1050,7 @@ def _descripcion_tabla_pdf(descripcion, *ubicaciones) -> str:
             clave = tag
     if not clave or sitios_operativos.es_vacio_sitio(clave) or _RE_NINGUNO_TEXTO.search(clave):
         return texto
-    sufijo = f"EN {clave}"
+    sufijo = f"EN {_nombre_ubicacion_pdf(clave)}"
     if _RE_NINGUNO_TEXTO.search(sufijo):
         return texto
     if texto.upper().endswith(sufijo.upper()):
