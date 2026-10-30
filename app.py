@@ -2427,6 +2427,55 @@ def nombre_equipo_catalogo(valor) -> str:
     return ""
 
 
+def _indice_equipos_maestro_excel() -> dict[str, tuple[str, str]]:
+    """Clave plana del pozo → (MCI, UBM) leídos de las columnas del Excel maestro."""
+    ruta = excel_inventario_predeterminado()
+    marca = (os.path.abspath(ruta), _mtime_archivo(ruta)) if ruta and os.path.isfile(ruta) else ("", 0.0)
+    cache = getattr(_indice_equipos_maestro_excel, "_cache", None)
+    if cache and cache[0] == marca:
+        return cache[1]
+    indice: dict[str, tuple[str, str]] = {}
+    if marca[0]:
+        try:
+            filas = extraer_catalogo_maestro_excel(ruta)
+        except Exception:
+            filas = []
+        for item in filas:
+            if item.get("instalacion"):
+                continue
+            mci = nombre_equipo_catalogo(item.get("equipo_mci")) or nombre_equipo_catalogo(item.get("mci_raw"))
+            ub = nombre_equipo_catalogo(item.get("equipo_ub")) or nombre_equipo_catalogo(item.get("ub_raw"))
+            if not mci and not ub:
+                continue
+            claves: set[str] = set()
+            for texto in (
+                item.get("nombre"),
+                item.get("corto_app"),
+                item.get("largo_excel"),
+                *(item.get("aliases") or []),
+            ):
+                if not str(texto or "").strip():
+                    continue
+                claves.add(clave_pozo_plana(str(texto)))
+                claves |= _variantes_clave_ubicacion(str(texto))
+            for clave in claves:
+                if clave:
+                    indice.setdefault(clave, (mci, ub))
+    _indice_equipos_maestro_excel._cache = (marca, indice)
+    return indice
+
+
+def _equipo_maestro_de_ubicacion(ubicacion: str) -> tuple[str, str]:
+    indice = _indice_equipos_maestro_excel()
+    if not indice:
+        return "", ""
+    for clave in _variantes_clave_ubicacion(ubicacion, canonizar_nombre_ubicacion(ubicacion)):
+        par = indice.get(clave)
+        if par and (par[0] or par[1]):
+            return par
+    return indice.get(clave_pozo_plana(ubicacion), ("", ""))
+
+
 def opciones_equipo_de_ubicacion(ubicacion: str) -> list[str]:
     """MCI y UBM que el catálogo maestro asocia a esta ubicación."""
     texto = str(ubicacion or "").strip()
@@ -2434,12 +2483,15 @@ def opciones_equipo_de_ubicacion(ubicacion: str) -> list[str]:
         return []
     _recargar_sitios_operativos()
     ficha = ficha_por_ubicacion(cargar_ubicaciones(), texto)
-    if not ficha:
-        return []
+    mci = nombre_equipo_catalogo((ficha or {}).get("equipo_mci"))
+    ub = nombre_equipo_catalogo((ficha or {}).get("equipo_ub"))
+    if not mci or not ub:
+        maestro_mci, maestro_ub = _equipo_maestro_de_ubicacion(texto)
+        mci = mci or maestro_mci
+        ub = ub or maestro_ub
     opciones: list[str] = []
     vistos: set[str] = set()
-    for campo in ("equipo_mci", "equipo_ub"):
-        nombre = nombre_equipo_catalogo(ficha.get(campo))
+    for nombre in (mci, ub):
         clave = nombre.casefold()
         if nombre and clave not in vistos:
             vistos.add(clave)
@@ -3680,13 +3732,15 @@ def _copia_excel_legible(ruta: str) -> str:
 
 def _tipo_columna_catalogo_excel(valor: str) -> str:
     titulo = _norm_titulo(valor)
+    if not titulo:
+        return ""
     if "NOMBRE CORTO" in titulo:
         return "corto"
     if "NOMBRE LARGO" in titulo:
         return "largo"
-    if titulo in {"MCI"}:
+    if re.search(r"\bMCI\b", titulo):
         return "mci"
-    if titulo in {"UB", "UBM"}:
+    if titulo in {"UB", "UBM"} or re.search(r"\bUBM\b", titulo) or titulo.startswith("UNIDAD DE BOMBEO"):
         return "ub"
     if _es_encabezado_bloque(valor):
         return "corto"
@@ -3748,6 +3802,7 @@ def extraer_catalogo_maestro_excel(ruta: str) -> list[dict]:
     for r0, c0, c1, zona_id in bloques:
         cols = {"corto": None, "largo": None, "mci": None, "ub": None}
         inicio = r0 + 1
+        fila_header = None
         for r in range(r0 + 1, min(r0 + 4, len(grid))):
             fila = grid[r]
             hallados = False
@@ -3757,8 +3812,23 @@ def extraer_catalogo_maestro_excel(ruta: str) -> list[dict]:
                     cols[tipo] = c
                     hallados = True
             if hallados:
+                fila_header = r
                 inicio = r + 1
                 break
+        if fila_header is not None and (cols["mci"] is None or cols["ub"] is None):
+            fila = grid[fila_header]
+            origen = max((c for c in cols.values() if c is not None), default=c0) + 1
+            for c in range(origen, min(len(fila), max(c1, origen) + 4)):
+                if c >= c1:
+                    titulo_zona = _texto_celda(grid[r0][c]) if c < len(grid[r0]) else ""
+                    if _zona_bloque_catalogo_excel(titulo_zona):
+                        break
+                    tipo_siguiente = _tipo_columna_catalogo_excel(_texto_celda(fila[c]))
+                    if tipo_siguiente in {"corto", "largo"}:
+                        break
+                tipo = _tipo_columna_catalogo_excel(_texto_celda(fila[c]))
+                if tipo in {"mci", "ub"} and cols[tipo] is None:
+                    cols[tipo] = c
         if cols["corto"] is None and cols["largo"] is None:
             continue
         zona = mapa_zonas().get(zona_id, {})
