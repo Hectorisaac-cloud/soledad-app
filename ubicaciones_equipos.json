@@ -3108,6 +3108,19 @@
       "notas": "",
       "actualizado": "2026-10-30 17:04",
       "aliases": []
+    },
+    "PB142": {
+      "id": "PB142",
+      "nombre": "PB142",
+      "zona_id": "palo-blanco",
+      "prefijo": "PPB",
+      "sector": "Bateria Palo Blanco (BPB)",
+      "equipo_mci": "MCI tipo Arrow",
+      "equipo_ub": "UBM tipo Weatherford",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "2026-11-02 17:12",
+      "aliases": []
     }
   },
   "cambios_equipo": [
