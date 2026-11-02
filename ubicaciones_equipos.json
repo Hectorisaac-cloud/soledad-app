@@ -3024,11 +3024,11 @@
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
       "sector": "PSN313",
-      "equipo_mci": "",
-      "equipo_ub": "",
+      "equipo_mci": "MCI tipo Weichai",
+      "equipo_ub": "HLU (Unidad Hidráulica)",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "",
+      "actualizado": "2026-11-02 16:49",
       "aliases": []
     },
     "PSN88": {
