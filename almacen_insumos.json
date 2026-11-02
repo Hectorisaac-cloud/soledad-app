@@ -1516,6 +1516,22 @@
       "tipo_insumo": "Consumible",
       "id": "1d95bc6b04",
       "registrado": "2026-11-02 16:22"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-30",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PGA Gallo",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 4.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "c3daca9cf3",
+      "registrado": "2026-11-02 16:24"
     }
   ]
 }
