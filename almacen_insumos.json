@@ -1628,6 +1628,22 @@
       "tipo_insumo": "Consumible",
       "id": "cda8399d2f",
       "registrado": "2026-11-02 17:17"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-10-30",
+      "secuencia": "Act. 3",
+      "cuadrilla": "Montaje",
+      "sector": "PS Soledad",
+      "insumo_id": "banda-c-125",
+      "insumo": "Banda C-125",
+      "cantidad": 3.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "35aef7b113",
+      "registrado": "2026-11-02 17:28"
     }
   ]
 }
