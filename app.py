@@ -20,6 +20,7 @@ import pandas as pd
 import persistencia
 import reporte_fotografico
 import historial_pjp4
+import control_costos_mci
 import sitios_operativos
 import plotly.express as px
 import plotly.graph_objects as go
@@ -21815,6 +21816,12 @@ MODULOS_ADMIN = [
         "descripcion": "KPIs de OT, combustible y el control de insumos y refacciones suministradas.",
     },
     {
+        "id": "costos_mci",
+        "icono": "💰",
+        "titulo": "Control de costos MCI",
+        "descripcion": "Totales de costo e inactividad por modelo de equipo, desde data/control_costos_mci.xlsx.",
+    },
+    {
         "id": "insumos_refacciones",
         "icono": "📦",
         "titulo": "Insumos y Refacciones",
@@ -24557,6 +24564,8 @@ def render_explorador_admin() -> None:
     with pie_ejec:
         if st.button("REPORTES EJECUTIVOS", use_container_width=True, key="adm_pie_ejecutivos"):
             abrir_modulo_admin("reportes_ejecutivos")
+    if st.button("CONTROL DE COSTOS MCI", use_container_width=True, key="adm_pie_costos_mci"):
+        abrir_modulo_admin("costos_mci")
 
 
 CRITERIOS_REPORTE_EJECUTIVO = (
@@ -25073,6 +25082,8 @@ def render_panel_administrativo() -> None:
         render_captura_bitacora_admin()
     elif modulo_id == "dashboard":
         render_dashboard_ejecutivo()
+    elif modulo_id == "costos_mci":
+        control_costos_mci.render()
     elif modulo_id == "insumos_refacciones":
         render_control_insumos_refacciones()
     elif modulo_id == "ot_diario":
