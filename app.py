@@ -8100,6 +8100,165 @@ def actualizar_registro_bitacora(idx, registro, cambios: dict, ruta: str | None 
     return {"fila": fila, "fotos_movidas": len(movidas), "aviso": aviso}
 
 
+def _texto_cuadrilla_guardado(df: pd.DataFrame, cuadrilla: str) -> str:
+    clave = clave_cuadrilla_oficial(cuadrilla)
+    for valor in df.get("CUADRILLA", pd.Series(dtype=object)).astype(str):
+        texto = str(valor or "").strip()
+        if texto and clave_cuadrilla_oficial(texto) == clave:
+            return texto
+    return etiqueta_cuadrilla_historial(cuadrilla)
+
+
+def _localizar_fila_libre(ws, fila_header: int, cols: dict, registro, idx, usadas: set[int]) -> int:
+    if not cols["fecha"] or not cols["cuadrilla"]:
+        raise ValueError("La bitácora no tiene columnas de fecha y cuadrilla.")
+    candidata = None
+    try:
+        candidata = fila_header + 1 + int(idx)
+    except (TypeError, ValueError):
+        candidata = None
+    if (
+        candidata
+        and candidata not in usadas
+        and candidata <= int(ws.max_row or 0)
+        and _fila_hoja_coincide(ws, candidata, cols, registro)
+    ):
+        return candidata
+    coincidencias = [
+        fila
+        for fila in range(fila_header + 1, int(ws.max_row or fila_header) + 1)
+        if fila not in usadas and _fila_hoja_coincide(ws, fila, cols, registro)
+    ]
+    if not coincidencias:
+        raise ValueError("No se encontró uno de los registros en la bitácora. Recarga la vista e inténtalo de nuevo.")
+    if candidata:
+        coincidencias.sort(key=lambda fila: abs(fila - candidata))
+    return coincidencias[0]
+
+
+def _mapa_secuencias_hoja(ws, fila_header: int, cols: dict) -> dict[tuple[date, str], set[int]]:
+    mapa: dict[tuple[date, str], set[int]] = {}
+    if not cols.get("secuencia"):
+        return mapa
+    for fila in range(fila_header + 1, int(ws.max_row or fila_header) + 1):
+        dia = parsear_fecha_valor(ws.cell(fila, cols["fecha"]).value)
+        numero = numero_secuencia_actividad(ws.cell(fila, cols["secuencia"]).value)
+        clave = clave_cuadrilla_oficial(str(ws.cell(fila, cols["cuadrilla"]).value or ""))
+        if not isinstance(dia, date) or not numero or not clave:
+            continue
+        mapa.setdefault((dia, clave), set()).add(numero)
+    return mapa
+
+
+def reasignar_cuadrilla_masiva(df: pd.DataFrame, indices, cuadrilla_destino: str, ruta: str | None = None) -> dict:
+    """Cambia la cuadrilla de varios registros en la hoja de la bitácora y en el DataFrame."""
+    texto_destino = _texto_cuadrilla_guardado(df, cuadrilla_destino)
+    clave_destino = clave_cuadrilla_oficial(texto_destino)
+    if not clave_destino:
+        raise ValueError("Selecciona la cuadrilla destino.")
+    pendientes = []
+    for idx in list(indices):
+        if idx not in df.index:
+            try:
+                idx = int(idx)
+            except (TypeError, ValueError):
+                continue
+            if idx not in df.index:
+                continue
+        registro = df.loc[idx]
+        if clave_cuadrilla_oficial(str(registro.get("CUADRILLA") or "")) == clave_destino:
+            continue
+        pendientes.append((idx, registro))
+    if not pendientes:
+        return {"cambiados": 0, "renumerados": 0, "fotos": 0, "avisos": [], "destino": texto_destino}
+
+    destino_ruta = ruta or EXCEL_FILE
+    wb, ws, fila_header, cols = _abrir_libro_bitacora(destino_ruta)
+    try:
+        usadas: set[int] = set()
+        ubicados = []
+        for idx, registro in pendientes:
+            fila = _localizar_fila_libre(ws, fila_header, cols, registro, idx, usadas)
+            usadas.add(fila)
+            dia = parsear_fecha_valor(registro.get("FECHA"))
+            if not isinstance(dia, date):
+                raise ValueError("Hay un registro sin fecha válida.")
+            ubicados.append(
+                {
+                    "idx": idx,
+                    "registro": registro,
+                    "fila": fila,
+                    "dia": dia,
+                    "seq": numero_secuencia_actividad(registro.get("SECUENCIA")),
+                    "nueva": None,
+                }
+            )
+        mapa = _mapa_secuencias_hoja(ws, fila_header, cols)
+        por_dia: dict[date, list[dict]] = {}
+        for plan in ubicados:
+            por_dia.setdefault(plan["dia"], []).append(plan)
+        renumerados = 0
+        for dia, grupo in por_dia.items():
+            ocupadas = set(mapa.get((dia, clave_destino), set()))
+            reservadas: set[int] = set()
+            for plan in grupo:
+                seq = plan["seq"]
+                if seq and seq not in ocupadas and seq not in reservadas:
+                    plan["nueva"] = seq
+                    reservadas.add(seq)
+            siguiente = 1
+            for plan in grupo:
+                if plan["nueva"] or not plan["seq"]:
+                    continue
+                while siguiente in ocupadas or siguiente in reservadas:
+                    siguiente += 1
+                plan["nueva"] = siguiente
+                reservadas.add(siguiente)
+                renumerados += 1
+                siguiente += 1
+        for plan in ubicados:
+            ws.cell(plan["fila"], cols["cuadrilla"]).value = texto_destino
+            if cols["secuencia"] and plan["nueva"] and plan["seq"] != plan["nueva"]:
+                ws.cell(plan["fila"], cols["secuencia"]).value = int(plan["nueva"])
+        _guardar_libro_bitacora(wb, destino_ruta)
+    except Exception:
+        try:
+            wb.close()
+        except Exception:
+            pass
+        raise
+
+    for plan in ubicados:
+        plan["origen_fotos"] = carpeta_fotos_registro_bitacora(plan["registro"])
+    for plan in ubicados:
+        df.at[plan["idx"], "CUADRILLA"] = texto_destino
+        if "SECUENCIA" in df.columns and plan["nueva"] and plan["seq"] != plan["nueva"]:
+            df.at[plan["idx"], "SECUENCIA"] = int(plan["nueva"])
+    if os.path.abspath(destino_ruta) == os.path.abspath(EXCEL_FILE):
+        _invalidar_caches_bitacora()
+
+    fotos = 0
+    avisos = []
+    for plan in ubicados:
+        destino_fotos = carpeta_evidencia_octubre_secuencia(texto_destino, plan["dia"], plan["nueva"] or plan["seq"])
+        try:
+            movidas, viejas = _mover_fotos_registro(plan["origen_fotos"], destino_fotos)
+        except OSError as exc:
+            avisos.append(str(exc))
+            continue
+        if movidas:
+            persistencia.marcar_evidencia_nueva(movidas)
+            persistencia.marcar_evidencia_eliminada(viejas)
+            fotos += len(movidas)
+    return {
+        "cambiados": len(ubicados),
+        "renumerados": renumerados,
+        "fotos": fotos,
+        "avisos": avisos,
+        "destino": texto_destino,
+    }
+
+
 def eliminar_registro_bitacora(idx, registro, ruta: str | None = None) -> dict:
     """Quita la fila de la bitácora y borra la carpeta de fotos de esa actividad."""
     destino = ruta or EXCEL_FILE
@@ -10880,9 +11039,192 @@ def render_eliminar_registro_bitacora(df: pd.DataFrame, idx) -> None:
     st.rerun()
 
 
+def _serie_fechas_bitacora(df: pd.DataFrame) -> pd.Series:
+    serie = df["_fecha"] if "_fecha" in df.columns else df.get("FECHA", pd.Series(index=df.index, dtype=object))
+
+    def _uno(valor):
+        if isinstance(valor, datetime):
+            return valor.date()
+        if isinstance(valor, date):
+            return valor
+        return parsear_fecha_valor(valor)
+
+    return serie.map(_uno)
+
+
+def _dia_fila_bitacora(fila) -> date | None:
+    dia = fila.get("_fecha") if hasattr(fila, "get") else None
+    if isinstance(dia, datetime):
+        return dia.date()
+    if isinstance(dia, date):
+        return dia
+    return parsear_fecha_valor(fila.get("FECHA") if hasattr(fila, "get") else None)
+
+
+@st.fragment
+def render_edicion_masiva_cuadrilla(df: pd.DataFrame) -> None:
+    st.markdown("##### Edición Masiva por Cuadrilla")
+    st.caption(
+        "Filtra por fecha y cuadrilla de origen, marca las actividades y pásalas todas a la cuadrilla correcta."
+    )
+    if df is None or df.empty or "CUADRILLA" not in df.columns:
+        st.info("No hay actividades para reasignar.")
+        return
+
+    fechas_bitacora = _serie_fechas_bitacora(df)
+    dias = sorted({dia for dia in fechas_bitacora.tolist() if isinstance(dia, date)})
+    ultimo = dias[-1] if dias else date.today()
+    opciones = _opciones_cuadrilla_edicion(df, "")
+    if "masiva_origen" not in st.session_state and opciones:
+        claves_dia = set(
+            df.loc[fechas_bitacora.eq(ultimo), "CUADRILLA"].astype(str).map(clave_cuadrilla_oficial)
+        )
+        preferida = next((op for op in opciones if clave_cuadrilla_oficial(op) in claves_dia), opciones[0])
+        st.session_state["masiva_origen"] = preferida
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        inicio = st.date_input("Desde", value=ultimo, format="DD/MM/YYYY", key="masiva_desde")
+    with c2:
+        fin = st.date_input("Hasta", value=ultimo, format="DD/MM/YYYY", key="masiva_hasta")
+    with c3:
+        origen = st.selectbox(
+            "Cuadrilla de origen",
+            opciones,
+            format_func=etiqueta_cuadrilla_historial,
+            key="masiva_origen",
+        )
+    if inicio > fin:
+        inicio, fin = fin, inicio
+    clave_origen = clave_cuadrilla_oficial(origen)
+    filtrado = df.loc[
+        fechas_bitacora.map(lambda dia: isinstance(dia, date) and inicio <= dia <= fin)
+        & (df["CUADRILLA"].astype(str).map(clave_cuadrilla_oficial) == clave_origen)
+    ]
+    st.caption(
+        f"{len(filtrado)} actividad(es) de {etiqueta_cuadrilla_historial(origen)} "
+        f"entre {inicio.strftime('%d/%m/%Y')} y {fin.strftime('%d/%m/%Y')}."
+    )
+    if filtrado.empty:
+        st.info("No hay actividades con esa fecha y cuadrilla.")
+        return
+
+    todas = st.checkbox("Seleccionar todas", value=True, key="masiva_todas")
+    actividades = []
+    for _, fila in filtrado.iterrows():
+        texto = texto_visible(
+            fila.get("DESCRIPCION DE LA ACTIVIDAD") or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD"),
+            "",
+        )
+        if len(texto) > 90:
+            texto = texto[:89].rstrip() + "…"
+        dia = _dia_fila_bitacora(fila)
+        actividades.append(
+            {
+                "Seleccionar": bool(todas),
+                "Fecha": dia.strftime("%d/%m/%Y") if dia else "",
+                "Secuencia": numero_secuencia_actividad(fila.get("SECUENCIA")) or "",
+                "Ubicación": etiqueta_ubicacion_fila(fila)
+                or str(fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or "").strip(),
+                "Actividad": texto or "Sin descripción",
+                "Fila": fila.name,
+            }
+        )
+    tabla = pd.DataFrame(actividades, index=list(filtrado.index))
+    firma = "|".join(
+        [
+            inicio.isoformat(),
+            fin.isoformat(),
+            clave_origen,
+            "1" if todas else "0",
+            str(len(filtrado)),
+            str(filtrado.index.min()),
+            str(filtrado.index.max()),
+        ]
+    )
+    editado = st.data_editor(
+        tabla,
+        hide_index=True,
+        use_container_width=True,
+        disabled=["Fecha", "Secuencia", "Ubicación", "Actividad", "Fila"],
+        column_order=["Seleccionar", "Fecha", "Secuencia", "Ubicación", "Actividad"],
+        column_config={
+            "Seleccionar": st.column_config.CheckboxColumn("Seleccionar", default=bool(todas)),
+        },
+        key=f"masiva_editor_{firma}",
+    )
+    seleccion = editado["Seleccionar"].fillna(False).astype(bool)
+    if "Fila" in editado.columns:
+        marcados = editado.loc[seleccion, "Fila"].tolist()
+    else:
+        marcados = editado.index[seleccion].tolist()
+    destinos = [op for op in opciones if clave_cuadrilla_oficial(op) != clave_origen]
+    col_dest, col_btn = st.columns([1.4, 1])
+    with col_dest:
+        if st.session_state.get("masiva_destino") not in destinos:
+            st.session_state.pop("masiva_destino", None)
+        destino = st.selectbox(
+            "Nueva cuadrilla destino",
+            destinos,
+            format_func=etiqueta_cuadrilla_historial,
+            key="masiva_destino",
+        )
+    with col_btn:
+        st.caption(f"{len(marcados)} actividad(es) marcada(s).")
+        aplicar = st.button("Aplicar Cambio Masivo", type="primary", key="masiva_aplicar", use_container_width=True)
+    if not aplicar:
+        return
+    if len(marcados) == 0:
+        st.warning("Marca al menos una actividad.")
+        return
+    if clave_cuadrilla_oficial(destino) == clave_origen:
+        st.warning("La cuadrilla destino tiene que ser distinta a la de origen.")
+        return
+    try:
+        resultado = reasignar_cuadrilla_masiva(df, marcados, destino)
+    except PermissionError:
+        st.error(MENSAJE_BITACORA_EN_USO)
+        return
+    except (ValueError, FileNotFoundError) as exc:
+        st.error(str(exc))
+        return
+    if not resultado["cambiados"]:
+        st.info("Esas actividades ya estaban en la cuadrilla destino.")
+        return
+    sync = despues_de_cambio_bitacora(
+        f"Reasignación masiva a {etiqueta_cuadrilla_historial(resultado['destino'])}"
+    )
+    cambiados = int(resultado["cambiados"])
+    texto = (
+        f"Se reasignó {cambiados} actividad "
+        if cambiados == 1
+        else f"Se reasignaron {cambiados} actividades "
+    )
+    texto += (
+        f"de {etiqueta_cuadrilla_historial(origen)} "
+        f"a {etiqueta_cuadrilla_historial(resultado['destino'])}."
+    )
+    renumerados = int(resultado["renumerados"])
+    if renumerados == 1:
+        texto += " 1 secuencia cambió de número porque ese consecutivo ya existía en la cuadrilla destino."
+    elif renumerados:
+        texto += (
+            f" {renumerados} secuencias cambiaron de número "
+            "porque ese consecutivo ya existía en la cuadrilla destino."
+        )
+    if resultado["fotos"]:
+        texto += f" Se movieron {resultado['fotos']} foto(s) a la carpeta de la nueva cuadrilla."
+    texto += _texto_sync_calendario(sync)
+    if resultado["avisos"]:
+        _avisar_revision("warning", f"{texto} {' '.join(resultado['avisos'])}")
+    else:
+        _avisar_revision("success", texto)
+    st.rerun()
+
+
 def render_revision_bitacoras() -> None:
     render_captura_bitacora_admin()
     st.markdown('<div class="section-title">Revisión de bitácoras</div>', unsafe_allow_html=True)
+    render_aviso_revision()
     marca = datetime.fromtimestamp(_mtime_archivo(EXCEL_FILE)).strftime("%d/%m/%Y %H:%M") if os.path.exists(EXCEL_FILE) else "sin archivo"
     df = bitacora_con_fechas(cargar_bitacora())
     disponibles = fechas_disponibles_operacion(df)
@@ -10899,6 +11241,7 @@ def render_revision_bitacoras() -> None:
         st.info(f"Aún no hay registros en {EXCEL_FILE}.")
         return
 
+    render_edicion_masiva_cuadrilla(df)
     base = df.copy()
 
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
@@ -11000,7 +11343,6 @@ def render_revision_bitacoras() -> None:
         return
 
     indices = list(filtrado.index)
-    render_aviso_revision()
     # Al editar, borrar o filtrar cambian las opciones; un key nuevo evita que el navegador conserve el texto viejo.
     firma_opciones = hashlib.md5(",".join(map(str, indices)).encode()).hexdigest()[:8]
     clave_registro = f"rev_registro_{int(st.session_state.get('_rev_ver', 0))}_{firma_opciones}"
