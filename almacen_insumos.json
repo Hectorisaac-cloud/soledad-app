@@ -1692,6 +1692,22 @@
       "tipo_insumo": "Consumible",
       "id": "19e1e6f539",
       "registrado": "2026-11-03 15:21"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-02",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Instrumentos",
+      "sector": "PS Soledad",
+      "insumo_id": "grasa",
+      "insumo": "Grasa",
+      "cantidad": 0.2,
+      "unidad": "Kg",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "5eb2e7d82a",
+      "registrado": "2026-11-03 15:24"
     }
   ]
 }
