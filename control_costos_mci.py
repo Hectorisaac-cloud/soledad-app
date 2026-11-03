@@ -299,8 +299,8 @@ def leer(ruta: str | None = None) -> tuple[pd.DataFrame, str]:
 
 def filtrar_modelo(tabla: pd.DataFrame, modelo: str) -> pd.DataFrame:
     if tabla.empty or not modelo or modelo == "Todos los modelos":
-        return tabla.copy()
-    return tabla[tabla["modelo"] == modelo].copy()
+        return tabla
+    return tabla.loc[tabla["modelo"].eq(modelo)]
 
 
 def _suma(serie: pd.Series) -> float:
@@ -327,21 +327,18 @@ def totales_por(tabla: pd.DataFrame, columna: str) -> pd.DataFrame:
     if tabla.empty or columna not in tabla.columns:
         return vacio
     etiqueta = _VACIO.get(columna, "Sin dato")
-    trabajo = tabla.copy()
+    trabajo = tabla.loc[:, [columna, "costo", "inactividad"]].copy()
     trabajo[columna] = trabajo[columna].map(lambda valor: str(valor or "").strip() or etiqueta)
-    filas = []
-    for nombre, grupo in trabajo.groupby(columna, dropna=False, sort=False):
-        filas.append(
-            {
-                columna: nombre,
-                "intervenciones": int(len(grupo)),
-                "costo": _suma(grupo["costo"]),
-                "inactividad": _suma(grupo["inactividad"]),
-            }
-        )
-    if not filas:
+    trabajo["costo"] = pd.to_numeric(trabajo["costo"], errors="coerce").fillna(0.0)
+    trabajo["inactividad"] = pd.to_numeric(trabajo["inactividad"], errors="coerce").fillna(0.0)
+    resumen = (
+        trabajo.groupby(columna, dropna=False, sort=False)
+        .agg(intervenciones=(columna, "size"), costo=("costo", "sum"), inactividad=("inactividad", "sum"))
+        .reset_index()
+    )
+    if resumen.empty:
         return vacio
-    return pd.DataFrame(filas).sort_values(["costo", "inactividad"], ascending=False, ignore_index=True)
+    return resumen.sort_values(["costo", "inactividad"], ascending=False, ignore_index=True)
 
 
 def formato_moneda(valor: float) -> str:
@@ -426,6 +423,7 @@ def _tabla_visible(tabla: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+@st.fragment
 def render() -> None:
     st.markdown('<div class="section-title">Control de costos MCI</div>', unsafe_allow_html=True)
     st.caption(

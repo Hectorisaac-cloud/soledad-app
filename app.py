@@ -2763,19 +2763,12 @@ def aplicar_catalogo_maestro_excel() -> int:
     ruta = excel_inventario_predeterminado()
     if not ruta or not os.path.isfile(ruta):
         return 0
+    mtime, peso = _firma_archivo(ruta)
     try:
-        mtime = os.path.getmtime(ruta)
-    except OSError:
-        return 0
-    cache = getattr(aplicar_catalogo_maestro_excel, "_cache", None)
-    if cache and cache[0] == mtime:
-        return cache[1]
-    try:
-        extraer_catalogo_maestro_excel(ruta)
-        pares = list(getattr(extraer_catalogo_maestro_excel, "_pares", None) or [])
+        pares = _pares_catalogo_maestro(ruta, mtime, peso)
     except Exception:
-        pares = []
-    aplicar_catalogo_maestro_excel._cache = (mtime, len(pares))
+        pares = ()
+    extraer_catalogo_maestro_excel._pares = list(pares)
     return len(pares)
 
 
@@ -2785,7 +2778,7 @@ def _recargar_sitios_operativos() -> None:
     if getattr(_recargar_sitios_operativos, "_mtime", None) != mtime:
         importlib.reload(sitios_operativos)
         _recargar_sitios_operativos._mtime = mtime
-        aplicar_catalogo_maestro_excel._cache = None
+        _pares_catalogo_maestro.clear()
     aplicar_catalogo_maestro_excel()
 
 
@@ -3466,31 +3459,51 @@ def cargar_ubicaciones() -> dict:
         datos = ubicaciones_default()
         escribir_json(UBICACIONES_FILE, datos)
         return datos
-    return normalizar_ubicaciones(leer_json(UBICACIONES_FILE, ubicaciones_default()))
+    mtime, peso = _firma_archivo(UBICACIONES_FILE)
+    return _ubicaciones_cache(UBICACIONES_FILE, mtime, peso)
+
+
+@st.cache_data(show_spinner=False)
+def _ubicaciones_cache(ruta: str, mtime: float, peso: int) -> dict:
+    del mtime, peso
+    return normalizar_ubicaciones(leer_json(ruta, ubicaciones_default()))
 
 
 def guardar_ubicaciones(datos: dict) -> None:
     escribir_json(UBICACIONES_FILE, normalizar_ubicaciones(datos))
+    _ubicaciones_cache.clear()
+    _historial_campo_cache.clear()
 
 
 def importar_pozos_bitacora(datos: dict | None = None) -> dict:
     datos = datos or cargar_ubicaciones()
     df = cargar_bitacora()
-    if df.empty:
+    if df.empty or "POZO" not in df.columns:
         return datos
     zonas = datos["zonas"]
-    for valor in df["POZO"].tolist():
-        nombre = str(valor or "").strip()
+    nombres = df["POZO"].astype(str).str.strip()
+    sectores = (
+        df["SECTOR"].astype(str).str.strip()
+        if "SECTOR" in df.columns
+        else pd.Series("", index=df.index)
+    )
+    ultimo_sector: dict[str, str] = {}
+    vistos: list[str] = []
+    ya: set[str] = set()
+    for nombre, sector in zip(nombres.tolist(), sectores.tolist()):
         if not nombre or nombre.lower() in {"nan", "none", "-"}:
             continue
+        if sector and sector.lower() not in {"nan", "none"}:
+            ultimo_sector[nombre] = sector
+        if nombre not in ya:
+            ya.add(nombre)
+            vistos.append(nombre)
+    for nombre in vistos:
         fid = clave_ubicacion(nombre)
         if fid in datos["fichas"] or ficha_infraestructura(nombre):
             continue
         ficha = ficha_vacia(nombre, inferir_zona_id(nombre, zonas))
-        sector_fila = ""
-        filas = df[df["POZO"].astype(str).str.strip() == nombre]
-        if not filas.empty:
-            sector_fila = str(filas.iloc[-1].get("SECTOR", "") or "").strip()
+        sector_fila = ultimo_sector.get(nombre, "")
         if sector_fila:
             ficha["sector"] = sector_fila
         datos["fichas"][ficha["id"]] = ficha
@@ -3506,6 +3519,12 @@ def resolver_ubicacion_historial(texto: str, datos: dict | None = None) -> str:
     return str(ficha.get("nombre") or ficha.get("id") or "").strip()
 
 
+@st.cache_data(show_spinner=False)
+def _listar_ubicaciones_historial(ruta: str, mtime: float, peso: int) -> tuple[str, ...]:
+    del mtime, peso
+    return tuple(historial_pjp4.listar_ubicaciones(ruta))
+
+
 def sincronizar_catalogo_historial(datos: dict | None = None) -> tuple[dict, int]:
     """Da de alta pozos, módulos y alias que aparecen en el histórico y no están en el JSON."""
     datos = datos or cargar_ubicaciones()
@@ -3514,7 +3533,8 @@ def sincronizar_catalogo_historial(datos: dict | None = None) -> tuple[dict, int
         return datos, 0
     zonas = datos["zonas"]
     cambios = 0
-    for bruto in historial_pjp4.listar_ubicaciones(ruta):
+    mtime, peso = _firma_archivo(ruta)
+    for bruto in _listar_ubicaciones_historial(ruta, mtime, peso):
         existente = ficha_por_ubicacion(datos, bruto)
         if existente:
             aliases = list(existente.get("aliases") or [])
@@ -3553,20 +3573,26 @@ def catalogo_con_historial() -> dict:
 
 
 def cargar_historial_campo() -> dict:
-    ruta = historial_pjp4.ruta_archivo()
-    mtime_hist = os.path.getmtime(ruta) if ruta and os.path.isfile(ruta) else 0
-    mtime_cat = os.path.getmtime(UBICACIONES_FILE) if os.path.exists(UBICACIONES_FILE) else 0
-    firma = (ruta, mtime_hist, mtime_cat)
-    cache = getattr(cargar_historial_campo, "_cache", None)
-    if cache and cache[0] == firma:
-        return cache[1]
+    ruta = historial_pjp4.ruta_archivo() or ""
+    mtime_hist, peso_hist = _firma_archivo(ruta) if ruta else (0.0, 0)
+    mtime_cat, peso_cat = _firma_archivo(UBICACIONES_FILE)
+    return _historial_campo_cache(ruta, mtime_hist, peso_hist, mtime_cat, peso_cat)
+
+
+@st.cache_data(show_spinner=False)
+def _historial_campo_cache(
+    ruta: str,
+    mtime_hist: float,
+    peso_hist: int,
+    mtime_cat: float,
+    peso_cat: int,
+) -> dict:
+    del mtime_hist, peso_hist, mtime_cat, peso_cat
     datos = cargar_ubicaciones()
-    resultado = historial_pjp4.procesar(
+    return historial_pjp4.procesar(
         ruta,
         lambda texto, catalogo=datos: resolver_ubicacion_historial(texto, catalogo),
     )
-    cargar_historial_campo._cache = (firma, resultado)
-    return resultado
 
 
 def historial_de_pozo(ficha: dict) -> list[dict]:
@@ -3890,6 +3916,14 @@ def extraer_catalogo_maestro_excel(ruta: str) -> list[dict]:
             )
     extraer_catalogo_maestro_excel._pares = pares_maestro
     return filas
+
+
+@st.cache_data(show_spinner=False)
+def _pares_catalogo_maestro(ruta: str, mtime: float, peso: int) -> tuple[tuple[str, str], ...]:
+    del mtime, peso
+    extraer_catalogo_maestro_excel(ruta)
+    pares = getattr(extraer_catalogo_maestro_excel, "_pares", None) or []
+    return tuple((str(largo), str(corto)) for largo, corto in pares)
 
 
 def extraer_pozos_desde_excel(ruta: str) -> list[dict]:
@@ -4630,6 +4664,8 @@ def render_calendario_pozo(
 def bitacora_con_fechas(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame(columns=list(df.columns) + ["_fecha"] if df is not None else ["_fecha"])
+    if "_fecha" in df.columns:
+        return df
     copia = df.copy()
     copia["_fecha"] = copia["FECHA"].map(parsear_fecha_valor)
     return copia
@@ -4646,6 +4682,11 @@ def fechas_disponibles_operacion(df: pd.DataFrame | None = None) -> list[date]:
 
 
 def fechas_carpetas_evidencia() -> set[date]:
+    return set(_fechas_carpetas_evidencia_cache())
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _fechas_carpetas_evidencia_cache() -> tuple[date, ...]:
     dias: set[date] = set()
     patron = re.compile(r"(\d{4}-\d{2}-\d{2})|(\d{2}[-/]\d{2}[-/]\d{4})")
     for raiz in (EVIDENCIA_OCTUBRE_DIR, EVIDENCIAS_DIR):
@@ -4659,7 +4700,7 @@ def fechas_carpetas_evidencia() -> set[date]:
                 dia = parsear_fecha_valor(hallado.group(0))
                 if dia and dia.year >= 2020:
                     dias.add(dia)
-    return dias
+    return tuple(dias)
 
 
 def bitacora_del_dia(df: pd.DataFrame, dia: date) -> pd.DataFrame:
@@ -4899,6 +4940,15 @@ def _mtime_archivo(ruta: str) -> float:
         return os.path.getmtime(ruta)
     except OSError:
         return 0.0
+
+
+def _firma_archivo(ruta: str) -> tuple[float, int]:
+    """Marca de tiempo y tamaño. Sirve de llave para no releer un Excel que no cambió."""
+    try:
+        estado = os.stat(ruta)
+    except OSError:
+        return 0.0, 0
+    return estado.st_mtime, estado.st_size
 
 
 def clave_asistencia_cuadrilla(nombre: str) -> str:
@@ -7333,36 +7383,40 @@ def _hoja_parece_bitacora(columnas) -> bool:
     return "fecha" in claves and ("cuadrilla" in claves or "personal" in claves)
 
 
-def _leer_excel_crudo(ruta: str) -> pd.DataFrame:
-    origen = _copia_excel_legible(ruta)
+def _leer_excel_crudo_desde(origen: str) -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
     ultimo = None
+    libro = pd.ExcelFile(origen)
     try:
-        libro = pd.ExcelFile(origen)
         preferidas = [h for h in HOJAS_BITACORA if h in libro.sheet_names]
         hojas = preferidas or list(libro.sheet_names)
-        extras = [h for h in libro.sheet_names if h not in hojas]
-        hojas = hojas + extras
-    except Exception:
-        hojas = list(HOJAS_BITACORA)
-        libro = None
-    for hoja in hojas:
-        for header in (0, 1, 2):
-            try:
-                candidato = pd.read_excel(origen, sheet_name=hoja, header=header)
-            except Exception:
-                continue
-            if candidato is None or candidato.empty:
-                continue
-            ultimo = candidato
-            if _hoja_parece_bitacora(candidato.columns):
-                frames.append(candidato)
-                break
-    if frames:
-        return pd.concat(frames, ignore_index=True, sort=False)
-    if ultimo is not None:
-        return ultimo
-    raise FileNotFoundError(ruta)
+        hojas = hojas + [h for h in libro.sheet_names if h not in hojas]
+        for hoja in hojas:
+            for header in (0, 1, 2):
+                try:
+                    candidato = pd.read_excel(libro, sheet_name=hoja, header=header)
+                except Exception:
+                    continue
+                if candidato is None or candidato.empty:
+                    continue
+                ultimo = candidato
+                if _hoja_parece_bitacora(candidato.columns):
+                    frames.append(candidato)
+                    break
+        if frames:
+            return pd.concat(frames, ignore_index=True, sort=False)
+        if ultimo is not None:
+            return ultimo
+        raise FileNotFoundError(origen)
+    finally:
+        libro.close()
+
+
+def _leer_excel_crudo(ruta: str) -> pd.DataFrame:
+    try:
+        return _leer_excel_crudo_desde(ruta)
+    except PermissionError:
+        return _leer_excel_crudo_desde(_copia_excel_legible(ruta))
 
 
 def asegurar_archivo_bitacora_soledad() -> str:
@@ -7431,23 +7485,50 @@ def normalizar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df[orden].copy()
 
 
+def _con_fechas_bitacora(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty or "FECHA" not in df.columns:
+        return df
+    if "_fecha" in df.columns:
+        return df
+    df = df.copy()
+    df["_fecha"] = df["FECHA"].map(parsear_fecha_valor)
+    return df
+
+
+@st.cache_data(show_spinner=False)
+def _bitacora_desde_disco(ruta: str, mtime: float, peso: int) -> pd.DataFrame:
+    del mtime, peso
+    df = normalizar_dataframe(_leer_excel_crudo(ruta))
+    if df is not None and not df.empty and "ID_REGISTRO" in df.columns:
+        df = df.drop_duplicates(subset=["ID_REGISTRO"], keep="last")
+    return _con_fechas_bitacora(df)
+
+
 def cargar_bitacora() -> pd.DataFrame:
     aplicar_catalogo_maestro_excel()
     asegurar_archivo_bitacora_soledad()
     if not os.path.exists(EXCEL_FILE):
         return pd.DataFrame(columns=COLUMNAS_EXCEL)
     try:
-        df = normalizar_dataframe(_leer_excel_crudo(EXCEL_FILE))
-        if df is not None and not df.empty and "ID_REGISTRO" in df.columns:
-            df = df.drop_duplicates(subset=["ID_REGISTRO"], keep="last")
-        return df
+        mtime, peso = _firma_archivo(EXCEL_FILE)
+        return _bitacora_desde_disco(EXCEL_FILE, mtime, peso)
     except Exception:
         if os.path.exists(EXCEL_FILE_LEGACY):
             try:
-                return normalizar_dataframe(_leer_excel_crudo(EXCEL_FILE_LEGACY))
+                mtime, peso = _firma_archivo(EXCEL_FILE_LEGACY)
+                return _bitacora_desde_disco(EXCEL_FILE_LEGACY, mtime, peso)
             except Exception:
                 return pd.DataFrame(columns=COLUMNAS_EXCEL)
         return pd.DataFrame(columns=COLUMNAS_EXCEL)
+
+
+def _invalidar_caches_bitacora() -> None:
+    _bitacora_desde_disco.clear()
+    _jornadas_bitacora_cache.clear()
+    try:
+        _conteo_filas_bitacora.clear()
+    except Exception:
+        pass
 
 
 def guardar_en_excel(df_final: pd.DataFrame, *, sincronizar: bool = True) -> None:
@@ -7492,6 +7573,7 @@ def guardar_en_excel(df_final: pd.DataFrame, *, sincronizar: bool = True) -> Non
                 os.remove(tmp)
             except OSError:
                 pass
+    _invalidar_caches_bitacora()
     if sincronizar and len(salida) > 0:
         persistencia.respaldar_cambios("Actualización de bitácora")
         try:
@@ -8550,7 +8632,7 @@ def guardar_programa_mantenimiento(filas: list[dict], ruta: str) -> int:
                 os.remove(tmp)
             except OSError:
                 pass
-    cargar_programa_mantenimiento._cache = None
+    _programa_mantenimiento_cache.clear()
     return len(df)
 
 
@@ -8644,9 +8726,12 @@ def cargar_programa_mantenimiento() -> pd.DataFrame:
     firmas = _firmas_programa_maestro()
     if not firmas:
         return _programa_vacio()
-    cache = getattr(cargar_programa_mantenimiento, "_cache", None)
-    if cache and cache[0] == firmas:
-        return cache[1].copy()
+    return _programa_mantenimiento_cache(firmas)
+
+
+@st.cache_data(show_spinner=False)
+def _programa_mantenimiento_cache(firmas: tuple) -> pd.DataFrame:
+    del firmas
     partes = []
     for zona, ruta in _rutas_programa_maestro():
         if not os.path.isfile(ruta):
@@ -8655,12 +8740,9 @@ def cargar_programa_mantenimiento() -> pd.DataFrame:
         if not parte.empty:
             partes.append(parte)
     if not partes:
-        df = _programa_vacio()
-    else:
-        df = pd.concat(partes, ignore_index=True)
-        df = df.drop_duplicates(subset=["ID"], keep="first")
-    cargar_programa_mantenimiento._cache = (firmas, df)
-    return df.copy()
+        return _programa_vacio()
+    df = pd.concat(partes, ignore_index=True)
+    return df.drop_duplicates(subset=["ID"], keep="first")
 
 
 def _tokens_actividad_programa(texto: str) -> set[str]:
@@ -9005,6 +9087,34 @@ def es_registro_prueba_manual(fila) -> bool:
     return False
 
 
+def _mascara_demo(df: pd.DataFrame) -> pd.Series:
+    secuencia = df["SECUENCIA"].astype(str) if "SECUENCIA" in df.columns else pd.Series("", index=df.index)
+    observacion = (
+        df["OBSERVACIÓN REVISIÓN"].astype(str)
+        if "OBSERVACIÓN REVISIÓN" in df.columns
+        else pd.Series("", index=df.index)
+    )
+    return secuencia.str.startswith(PREFIJO_SECUENCIA_DEMO) | observacion.str.contains(MARCA_DEMO, regex=False, na=False)
+
+
+def _mascara_pruebas(df: pd.DataFrame) -> pd.Series:
+    descripcion = (
+        df["DESCRIPCIÓN DE LA ACTIVIDAD"].astype(str)
+        if "DESCRIPCIÓN DE LA ACTIVIDAD" in df.columns
+        else pd.Series("", index=df.index)
+    )
+    tipo = df["TIPO DE ACTIVIDAD"].astype(str).str.strip() if "TIPO DE ACTIVIDAD" in df.columns else pd.Series("", index=df.index)
+    cuadrilla = df["CUADRILLA"].astype(str).str.strip() if "CUADRILLA" in df.columns else pd.Series("", index=df.index)
+    sector = df["SECTOR"].astype(str).str.strip() if "SECTOR" in df.columns else pd.Series("", index=df.index)
+    prueba = (
+        descripcion.str.contains(PATRON_REGISTRO_PRUEBA, na=False)
+        | cuadrilla.isin({"MECA-1", "MECA-2", "MECA-3", "MECA-4"})
+        | sector.isin({"Otro", "Zona piloto", "Sector San Andrés"})
+        | (tipo.eq("") & cuadrilla.isin({"Electricos", "Mecanico 1", "Mecanico 2", "Mecanico 3", "Mecanico 4"}))
+    )
+    return prueba & ~_mascara_demo(df)
+
+
 def depurar_bitacora(
     df: pd.DataFrame,
     *,
@@ -9013,13 +9123,15 @@ def depurar_bitacora(
 ) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame(columns=COLUMNAS_EXCEL)
-    vista = normalizar_dataframe(df)
+    vista = df if "ID_REGISTRO" in df.columns else normalizar_dataframe(df)
     mask = pd.Series(True, index=vista.index)
     if quitar_pruebas:
-        mask &= ~vista.apply(es_registro_prueba_manual, axis=1)
+        mask &= ~_mascara_pruebas(vista)
     if quitar_demo:
-        mask &= ~vista.apply(es_registro_demo, axis=1)
-    return normalizar_dataframe(vista.loc[mask].reset_index(drop=True))
+        mask &= ~_mascara_demo(vista)
+    if bool(mask.all()):
+        return vista
+    return vista.loc[mask].reset_index(drop=True)
 
 
 def _sitios_demo() -> list[tuple[str, str, str]]:
@@ -10468,6 +10580,7 @@ def render_carga_combustible_campo() -> None:
     render_formulario_carga_combustible(diario, parque)
 
 
+@st.fragment
 def render_panel_operativo() -> None:
     modulo = st.session_state.get("op_modulo")
     if not modulo:
@@ -15694,6 +15807,7 @@ def render_visor_mapa_soledad() -> None:
                 )
 
 
+@st.fragment
 def render_panel_ubicaciones(*, encabezado: bool = True) -> None:
     if encabezado:
         render_encabezado(
@@ -16705,6 +16819,7 @@ def render_generador_reporte_fotografico(*, key_prefix: str = "foto_rep") -> Non
         )
 
 
+@st.fragment
 def render_historial_cuadrillas(*, encabezado: bool = True) -> None:
     if encabezado:
         render_encabezado(
@@ -17552,7 +17667,7 @@ def filtrar_registro_combustible(
 ) -> pd.DataFrame:
     if df is None or df.empty:
         return df if df is not None else pd.DataFrame()
-    vista = df.copy()
+    vista = df
     if unidades:
         vista = vista[vista["No. económico"].isin(unidades)]
     if inicio:
@@ -18311,6 +18426,56 @@ def render_formulario_carga_combustible(diario: pd.DataFrame, parque: pd.DataFra
                     st.error(f"No se pudo guardar la carga: {exc}")
 
 
+def elegir_seccion(opciones: list[str], key: str) -> str:
+    """Una sola sección activa. Evita calcular todas las pestañas en cada interacción."""
+    control = getattr(st, "segmented_control", None)
+    if control is None:
+        elegido = st.radio("Sección", opciones, horizontal=True, key=key, label_visibility="collapsed")
+    else:
+        elegido = control(
+            "Sección",
+            opciones,
+            default=opciones[0],
+            key=key,
+            label_visibility="collapsed",
+        )
+    return elegido if elegido in opciones else opciones[0]
+
+
+@st.cache_data(show_spinner=False)
+def _bytes_recorte_combustible(
+    ruta: str,
+    mtime: float,
+    unidades: tuple[str, ...],
+    inicio_iso: str,
+    fin_iso: str,
+    combustible: str,
+) -> bytes:
+    del mtime
+    diario, _parque = cargar_control_combustible(ruta, _mtime_archivo(ruta))
+    inicio = date.fromisoformat(inicio_iso) if inicio_iso else None
+    fin = date.fromisoformat(fin_iso) if fin_iso else None
+    vista = filtrar_registro_combustible(diario, list(unidades), inicio, fin, combustible)
+    semanal = resumen_semanal_combustible(vista)
+    mensual = resumen_mensual_combustible(vista)
+    recorte = vista.drop(columns=["_fila_excel"], errors="ignore").copy()
+    if not recorte.empty and "Fecha" in recorte.columns:
+        recorte["Fecha"] = recorte["Fecha"].dt.strftime("%Y-%m-%d")
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        (recorte if not recorte.empty else pd.DataFrame({"Aviso": ["Sin cargas"]})).to_excel(
+            writer, sheet_name="Registro Diario", index=False
+        )
+        (semanal.drop(columns=["Inicio"], errors="ignore") if not semanal.empty else pd.DataFrame({"Aviso": ["Sin semanas"]})).to_excel(
+            writer, sheet_name="Resumen Semanal", index=False
+        )
+        (mensual.drop(columns=["Periodo"], errors="ignore") if not mensual.empty else pd.DataFrame({"Aviso": ["Sin meses"]})).to_excel(
+            writer, sheet_name="Resumen Mensual", index=False
+        )
+    return buf.getvalue()
+
+
+@st.fragment
 def render_control_combustible() -> None:
     st.markdown('<div class="section-title">Control de Combustible</div>', unsafe_allow_html=True)
     st.caption(
@@ -18406,10 +18571,9 @@ def render_control_combustible() -> None:
             "Las primeras cargas (odómetro inicial en 0) no entran al promedio."
         )
 
-    semanal = resumen_semanal_combustible(vista)
-    mensual = resumen_mensual_combustible(vista)
-    tab_d, tab_s, tab_m, tab_p = st.tabs(
-        ["Registro Diario", "Resumen Semanal", "Resumen Mensual", "Parque vehicular"]
+    seccion_comb = elegir_seccion(
+        ["Registro Diario", "Resumen Semanal", "Resumen Mensual", "Parque vehicular"],
+        "comb_seccion",
     )
     cols_diario = [
         "Fecha",
@@ -18424,7 +18588,7 @@ def render_control_combustible() -> None:
         "Rendimiento (km/l)",
         "Comentarios",
     ]
-    with tab_d:
+    if seccion_comb == "Registro Diario":
         st.caption("Cargas del Excel (Registro Diario). El rendimiento real omite altas de odómetro.")
         if vista.empty:
             st.info("No hay cargas con los filtros seleccionados.")
@@ -18448,7 +18612,8 @@ def render_control_combustible() -> None:
                     "Km recorrido": st.column_config.NumberColumn(format="%.0f"),
                 },
             )
-    with tab_s:
+    elif seccion_comb == "Resumen Semanal":
+        semanal = resumen_semanal_combustible(vista)
         st.caption("Consumo semanal por unidad (lunes a domingo), cruzado con litros de diésel y gasolina.")
         if semanal.empty:
             st.info("No hay semanas con cargas en el recorte.")
@@ -18463,7 +18628,8 @@ def render_control_combustible() -> None:
                     "Rendimiento (km/l)": st.column_config.NumberColumn(format="%.2f"),
                 },
             )
-    with tab_m:
+    elif seccion_comb == "Resumen Mensual":
+        mensual = resumen_mensual_combustible(vista)
         st.caption("Totales mensuales por número económico: km, litros, gasto y rendimiento promedio.")
         if mensual.empty:
             st.info("No hay meses con cargas en el recorte.")
@@ -18485,7 +18651,7 @@ def render_control_combustible() -> None:
                 f'<h3>{met["litros"]:,.1f} L</h3></div>',
                 unsafe_allow_html=True,
             )
-    with tab_p:
+    else:
         st.caption("Padrón de unidades de la hoja Listas (vehículos y equipos auxiliares).")
         if parque.empty:
             st.info("No se pudo leer la hoja Listas.")
@@ -18516,23 +18682,16 @@ def render_control_combustible() -> None:
                 },
             )
 
-    recorte_xlsx = vista.drop(columns=["_fila_excel"], errors="ignore").copy()
-    if not recorte_xlsx.empty:
-        recorte_xlsx["Fecha"] = recorte_xlsx["Fecha"].dt.strftime("%Y-%m-%d")
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-        (recorte_xlsx if not recorte_xlsx.empty else pd.DataFrame({"Aviso": ["Sin cargas"]})).to_excel(
-            writer, sheet_name="Registro Diario", index=False
-        )
-        (semanal.drop(columns=["Inicio"], errors="ignore") if not semanal.empty else pd.DataFrame({"Aviso": ["Sin semanas"]})).to_excel(
-            writer, sheet_name="Resumen Semanal", index=False
-        )
-        (mensual.drop(columns=["Periodo"], errors="ignore") if not mensual.empty else pd.DataFrame({"Aviso": ["Sin meses"]})).to_excel(
-            writer, sheet_name="Resumen Mensual", index=False
-        )
     st.download_button(
         "⬇️ Exportar recorte a Excel",
-        data=buf.getvalue(),
+        data=_bytes_recorte_combustible(
+            COMBUSTIBLE_FILE,
+            _mtime_archivo(COMBUSTIBLE_FILE),
+            tuple(sel_unidades or ()),
+            inicio.isoformat() if isinstance(inicio, date) else "",
+            fin.isoformat() if isinstance(fin, date) else "",
+            tipo_comb or "Todos",
+        ),
         file_name="control_combustible_recorte.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key="btn_comb_xlsx",
@@ -18551,7 +18710,16 @@ def vehiculos_default() -> dict:
 
 
 def cargar_vehiculos() -> dict:
-    datos = leer_json(VEHICULOS_FILE, vehiculos_default())
+    if not os.path.exists(VEHICULOS_FILE):
+        return vehiculos_default()
+    mtime, peso = _firma_archivo(VEHICULOS_FILE)
+    return _vehiculos_cache(VEHICULOS_FILE, mtime, peso)
+
+
+@st.cache_data(show_spinner=False)
+def _vehiculos_cache(ruta: str, mtime: float, peso: int) -> dict:
+    del mtime, peso
+    datos = leer_json(ruta, vehiculos_default())
     if not isinstance(datos, dict):
         return vehiculos_default()
     base = vehiculos_default()
@@ -18572,6 +18740,7 @@ def cargar_vehiculos() -> dict:
 
 def guardar_vehiculos(datos: dict) -> None:
     escribir_json(VEHICULOS_FILE, datos)
+    _vehiculos_cache.clear()
 
 
 def config_unidad_veh(datos: dict, unidad: str) -> dict:
@@ -21582,29 +21751,30 @@ def render_control_insumos_refacciones() -> None:
         int(round(pd.to_numeric(reparaciones["cantidad"], errors="coerce").sum())) if not reparaciones.empty else 0,
         help="Piezas del MCI reparadas o sustituidas en el periodo. Una columna nueva (radiador, marcha, alternador) se suma en cuanto la bitácora traiga cantidad.",
     )
-    tab_insumos, tab_reparaciones, tab_general = st.tabs(
-        ["Insumos Suministrados", "Reparaciones Realizadas", "Tabla General"]
+    seccion_insumos = elegir_seccion(
+        ["Insumos Suministrados", "Reparaciones Realizadas", "Tabla General"],
+        "dash_insumos_seccion",
     )
-    with tab_insumos:
-        _pintar_barras_y_desglose(
-            _barras_desde_vista(insumos),
-            _desglose_desde_vista(insumos),
-            "Insumos suministrados",
-            "No hay insumos suministrados en ese periodo y ubicación.",
-        )
-    with tab_reparaciones:
+    if seccion_insumos == "Reparaciones Realizadas":
         _pintar_barras_y_desglose(
             _barras_desde_vista(reparaciones),
             _desglose_desde_vista(reparaciones),
             "Reparaciones realizadas",
             "No hay reparaciones en ese periodo. Aparecerán al cargar alternador, radiador, bomba de agua, marcha u otra pieza del MCI.",
         )
-    with tab_general:
+    elif seccion_insumos == "Tabla General":
         st.markdown("**Tabla general**")
         st.dataframe(
             _tabla_cantidades_visibles(_desglose_desde_vista(vista, con_rubro=True)),
             hide_index=True,
             use_container_width=True,
+        )
+    else:
+        _pintar_barras_y_desglose(
+            _barras_desde_vista(insumos),
+            _desglose_desde_vista(insumos),
+            "Insumos suministrados",
+            "No hay insumos suministrados en ese periodo y ubicación.",
         )
 
 
@@ -21792,14 +21962,16 @@ def render_dashboard_ordenes() -> None:
             st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
 
 
+@st.fragment
 def render_dashboard_ejecutivo() -> None:
-    tab_ordenes, tab_insumos = st.tabs(
-        ["Órdenes y combustible", "Control de Insumos y Refacciones Suministradas"]
+    seccion = elegir_seccion(
+        ["Órdenes y combustible", "Control de Insumos y Refacciones Suministradas"],
+        "dash_exec_seccion",
     )
-    with tab_ordenes:
-        render_dashboard_ordenes()
-    with tab_insumos:
+    if seccion == "Control de Insumos y Refacciones Suministradas":
         render_control_insumos_refacciones()
+    else:
+        render_dashboard_ordenes()
 
 
 MODULOS_ADMIN = [
@@ -23257,6 +23429,12 @@ def _guardar_edicion_dia_admin(dia: pd.DataFrame, editada: pd.DataFrame) -> None
         st.info("La tabla ya coincide con lo guardado.")
 
 
+@st.cache_data(show_spinner=False)
+def _conteo_filas_bitacora(ruta: str, mtime: float, peso: int) -> int:
+    del mtime, peso
+    return persistencia.contar_filas_bitacora(ruta)
+
+
 def render_barra_herramientas_admin() -> None:
     aviso = st.session_state.pop("adm_barra_aviso", None)
     if isinstance(aviso, dict):
@@ -23265,7 +23443,9 @@ def render_barra_herramientas_admin() -> None:
         else:
             st.warning(aviso.get("mensaje") or "No se pudo respaldar.")
     estado = persistencia.leer_estado()
-    filas = persistencia.contar_filas_bitacora(persistencia.resolver_ruta(persistencia.ARCHIVO_BITACORA))
+    ruta_bitacora = persistencia.resolver_ruta(persistencia.ARCHIVO_BITACORA)
+    marca_bitacora = _firma_archivo(ruta_bitacora)
+    filas = _conteo_filas_bitacora(ruta_bitacora, marca_bitacora[0], marca_bitacora[1])
     if not persistencia.credenciales_github():
         marca = "Sin token"
     elif estado.get("ok"):
@@ -25057,6 +25237,7 @@ def render_mantenimientos_programados() -> None:
     )
 
 
+@st.fragment
 def render_panel_administrativo() -> None:
     modulo_id = st.session_state.get("admin_modulo")
     if modulo_id == "combustible":
