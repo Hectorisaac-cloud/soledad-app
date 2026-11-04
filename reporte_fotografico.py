@@ -578,12 +578,12 @@ def _preparar_libro(ruta_plantilla: str) -> tuple[Workbook, Worksheet, io.BytesI
 
 
 def _dibujar_rubrica(pdf, lector, x: float, y: float, ancho: float, alto: float) -> None:
-    """Apoya la rúbrica sobre la línea, centrada y sin deformarla."""
+    """Centra la rúbrica en la caja, lo más grande posible y sin deformarla."""
     try:
         imagen_ancho, imagen_alto = lector.getSize()
     except Exception:
         return
-    if not imagen_ancho or not imagen_alto:
+    if not imagen_ancho or not imagen_alto or ancho <= 0 or alto <= 0:
         return
     escala = min(ancho / imagen_ancho, alto / imagen_alto)
     dibujo_ancho = imagen_ancho * escala
@@ -591,7 +591,7 @@ def _dibujar_rubrica(pdf, lector, x: float, y: float, ancho: float, alto: float)
     pdf.drawImage(
         lector,
         x + (ancho - dibujo_ancho) / 2,
-        y,
+        y + (alto - dibujo_alto) / 2,
         width=dibujo_ancho,
         height=dibujo_alto,
         preserveAspectRatio=True,
@@ -609,14 +609,14 @@ def _dibujar_bloque_firmas(
     fuente_negrita: str,
     y_fotos: float,
 ) -> None:
-    """Barra amarilla separada y recuadro bajo. El blanco queda al pie de la hoja."""
+    """Barra amarilla, leyenda encima del recuadro y la rúbrica sola dentro de la caja."""
     separacion_fotos = 20.0
     alto_barra = 7.0
-    separacion_barra = 12.0
-    alto_caja = 58.0
-    separacion_nombre = 16.0
-    separacion_cargo = 13.0
-    margen_inferior = 56.0
+    separacion_barra = 16.0
+    alto_caja = 74.0
+    separacion_nombre = 15.0
+    separacion_cargo = 12.0
+    margen_inferior = 48.0
     y_barra = y_fotos - separacion_fotos - alto_barra
     y_tope = y_barra - separacion_barra
     y_caja = y_tope - alto_caja
@@ -630,9 +630,10 @@ def _dibujar_bloque_firmas(
         y_caja += ajuste
         y_nombre += ajuste
         y_cargo += ajuste
-    y_leyenda = y_tope - 12.0
-    y_imagen = y_caja + 3.0
-    alto_imagen = max(28.0, y_leyenda - 5.0 - y_imagen)
+    padding = 2.0
+    y_imagen = y_caja + padding
+    alto_imagen = alto_caja - 2 * padding
+    y_leyenda = y_tope + 3.5
     por_columna: dict[int, bytes] = {}
     for datos, columna in firmas:
         por_columna[0 if columna < 7 else 1] = datos
@@ -648,7 +649,7 @@ def _dibujar_bloque_firmas(
         x_columna = tabla_x + indice * tabla_ancho / 2
         ancho_columna = tabla_ancho / 2
         centro = x_columna + ancho_columna / 2
-        margen = 8.0
+        margen = 4.0
         datos = por_columna.get(indice)
         if datos:
             try:
@@ -664,7 +665,7 @@ def _dibujar_bloque_firmas(
                 pass
         etiqueta = _texto_celda(ws["A62" if indice == 0 else "H62"].value) or "APROBADO:"
         pdf.setFillColorRGB(0.1, 0.14, 0.12)
-        pdf.setFont(fuente, 7)
+        pdf.setFont(fuente, 8)
         pdf.drawCentredString(centro, y_leyenda, etiqueta)
         pdf.setFont(fuente_negrita, 8)
         pdf.drawCentredString(centro, y_nombre, nombre)
