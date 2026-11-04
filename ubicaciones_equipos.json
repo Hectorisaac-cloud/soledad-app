@@ -3173,6 +3173,19 @@
       "notas": "",
       "actualizado": "",
       "aliases": []
+    },
+    "PSN275": {
+      "id": "PSN275",
+      "nombre": "PSN275",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
     }
   },
   "cambios_equipo": [
