@@ -4661,22 +4661,32 @@ def render_calendario_pozo(
     )
 
 
+def _fecha_ya_es_dia(valor) -> bool:
+    return type(valor) is date or valor is None or (isinstance(valor, float) and pd.isna(valor))
+
+
 def bitacora_con_fechas(df: pd.DataFrame) -> pd.DataFrame:
+    """Deja _fecha como datetime.date, aunque el Excel traiga texto o datetime."""
     if df is None or df.empty:
         return pd.DataFrame(columns=list(df.columns) + ["_fecha"] if df is not None else ["_fecha"])
-    if "_fecha" in df.columns:
+    if "_fecha" in df.columns and all(_fecha_ya_es_dia(valor) for valor in df["_fecha"].tolist()):
         return df
     copia = df.copy()
-    copia["_fecha"] = copia["FECHA"].map(parsear_fecha_valor)
+    if "FECHA" in copia.columns:
+        origen = copia["FECHA"]
+    elif "_fecha" in copia.columns:
+        origen = copia["_fecha"]
+    else:
+        copia["_fecha"] = None
+        return copia
+    copia["_fecha"] = origen.map(parsear_fecha_valor)
     return copia
 
 
 def fechas_disponibles_operacion(df: pd.DataFrame | None = None) -> list[date]:
     """Todas las jornadas de la bitácora y de las carpetas de evidencia, sin recorte."""
-    base = df if df is not None and "_fecha" in getattr(df, "columns", []) else bitacora_con_fechas(
-        df if df is not None else cargar_bitacora()
-    )
-    dias = {d for d in base.get("_fecha", pd.Series(dtype=object)).tolist() if isinstance(d, date)}
+    base = bitacora_con_fechas(df if df is not None else cargar_bitacora())
+    dias = {dia for dia in (parsear_fecha_valor(valor) for valor in base.get("_fecha", pd.Series(dtype=object)).tolist()) if dia}
     dias.update(fechas_carpetas_evidencia())
     return sorted(dias, reverse=True)
 
@@ -4706,8 +4716,11 @@ def _fechas_carpetas_evidencia_cache() -> tuple[date, ...]:
 def bitacora_del_dia(df: pd.DataFrame, dia: date) -> pd.DataFrame:
     if df is None or df.empty or dia is None:
         return pd.DataFrame(columns=COLUMNAS_EXCEL)
-    base = df if "_fecha" in df.columns else bitacora_con_fechas(df)
-    return base.loc[base["_fecha"] == dia].copy()
+    objetivo = parsear_fecha_valor(dia)
+    if objetivo is None:
+        return pd.DataFrame(columns=COLUMNAS_EXCEL)
+    base = bitacora_con_fechas(df)
+    return base.loc[base["_fecha"] == objetivo].copy()
 
 
 def clasificar_estatus_equipo(estatus: str) -> str:
@@ -4777,11 +4790,11 @@ def resumen_cuadrillas_dia(df_dia: pd.DataFrame) -> list[dict]:
 def mapa_dias_cuadrillas(df: pd.DataFrame, anio: int, mes: int) -> dict[date, str]:
     if df is None or df.empty:
         return {}
-    base = df if "_fecha" in df.columns else bitacora_con_fechas(df)
+    base = bitacora_con_fechas(df)
     marcas: dict[date, str] = {}
     recorte = base.dropna(subset=["_fecha"])
     recorte = recorte[
-        recorte["_fecha"].map(lambda d: isinstance(d, date) and d.year == anio and d.month == mes)
+        recorte["_fecha"].map(lambda d: isinstance(d, date) and not isinstance(d, datetime) and d.year == anio and d.month == mes)
     ]
     for dia, bloque in recorte.groupby("_fecha"):
         marcas[dia] = clasificar_bloque_cuadrilla(bloque)
@@ -11200,20 +11213,27 @@ def render_edicion_masiva_cuadrilla(df: pd.DataFrame) -> None:
         return
 
     fechas_bitacora = _serie_fechas_bitacora(df)
-    dias = sorted({dia for dia in fechas_bitacora.tolist() if isinstance(dia, date)})
-    ultimo = dias[-1] if dias else date.today()
+    dias = sorted({dia for dia in fechas_bitacora.tolist() if isinstance(dia, date) and not isinstance(dia, datetime)})
+    primera = dias[0] if dias else date.today()
+    ultima = dias[-1] if dias else date.today()
     opciones = _opciones_cuadrilla_edicion(df, "")
     if "masiva_origen" not in st.session_state and opciones:
         claves_dia = set(
-            df.loc[fechas_bitacora.eq(ultimo), "CUADRILLA"].astype(str).map(clave_cuadrilla_oficial)
+            df.loc[fechas_bitacora.eq(ultima), "CUADRILLA"].astype(str).map(clave_cuadrilla_oficial)
         )
         preferida = next((op for op in opciones if clave_cuadrilla_oficial(op) in claves_dia), opciones[0])
         st.session_state["masiva_origen"] = preferida
     c1, c2, c3 = st.columns(3)
     with c1:
-        inicio = st.date_input("Desde", value=ultimo, format="DD/MM/YYYY", key="masiva_desde")
+        desde_kwargs = {"format": "DD/MM/YYYY", "key": "masiva_desde"}
+        if "masiva_desde" not in st.session_state:
+            desde_kwargs["value"] = primera
+        inicio = st.date_input("Desde", **desde_kwargs)
     with c2:
-        fin = st.date_input("Hasta", value=ultimo, format="DD/MM/YYYY", key="masiva_hasta")
+        hasta_kwargs = {"format": "DD/MM/YYYY", "key": "masiva_hasta"}
+        if "masiva_hasta" not in st.session_state:
+            hasta_kwargs["value"] = ultima
+        fin = st.date_input("Hasta", **hasta_kwargs)
     with c3:
         origen = st.selectbox(
             "Cuadrilla de origen",
@@ -11225,7 +11245,9 @@ def render_edicion_masiva_cuadrilla(df: pd.DataFrame) -> None:
         inicio, fin = fin, inicio
     clave_origen = clave_cuadrilla_oficial(origen)
     filtrado = df.loc[
-        fechas_bitacora.map(lambda dia: isinstance(dia, date) and inicio <= dia <= fin)
+        fechas_bitacora.map(
+            lambda dia: isinstance(dia, date) and not isinstance(dia, datetime) and inicio <= dia <= fin
+        )
         & (df["CUADRILLA"].astype(str).map(clave_cuadrilla_oficial) == clave_origen)
     ]
     st.caption(
@@ -11369,18 +11391,20 @@ def render_revision_bitacoras() -> None:
         st.info(f"Aún no hay registros en {EXCEL_FILE}.")
         return
 
+    if st.session_state.pop("_apertura_historial_bitacora", None):
+        st.session_state["rev_filtro_fecha"] = "Todas"
+        st.session_state["rev_filtro_version"] = 2
+        dias_abiertos = [dia for dia, _cantidad in _dias_con_registros_bitacora(df)]
+        if dias_abiertos:
+            st.session_state["masiva_desde"] = min(dias_abiertos)
+            st.session_state["masiva_hasta"] = max(dias_abiertos)
+
     render_edicion_masiva_cuadrilla(df)
     base = df.copy()
 
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     conteos_dias = dict(_dias_con_registros_bitacora(base))
-    fechas = []
-    for dia_disponible in fechas_disponibles_operacion(base):
-        cantidad_dia = conteos_dias.get(dia_disponible, 0)
-        if cantidad_dia:
-            fechas.append(_etiqueta_dia_registros(dia_disponible, cantidad_dia))
-        else:
-            fechas.append(f"{dia_disponible.strftime('%d/%m/%Y')} · sin registros en Excel")
+    fechas = [_etiqueta_dia_registros(dia, cantidad) for dia, cantidad in conteos_dias.items() if cantidad]
     opciones_fecha_rev = ["Todas"] + fechas
     if st.session_state.get("rev_filtro_version") != 2:
         _restablecer_filtros_revision()
@@ -11431,8 +11455,8 @@ def render_revision_bitacoras() -> None:
     filtrado = base.copy()
     if filtro_fecha != "Todas":
         dia = _dia_desde_etiqueta_registros(filtro_fecha)
-        if dia is not None and "_fecha" in filtrado.columns:
-            filtrado = filtrado[filtrado["_fecha"] == dia]
+        if dia is not None:
+            filtrado = filtrado.loc[_serie_fechas_bitacora(filtrado) == dia]
     if filtro_ubi != "Todas":
         col_ubi = "UBICACIÓN" if "UBICACIÓN" in filtrado.columns else "EQUIPO/UBICACIÓN"
         filtrado = filtrado[filtrado[col_ubi].astype(str).str.strip() == filtro_ubi]
@@ -22328,9 +22352,11 @@ def _dias_con_registros_bitacora(df: pd.DataFrame) -> list[tuple[date, int]]:
     for valor in df["_fecha"].tolist():
         if isinstance(valor, datetime):
             dia = valor.date()
-        elif isinstance(valor, date):
+        elif type(valor) is date:
             dia = valor
         else:
+            dia = parsear_fecha_valor(valor)
+        if type(dia) is not date:
             continue
         conteo[dia] = conteo.get(dia, 0) + 1
     return sorted(conteo.items(), key=lambda par: par[0], reverse=True)
@@ -25633,10 +25659,17 @@ def render_historial_base_admin() -> None:
         key="historial_base_seccion",
     )
     if seccion == "Historial de OTs":
+        if st.session_state.get("_origen_historial_bitacora") == "historial":
+            st.session_state["_origen_historial_bitacora"] = None
         render_historial_diario_ot()
     elif seccion == "Bitácora General":
+        if st.session_state.get("_origen_historial_bitacora") != "historial":
+            st.session_state["_origen_historial_bitacora"] = "historial"
+            st.session_state["_apertura_historial_bitacora"] = True
         render_revision_bitacoras()
     else:
+        if st.session_state.get("_origen_historial_bitacora") == "historial":
+            st.session_state["_origen_historial_bitacora"] = None
         render_calendario_asistencia()
 
 
@@ -25655,6 +25688,8 @@ def render_auditoria_accesos() -> None:
     st.markdown('<div class="section-title">Auditoría y accesos</div>', unsafe_allow_html=True)
     st.caption("Revisión de bitácoras de campo, catálogos operativos y registro local de permisos.")
     sub = st.session_state.get("admin_sub_auditoria")
+    if sub != "revision" and st.session_state.get("_origen_historial_bitacora") == "auditoria":
+        st.session_state["_origen_historial_bitacora"] = None
     if not sub:
         render_cuadricula_explorador(
             SUBMENUS_AUDITORIA,
@@ -25668,6 +25703,9 @@ def render_auditoria_accesos() -> None:
         "← Volver a Auditoría y Accesos",
     )
     if sub == "revision":
+        if st.session_state.get("_origen_historial_bitacora") != "auditoria":
+            st.session_state["_origen_historial_bitacora"] = "auditoria"
+            st.session_state["_apertura_historial_bitacora"] = True
         render_revision_bitacoras()
     elif sub == "catalogos":
         render_gestion_catalogos()
