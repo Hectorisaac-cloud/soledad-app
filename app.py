@@ -6772,6 +6772,14 @@ def renderizar_insumos(form_id: int) -> dict[str, float | int | str]:
             placeholder="Escribe cualquier otro insumo utilizado…",
             key=f"otros_insumos_{form_id}",
         ).strip()
+        cantidad_otros = st.number_input(
+            "Cantidad de otros insumos",
+            min_value=0.0,
+            step=0.5,
+            value=1.0,
+            format="%g",
+            key=f"otros_cant_{form_id}",
+        )
         origen_otros = st.radio(
             "Origen del insumo",
             ORIGENES_INSUMO,
@@ -6784,7 +6792,7 @@ def renderizar_insumos(form_id: int) -> dict[str, float | int | str]:
                 {
                     "insumo_id": "otros",
                     "nombre": valores["OTROS INSUMOS"],
-                    "cantidad": 1,
+                    "cantidad": cantidad_otros,
                     "unidad": "Pzas",
                     "origen": origen_otros or "",
                     "tipo": TIPO_INSUMO_CONSUMIBLE,
@@ -7644,6 +7652,33 @@ def _siguiente_secuencia_en_hoja(ws, fila_header: int, encabezados: list[tuple[i
     return max(numeros) + 1 if numeros else 1
 
 
+def _tokens_insumo(clave: str) -> list[str]:
+    return re.findall(r"[a-z]+|\d+", clave)
+
+
+def _tokens_coinciden(clave_token: str, clave_col: str) -> bool:
+    propios = _tokens_insumo(clave_token)
+    candidatos = _tokens_insumo(clave_col)
+    if not propios:
+        return False
+    for token in propios:
+        if token.isdigit():
+            if token not in candidatos:
+                return False
+            continue
+        if len(token) < 4:
+            if token not in candidatos:
+                return False
+            continue
+        if not any(
+            token.startswith(otro) or otro.startswith(token)
+            for otro in candidatos
+            if not otro.isdigit() and len(otro) >= 4
+        ):
+            return False
+    return True
+
+
 def _mejor_columna_consumible(token: str, encabezados: list[tuple[int, str]]) -> tuple[int, str] | None:
     clave_token = _clave_columna_bitacora(token)
     if not clave_token:
@@ -7660,6 +7695,8 @@ def _mejor_columna_consumible(token: str, encabezados: list[tuple[int, str]]) ->
             puntaje = 1000 + len(clave_col)
         elif clave_token in clave_col or clave_col in clave_token:
             puntaje = float(min(len(clave_token), len(clave_col))) - abs(len(clave_col) - len(clave_token)) * 0.05
+        elif _tokens_coinciden(clave_token, clave_col):
+            puntaje = 80 + len(_tokens_insumo(clave_token)) * 5 - abs(len(clave_col) - len(clave_token)) * 0.01
         else:
             continue
         if puntaje > mejor_puntaje:
@@ -7668,7 +7705,32 @@ def _mejor_columna_consumible(token: str, encabezados: list[tuple[int, str]]) ->
     return mejor
 
 
+def texto_consumible_cantidad(nombre: str, cantidad) -> str:
+    """Nombre y cantidad real, para no perder los litros o las piezas al guardar."""
+    return f"{str(nombre or '').strip()}: {_texto_cantidad_insumo(cantidad)}"
+
+
+def _partir_cantidad_consumible(token: str) -> tuple[str, float | None]:
+    texto = str(token or "").strip()
+    hallado = re.search(r"^(.*?)(?:\s*[:x×]\s*)(\d+(?:[.,]\d+)?)\s*$", texto, flags=re.I)
+    if not hallado:
+        return texto, None
+    nombre = hallado.group(1).strip(" -:x×")
+    if not nombre:
+        return texto, None
+    try:
+        cantidad = float(hallado.group(2).replace(",", "."))
+    except ValueError:
+        return texto, None
+    if cantidad <= 0:
+        return nombre, None
+    return nombre, cantidad
+
+
 def _cantidad_consumible(token: str, columna: str) -> float:
+    _nombre, explicita = _partir_cantidad_consumible(token)
+    if explicita is not None:
+        return explicita
     numeros_columna = set(re.findall(r"\d+(?:[.,]\d+)?", columna))
     propios = [numero for numero in re.findall(r"\d+(?:[.,]\d+)?", token) if numero not in numeros_columna]
     if not propios:
@@ -7684,13 +7746,54 @@ def _asignar_consumibles(texto: str, encabezados: list[tuple[int, str]]) -> tupl
     usados: dict[int, float] = {}
     sueltos: list[str] = []
     for parte in partes:
-        elegido = _mejor_columna_consumible(parte, encabezados)
+        nombre, explicita = _partir_cantidad_consumible(parte)
+        elegido = _mejor_columna_consumible(nombre, encabezados)
         if elegido is None:
             sueltos.append(parte)
             continue
-        col, nombre = elegido
-        usados[col] = _cantidad_consumible(parte, nombre)
+        col, columna = elegido
+        usados[col] = explicita if explicita is not None else _cantidad_consumible(nombre, columna)
     return usados, sueltos
+
+
+def _cantidades_consumibles_fila(fila) -> list[tuple[str, float]]:
+    halladas: list[tuple[str, float]] = []
+    for col in getattr(fila, "index", []):
+        nombre = str(col)
+        if not es_columna_insumo_excel(nombre):
+            continue
+        texto = _texto_insumo_celda(nombre, fila.get(col))
+        if not texto:
+            continue
+        _etiqueta, cantidad = _partir_cantidad_consumible(texto)
+        if cantidad is None:
+            continue
+        halladas.append((nombre, cantidad))
+    return halladas
+
+
+def _escribir_cantidades_fila(ws, fila_header: int, fila: int, cantidades: dict) -> None:
+    if not cantidades:
+        return
+    indice: dict[str, int] = {}
+    for col in range(1, int(ws.max_column or 0) + 1):
+        nombre = str(ws.cell(fila_header, col).value or "").strip()
+        if nombre:
+            indice[nombre] = col
+    for nombre, bruto in cantidades.items():
+        col = indice.get(str(nombre))
+        if not col:
+            continue
+        try:
+            numero = float(bruto or 0)
+        except (TypeError, ValueError):
+            continue
+        if numero <= 0:
+            ws.cell(fila, col).value = None
+        elif numero.is_integer():
+            ws.cell(fila, col).value = int(numero)
+        else:
+            ws.cell(fila, col).value = numero
 
 
 def _nombre_foto_bitacora(indice: int, original: str) -> str:
@@ -8082,6 +8185,8 @@ def actualizar_registro_bitacora(idx, registro, cambios: dict, ruta: str | None 
             ws.cell(fila, cols["descripcion"]).value = descripcion
         if cols["comentarios"] and "comentarios" in cambios:
             ws.cell(fila, cols["comentarios"]).value = str(cambios["comentarios"]).strip() or None
+        if isinstance(cambios.get("consumibles"), dict):
+            _escribir_cantidades_fila(ws, fila_header, fila, cambios["consumibles"])
         origen_fotos = carpeta_fotos_registro_bitacora(registro)
         _guardar_libro_bitacora(wb, destino)
     except Exception:
@@ -10680,7 +10785,7 @@ def render_captura_actividades_campo() -> None:
                 if parte.strip()
             )
             nombres_consumo = [
-                str(item.get("nombre") or "").strip()
+                texto_consumible_cantidad(item.get("nombre"), item.get("cantidad"))
                 for item in consumos
                 if str(item.get("nombre") or "").strip()
             ]
@@ -10895,6 +11000,22 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
             )
         nueva_desc = st.text_area("Descripción de la actividad", value=descripcion_actual, height=110)
         nuevos_coment = st.text_area("Comentarios", value=comentarios_actual, height=80)
+        cantidades_actuales = _cantidades_consumibles_fila(fila)
+        nuevas_cantidades: dict[str, float] = {}
+        if cantidades_actuales:
+            st.markdown("**Consumibles**")
+            st.caption("Si la cantidad quedó en 1, corrígela aquí. Un 0 quita ese consumible del registro.")
+            bloque_cant = st.columns(3)
+            for indice_cant, (nombre_cant, cantidad_cant) in enumerate(cantidades_actuales):
+                with bloque_cant[indice_cant % 3]:
+                    nuevas_cantidades[nombre_cant] = st.number_input(
+                        nombre_cant,
+                        min_value=0.0,
+                        step=0.5,
+                        value=float(cantidad_cant),
+                        format="%g",
+                        key=f"rev_cant_{idx}_{ver}_{indice_cant}",
+                    )
         guardar = st.form_submit_button("💾 Guardar Cambios en Bitácora", type="primary")
     if not guardar:
         return
@@ -10908,7 +11029,13 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
         "personal": nuevo_personal,
         "descripcion": nueva_desc,
         "comentarios": nuevos_coment,
+        "consumibles": nuevas_cantidades,
     }
+    cantidades_previas = {nombre: cantidad for nombre, cantidad in cantidades_actuales}
+    consumibles_iguales = all(
+        abs(float(nuevas_cantidades.get(nombre, 0)) - float(cantidad)) < 1e-9
+        for nombre, cantidad in cantidades_previas.items()
+    )
     sin_cambios = (
         nueva_fecha == dia
         and clave_cuadrilla_oficial(nueva_cuadrilla) == clave_actual
@@ -10917,6 +11044,7 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
         and nuevo_personal.strip() == personal_actual
         and nueva_desc.strip() == descripcion_actual
         and nuevos_coment.strip() == comentarios_actual
+        and consumibles_iguales
     )
     if sin_cambios:
         st.info("No hay cambios por guardar.")
@@ -12777,24 +12905,50 @@ def _items_insumos_registro() -> list[dict]:
                 "nombre": nombre,
                 "tipo": tipo_insumo_item(item),
                 "id": str(item.get("id") or slug_insumo(nombre)),
+                "unidad": str(item.get("unidad") or _unidad_por_nombre_insumo(nombre)),
             }
         )
     for nombre in INSUMOS_REGISTRO_COMUNES:
         if nombre.casefold() in vistos:
             continue
         vistos.add(nombre.casefold())
-        items.append({"nombre": nombre, "tipo": TIPO_INSUMO_CONSUMIBLE, "id": slug_insumo(nombre)})
+        items.append(
+            {
+                "nombre": nombre,
+                "tipo": TIPO_INSUMO_CONSUMIBLE,
+                "id": slug_insumo(nombre),
+                "unidad": _unidad_por_nombre_insumo(nombre),
+            }
+        )
     return items
+
+
+def _unidad_por_nombre_insumo(nombre: str) -> str:
+    clave = _sin_acentos(str(nombre or "")).casefold()
+    if "grasa" in clave:
+        return "Kg"
+    if any(token in clave for token in ("aceite", "refriger", "diesel", "litro")):
+        return "L"
+    return "Pzas"
+
+
+def _pedir_cantidad_insumo(unidad: str, key: str):
+    etiqueta = f"Cantidad ({unidad or 'Pzas'})"
+    if unidad_es_entera(unidad):
+        return st.number_input(etiqueta, min_value=0, step=1, value=1, key=key)
+    paso = 0.1 if str(unidad or "").strip().lower() == "kg" else 0.5
+    return st.number_input(etiqueta, min_value=0.0, step=float(paso), value=1.0, format="%g", key=key)
 
 
 def render_insumos_registro_bitacora(epoch: int) -> dict:
     st.caption(
-        "Marca solo lo que se instaló o se gastó. "
+        "Marca solo lo que se instaló o se gastó e indica la cantidad real (litros, kilos o piezas). "
         "Un componente rotativo pide la condición de la pieza nueva y el destino de la retirada."
     )
     items = _items_insumos_registro()
     nombres: list[str] = []
     rotativos: list[dict] = []
+    consumos_registro: list[dict] = []
     grupos = [
         (
             TIPO_INSUMO_CONSUMIBLE,
@@ -12819,8 +12973,17 @@ def render_insumos_registro_bitacora(epoch: int) -> dict:
                 slug = item["id"]
                 if not st.checkbox(item["nombre"], key=f"bit_reg_insumo_{slug}_{epoch}"):
                     continue
-                nombres.append(item["nombre"])
+                cantidad = _pedir_cantidad_insumo(item.get("unidad") or "Pzas", f"bit_reg_cant_{slug}_{epoch}")
                 if tipo != TIPO_INSUMO_ROTATIVO:
+                    nombres.append(texto_consumible_cantidad(item["nombre"], cantidad))
+                    consumos_registro.append(
+                        {
+                            "nombre": item["nombre"],
+                            "cantidad": cantidad,
+                            "unidad": item.get("unidad") or "Pzas",
+                            "tipo": TIPO_INSUMO_CONSUMIBLE,
+                        }
+                    )
                     continue
                 condicion = st.selectbox(
                     "Condición de la pieza instalada",
@@ -12840,10 +13003,12 @@ def render_insumos_registro_bitacora(epoch: int) -> dict:
                     {
                         "nombre": item["nombre"],
                         "tipo": TIPO_INSUMO_ROTATIVO,
+                        "cantidad": cantidad,
                         "condicion_instalada": condicion or "",
                         "destino_retirada": destino or "",
                     }
                 )
+                consumos_registro.append(rotativos[-1])
     usa_otros = st.checkbox("Otros insumos", key=f"bit_reg_insumo_otros_{epoch}")
     if usa_otros:
         detalle = st.text_input(
@@ -12851,12 +13016,22 @@ def render_insumos_registro_bitacora(epoch: int) -> dict:
             placeholder="Escribe cualquier otro insumo utilizado",
             key=f"bit_reg_insumo_otros_txt_{epoch}",
         ).strip()
-        nombres.append(detalle or "Otros insumos")
+        cantidad_otros = _pedir_cantidad_insumo("Pzas", f"bit_reg_cant_otros_{epoch}")
+        nombre_otros = detalle or "Otros insumos"
+        nombres.append(texto_consumible_cantidad(nombre_otros, cantidad_otros))
+        consumos_registro.append(
+            {
+                "nombre": nombre_otros,
+                "cantidad": cantidad_otros,
+                "unidad": "Pzas",
+                "tipo": TIPO_INSUMO_CONSUMIBLE,
+            }
+        )
     if nombres or rotativos:
         resumen = list(nombres)
         resumen.extend(texto_pieza_rotativa(pieza) for pieza in rotativos)
-        st.caption("Se guardará: **" + " · ".join(resumen) + "**")
-    return {"nombres": nombres, "rotativos": rotativos}
+        st.caption("Se guardará: " + " · ".join(resumen))
+    return {"nombres": nombres, "rotativos": rotativos, "consumos": consumos_registro}
 
 
 def render_registro_actividad_bitacora() -> None:
@@ -13015,8 +13190,12 @@ def render_registro_actividad_bitacora() -> None:
         st.error("Selecciona una actividad oficial de la cuadrilla.")
     else:
         error_rotativo = validar_piezas_rotativas(seleccion_insumos["rotativos"])
+        error_cantidad = validar_consumos_campo(seleccion_insumos.get("consumos") or [])
         if error_rotativo:
             st.error(error_rotativo)
+            return
+        if error_cantidad:
+            st.error(error_cantidad)
             return
         consumibles = ", ".join(seleccion_insumos["nombres"])
         notas_rotativas = [texto_pieza_rotativa(pieza) for pieza in seleccion_insumos["rotativos"]]
