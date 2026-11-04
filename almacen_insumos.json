@@ -1996,6 +1996,22 @@
       "tipo_insumo": "Consumible",
       "id": "e0b7d2ce95",
       "registrado": "2026-11-04 16:17"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-03",
+      "secuencia": "Act. 4",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 8.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "8d73fc7a5b",
+      "registrado": "2026-11-04 16:19"
     }
   ]
 }
