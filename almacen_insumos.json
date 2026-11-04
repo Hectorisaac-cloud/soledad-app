@@ -2361,6 +2361,22 @@
       "destino_retirada": "Enviada a Taller de Reparación",
       "id": "d5699a68e5",
       "registrado": "2026-11-04 17:17"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-03",
+      "secuencia": "Act. 3",
+      "cuadrilla": "Mecanico 4",
+      "sector": "PS Soledad",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 8.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "85d8857c4a",
+      "registrado": "2026-11-04 17:26"
     }
   ]
 }
