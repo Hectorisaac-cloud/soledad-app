@@ -1948,6 +1948,22 @@
       "tipo_insumo": "Consumible",
       "id": "62604138ba",
       "registrado": "2026-11-03 16:13"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-03",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "banda-c-125",
+      "insumo": "Banda C-125",
+      "cantidad": 2.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "e6f56438fd",
+      "registrado": "2026-11-04 16:13"
     }
   ]
 }
