@@ -35,7 +35,8 @@ from reportlab.platypus import Paragraph, Table, TableStyle
 
 import sitios_operativos
 
-VERSION_DISENO_PDF = 30
+VERSION_DISENO_PDF = 31
+FACTOR_ALTO_FOTO_PDF = 0.90
 PLANTILLA_XLSX = os.path.join("database", "machote_fotografico_template.xlsx")
 FOTOS_POR_FILA = 3
 FOTOS_POR_HOJA = 9
@@ -610,13 +611,13 @@ def _dibujar_bloque_firmas(
     y_fotos: float,
 ) -> None:
     """Barra amarilla, leyenda encima del recuadro y la rúbrica sola dentro de la caja."""
-    separacion_fotos = 20.0
+    separacion_fotos = 34.0
     alto_barra = 7.0
     separacion_barra = 16.0
     alto_caja = 74.0
     separacion_nombre = 15.0
     separacion_cargo = 12.0
-    margen_inferior = 48.0
+    margen_inferior = 42.0
     y_barra = y_fotos - separacion_fotos - alto_barra
     y_tope = y_barra - separacion_barra
     y_caja = y_tope - alto_caja
@@ -836,7 +837,7 @@ def _hoja_a_pdf(
     cajas_ranura = [ancho_pt(c0, c1) for c0, _f0, c1, _f1 in RANURAS]
     altos_ranura = [alto_pt(f0, f1) for _c0, f0, _c1, f1 in RANURAS]
     ancho_fijo = max(1.0, min(cajas_ranura) - 2 * margen_pt)
-    alto_fijo = max(1.0, min(altos_ranura) - 2 * margen_pt)
+    alto_fijo = max(1.0, (min(altos_ranura) - 2 * margen_pt) * FACTOR_ALTO_FOTO_PDF)
     for imagen, caja in fotos:
         col_ini, fila_ini, col_fin, fila_fin = _ranura_de_caja(ws, caja)
         slot_ancho = ancho_pt(col_ini, col_fin)
