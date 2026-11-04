@@ -2245,6 +2245,56 @@
       "tipo_insumo": "Consumible",
       "id": "f830896eb2",
       "registrado": "2026-11-04 17:11"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-03",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 4",
+      "sector": "PS Soledad",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 3.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "53608a1f06",
+      "registrado": "2026-11-04 17:13"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-03",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 4",
+      "sector": "PS Soledad",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 15.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "2d2d0a88b0",
+      "registrado": "2026-11-04 17:13"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-03",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 4",
+      "sector": "PS Soledad",
+      "insumo_id": "bomba-de-agua",
+      "insumo": "Bomba de agua",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Componente Rotativo / Reparable",
+      "condicion_instalada": "Reparado por PJP4",
+      "destino_retirada": "Enviada a Taller de Reparación",
+      "id": "e600aa7da2",
+      "registrado": "2026-11-04 17:13"
     }
   ]
 }
