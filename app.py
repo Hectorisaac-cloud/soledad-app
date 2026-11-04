@@ -11245,7 +11245,18 @@ def render_revision_bitacoras() -> None:
     base = df.copy()
 
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
-    fechas = [d.strftime("%d/%m/%Y") for d in fechas_disponibles_operacion(base)]
+    conteos_dias = dict(_dias_con_registros_bitacora(base))
+    fechas = []
+    for dia_disponible in fechas_disponibles_operacion(base):
+        cantidad_dia = conteos_dias.get(dia_disponible, 0)
+        if cantidad_dia:
+            fechas.append(_etiqueta_dia_registros(dia_disponible, cantidad_dia))
+        else:
+            fechas.append(f"{dia_disponible.strftime('%d/%m/%Y')} · sin registros en Excel")
+    opciones_fecha_rev = ["Todas"] + fechas
+    if st.session_state.get("rev_filtro_version") != 2:
+        _restablecer_filtros_revision()
+    _asegurar_opcion_consulta("rev_filtro_fecha", opciones_fecha_rev, "Todas")
     ubicaciones = sorted(
         {
             str(v).strip()
@@ -11258,30 +11269,40 @@ def render_revision_bitacoras() -> None:
         key=orden_cuadrilla_oficial,
     )
     with col_f1:
-        filtro_fecha = st.selectbox("Fecha", ["Todas"] + fechas)
+        filtro_fecha = st.selectbox(
+            "Fecha",
+            opciones_fecha_rev,
+            key="rev_filtro_fecha",
+            help="«Todas» muestra el Excel completo. Cada fecha indica cuántos registros tiene cargados.",
+        )
     with col_f2:
-        filtro_ubi = st.selectbox("Ubicación", ["Todas"] + ubicaciones)
+        opciones_ubi = ["Todas"] + ubicaciones
+        _asegurar_opcion_consulta("rev_filtro_ubi", opciones_ubi, "Todas")
+        filtro_ubi = st.selectbox("Ubicación", opciones_ubi, key="rev_filtro_ubi")
     with col_f3:
         opciones_filtro_cuadrilla = ["Todas"] + cuadrillas
-        if st.session_state.get("rev_filtro_cuadrilla") not in opciones_filtro_cuadrilla:
-            st.session_state.pop("rev_filtro_cuadrilla", None)
+        _asegurar_opcion_consulta("rev_filtro_cuadrilla", opciones_filtro_cuadrilla, "Todas")
         filtro_cuadrilla = st.selectbox(
             "Cuadrilla",
             opciones_filtro_cuadrilla,
             key="rev_filtro_cuadrilla",
-            persist_state="session",
         )
     with col_f4:
-        filtro_revision = st.selectbox("Revisión", ["Todas"] + ESTADOS_REVISION)
+        opciones_revision = ["Todas"] + ESTADOS_REVISION
+        _asegurar_opcion_consulta("rev_filtro_revision", opciones_revision, "Todas")
+        filtro_revision = st.selectbox("Revisión", opciones_revision, key="rev_filtro_revision")
+    opciones_evidencia = ["Todas", EVIDENCIA_PENDIENTE, EVIDENCIA_COMPLETA]
+    _asegurar_opcion_consulta("rev_filtro_evidencia", opciones_evidencia, "Todas")
     filtro_evidencia = st.selectbox(
         "Evidencia fotográfica",
-        ["Todas", EVIDENCIA_PENDIENTE, EVIDENCIA_COMPLETA],
+        opciones_evidencia,
         key="rev_filtro_evidencia",
     )
+    st.button("Limpiar filtros", key="rev_limpiar", on_click=_restablecer_filtros_revision)
 
     filtrado = base.copy()
     if filtro_fecha != "Todas":
-        dia = parsear_fecha_valor(filtro_fecha)
+        dia = _dia_desde_etiqueta_registros(filtro_fecha)
         if dia is not None and "_fecha" in filtrado.columns:
             filtrado = filtrado[filtrado["_fecha"] == dia]
     if filtro_ubi != "Todas":
@@ -22120,6 +22141,77 @@ def render_control_insumos_refacciones() -> None:
         )
 
 
+def _dias_con_registros_bitacora(df: pd.DataFrame) -> list[tuple[date, int]]:
+    """Días con actividades en la bitácora, del más reciente al más antiguo."""
+    if df is None or df.empty or "_fecha" not in df.columns:
+        return []
+    conteo: dict[date, int] = {}
+    for valor in df["_fecha"].tolist():
+        if isinstance(valor, datetime):
+            dia = valor.date()
+        elif isinstance(valor, date):
+            dia = valor
+        else:
+            continue
+        conteo[dia] = conteo.get(dia, 0) + 1
+    return sorted(conteo.items(), key=lambda par: par[0], reverse=True)
+
+
+def _etiqueta_dia_registros(dia: date, cantidad: int) -> str:
+    texto = "registro" if cantidad == 1 else "registros"
+    return f"{dia.strftime('%d/%m/%Y')} · {cantidad} {texto}"
+
+
+def _dia_desde_etiqueta_registros(etiqueta: str) -> date | None:
+    return parsear_fecha_valor(str(etiqueta or "")[:10])
+
+
+def _fecha_simple(valor) -> date | None:
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    return None
+
+
+def _opciones_fecha_consulta(pares: list[tuple[date, int]]) -> list[str]:
+    return ["Todo el historial", "Rango personalizado"] + [
+        _etiqueta_dia_registros(dia, cantidad) for dia, cantidad in pares
+    ]
+
+
+def _restablecer_filtros_dashboard(inicio_hist: date, fin_hist: date) -> None:
+    st.session_state["dash_consulta_version"] = 2
+    st.session_state["dash_fecha_consulta"] = "Todo el historial"
+    st.session_state["dash_rango"] = (inicio_hist, fin_hist)
+    st.session_state["dash_cuadrilla"] = "Todas"
+    st.session_state["dash_estatus"] = "Todos"
+
+
+def _restablecer_filtros_vista_previa(inicio_hist: date, fin_hist: date) -> None:
+    st.session_state["adm_prev_version"] = 2
+    st.session_state["adm_m_prev_dia"] = "Todo el historial"
+    st.session_state["adm_m_prev_desde"] = inicio_hist
+    st.session_state["adm_m_prev_hasta"] = fin_hist
+    st.session_state["adm_m_f_ot"] = ""
+    for clave in ("adm_m_f_pozo", "adm_m_f_estatus", "adm_m_f_sector", "adm_m_f_cuadrilla"):
+        st.session_state[clave] = "Todos"
+
+
+def _restablecer_filtros_revision() -> None:
+    st.session_state["rev_filtro_version"] = 2
+    st.session_state["rev_filtro_fecha"] = "Todas"
+    st.session_state["rev_filtro_ubi"] = "Todas"
+    st.session_state["rev_filtro_cuadrilla"] = "Todas"
+    st.session_state["rev_filtro_revision"] = "Todas"
+    st.session_state["rev_filtro_evidencia"] = "Todas"
+
+
+def _asegurar_opcion_consulta(clave: str, opciones: list[str], respaldo: str) -> None:
+    if st.session_state.get(clave) not in opciones:
+        st.session_state[clave] = respaldo
+
+
 def render_dashboard_ordenes() -> None:
     if asegurar_datos_demo_si_faltan():
         st.rerun()
@@ -22141,51 +22233,70 @@ def render_dashboard_ordenes() -> None:
         dmin, dmax = diario["Fecha"].min().date(), diario["Fecha"].max().date()
         fmin, fmax = min(fmin, dmin), max(fmax, dmax, date.today())
 
-    hoy = date.today()
-    inicio_def = max(fmin, date(hoy.year, hoy.month, 1))
-    if inicio_def > fmax:
-        inicio_def = fmin
-
-    f1, f2, f3 = st.columns([1.8, 1.1, 1.1])
-    with f1:
-        modo_fecha = st.radio(
-            "Filtro de fecha",
-            ["Día específico", "Rango de fechas"],
-            index=1,
-            horizontal=True,
-            key="dash_modo_fecha",
-        )
-        if modo_fecha == "Día específico":
-            dia = min(max(hoy, fmin), fmax)
-            dia_sel = st.date_input(
-                "Día",
-                value=dia,
-                min_value=fmin,
-                max_value=fmax,
-                format="DD/MM/YYYY",
-                key="dash_dia",
+    pares_dias = _dias_con_registros_bitacora(bitacora)
+    opciones_fecha = _opciones_fecha_consulta(pares_dias)
+    if st.session_state.get("dash_consulta_version") != 2:
+        _restablecer_filtros_dashboard(fmin, fmax)
+    _asegurar_opcion_consulta("dash_fecha_consulta", opciones_fecha, "Todo el historial")
+    rango_guardado = st.session_state.get("dash_rango")
+    if isinstance(rango_guardado, (list, tuple)) and len(rango_guardado) == 2:
+        extremo_a = _fecha_simple(rango_guardado[0])
+        extremo_b = _fecha_simple(rango_guardado[1])
+        if extremo_a is not None and extremo_b is not None:
+            st.session_state["dash_rango"] = (
+                min(max(extremo_a, fmin), fmax),
+                min(max(extremo_b, fmin), fmax),
             )
-            inicio, fin = dia_sel, dia_sel
         else:
-            rango = st.date_input(
-                "Rango de fechas",
-                value=(inicio_def, min(hoy, fmax)),
-                min_value=fmin,
-                max_value=fmax,
-                format="DD/MM/YYYY",
-                key="dash_rango",
-            )
+            st.session_state["dash_rango"] = (fmin, fmax)
+
+    f1, f2, f3 = st.columns([2.2, 1.1, 1.1])
+    with f1:
+        consulta_fecha = st.selectbox(
+            "Fecha",
+            opciones_fecha,
+            key="dash_fecha_consulta",
+            help="Todo el historial muestra los registros cargados. Cada día de la lista tiene actividades en la bitácora.",
+        )
+        if consulta_fecha == "Rango personalizado":
+            rango_kwargs = {
+                "min_value": fmin,
+                "max_value": fmax,
+                "format": "DD/MM/YYYY",
+                "key": "dash_rango",
+            }
+            if "dash_rango" not in st.session_state:
+                rango_kwargs["value"] = (fmin, fmax)
+            rango = st.date_input("Rango de fechas", **rango_kwargs)
             if isinstance(rango, (list, tuple)) and len(rango) == 2:
                 inicio, fin = rango[0], rango[1]
             else:
-                inicio, fin = inicio_def, min(hoy, fmax)
+                inicio, fin = fmin, fmax
             if inicio > fin:
                 inicio, fin = fin, inicio
+        elif consulta_fecha == "Todo el historial":
+            inicio, fin = fmin, fmax
+            if pares_dias:
+                st.caption(
+                    f"{len(pares_dias)} día(s) con registros. "
+                    "Elige uno en la lista para consultar solo esa jornada."
+                )
+            else:
+                st.caption("No hay fechas de bitácora en el archivo.")
+        else:
+            dia_consulta = _dia_desde_etiqueta_registros(consulta_fecha) or fmin
+            inicio, fin = dia_consulta, dia_consulta
     cuadrillas = ["Todas"] + list(CUADRILLAS) + ["Parque vehicular"]
     with f2:
         cuadrilla = st.selectbox("Cuadrilla", cuadrillas, key="dash_cuadrilla")
     with f3:
         estatus = st.selectbox("Estatus de OT", ["Todos"] + ESTATUS_DASHBOARD, key="dash_estatus")
+    st.button(
+        "Limpiar filtros",
+        key="dash_limpiar",
+        on_click=_restablecer_filtros_dashboard,
+        args=(fmin, fmax),
+    )
 
     campo_raw = ots_campo_dashboard(inicio, fin)
     flota_raw = ots_flota_dashboard(inicio, fin)
@@ -23930,23 +24041,62 @@ def render_edicion_captura_admin(jornada: date) -> None:
 
 
 def render_vista_previa_admin(jornada: date) -> None:
-    inicio_mes, fin_mes = _periodo_mes_calendario(date.today())
+    del jornada
+    base_previa = bitacora_con_fechas(cargar_bitacora())
+    pares_previa = _dias_con_registros_bitacora(base_previa)
+    if pares_previa:
+        dias_previa = [dia for dia, _cantidad in pares_previa]
+        fmin_previa, fmax_previa = min(dias_previa), max(dias_previa)
+    else:
+        fmin_previa = fmax_previa = date.today()
+    opciones_previa = _opciones_fecha_consulta(pares_previa)
+    if st.session_state.get("adm_prev_version") != 2:
+        _restablecer_filtros_vista_previa(fmin_previa, fmax_previa)
+    _asegurar_opcion_consulta("adm_m_prev_dia", opciones_previa, "Todo el historial")
     with st.container(border=True):
-        desde_col, hasta_col = st.columns(2)
-        with desde_col:
-            desde = st.date_input(
-                "Desde",
-                value=inicio_mes,
-                format="DD/MM/YYYY",
-                key="adm_m_prev_desde",
-            )
-        with hasta_col:
-            hasta = st.date_input(
-                "Hasta",
-                value=fin_mes,
-                format="DD/MM/YYYY",
-                key="adm_m_prev_hasta",
-            )
+        consulta_previa = st.selectbox(
+            "Fecha",
+            opciones_previa,
+            key="adm_m_prev_dia",
+            help="Todo el historial muestra las actividades del Excel. Cada día de la lista tiene registros cargados.",
+        )
+        if consulta_previa == "Rango personalizado":
+            for clave_fecha, respaldo in (
+                ("adm_m_prev_desde", fmin_previa),
+                ("adm_m_prev_hasta", fmax_previa),
+            ):
+                guardado = _fecha_simple(st.session_state.get(clave_fecha))
+                st.session_state[clave_fecha] = guardado or respaldo
+            desde_col, hasta_col = st.columns(2)
+            with desde_col:
+                desde_kwargs = {"format": "DD/MM/YYYY", "key": "adm_m_prev_desde"}
+                if "adm_m_prev_desde" not in st.session_state:
+                    desde_kwargs["value"] = fmin_previa
+                desde = st.date_input("Desde", **desde_kwargs)
+            with hasta_col:
+                hasta_kwargs = {"format": "DD/MM/YYYY", "key": "adm_m_prev_hasta"}
+                if "adm_m_prev_hasta" not in st.session_state:
+                    hasta_kwargs["value"] = fmax_previa
+                hasta = st.date_input("Hasta", **hasta_kwargs)
+        elif consulta_previa == "Todo el historial":
+            desde, hasta = fmin_previa, fmax_previa
+            if pares_previa:
+                muestra = ", ".join(
+                    _etiqueta_dia_registros(dia, cantidad) for dia, cantidad in pares_previa[:8]
+                )
+                extra = f" y {len(pares_previa) - 8} día(s) más" if len(pares_previa) > 8 else ""
+                st.caption(f"Días con registros: {muestra}{extra}.")
+            else:
+                st.caption("La bitácora no tiene fechas cargadas.")
+        else:
+            dia_previo = _dia_desde_etiqueta_registros(consulta_previa) or fmin_previa
+            desde, hasta = dia_previo, dia_previo
+        st.button(
+            "Limpiar filtros",
+            key="adm_m_limpiar",
+            on_click=_restablecer_filtros_vista_previa,
+            args=(fmin_previa, fmax_previa),
+        )
     if not isinstance(desde, date) or not isinstance(hasta, date):
         st.warning("Elige un rango de fechas válido.")
         return
