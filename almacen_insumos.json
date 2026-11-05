@@ -2838,6 +2838,22 @@
       "tipo_insumo": "Consumible",
       "id": "6040041619",
       "registrado": "2026-11-05 15:59"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-04",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PS Soledad",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 9.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "37026b884b",
+      "registrado": "2026-11-05 16:02"
     }
   ]
 }
