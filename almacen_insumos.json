@@ -2491,6 +2491,22 @@
       "tipo_insumo": "Consumible",
       "id": "0e221443f6",
       "registrado": "2026-11-05 15:06"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-04",
+      "secuencia": "Act. 6",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PPB",
+      "insumo_id": "otros",
+      "insumo": "REGULADOR DE BAJA PRESIÓN",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "25d81cbb5d",
+      "registrado": "2026-11-05 15:11"
     }
   ]
 }
