@@ -3212,6 +3212,19 @@
       "notas": "",
       "actualizado": "",
       "aliases": []
+    },
+    "PSN1": {
+      "id": "PSN1",
+      "nombre": "PSN1",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
     }
   },
   "cambios_equipo": [
