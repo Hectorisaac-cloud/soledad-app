@@ -3186,6 +3186,32 @@
       "notas": "",
       "actualizado": "",
       "aliases": []
+    },
+    "PPB264": {
+      "id": "PPB264",
+      "nombre": "PPB264",
+      "zona_id": "palo-blanco",
+      "prefijo": "PPB",
+      "sector": "Palo Blanco (PB)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PPB163": {
+      "id": "PPB163",
+      "nombre": "PPB163",
+      "zona_id": "palo-blanco",
+      "prefijo": "PPB",
+      "sector": "Palo Blanco (PB)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
     }
   },
   "cambios_equipo": [
