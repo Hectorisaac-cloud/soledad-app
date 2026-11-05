@@ -161,6 +161,15 @@
       "tipo": "Consumible",
       "precargado": false,
       "activo": true
+    },
+    {
+      "id": "juego-de-cables-para-bujias",
+      "nombre": "Juego de cables para bujias",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Consumible",
+      "precargado": false,
+      "activo": true
     }
   ],
   "movimientos": [
@@ -2669,6 +2678,22 @@
       "tipo_insumo": "Consumible",
       "id": "8dd91d0e2f",
       "registrado": "2026-11-05 15:42"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-04",
+      "secuencia": "Act. 6",
+      "cuadrilla": "Montaje",
+      "sector": "PSN",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 3.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "47d2f75ae4",
+      "registrado": "2026-11-05 15:44"
     }
   ]
 }
