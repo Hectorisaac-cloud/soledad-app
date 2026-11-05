@@ -2507,6 +2507,22 @@
       "tipo_insumo": "Consumible",
       "id": "25d81cbb5d",
       "registrado": "2026-11-05 15:11"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-04",
+      "secuencia": "Act. 7",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PS Soledad",
+      "insumo_id": "otros",
+      "insumo": "REGULADOR DE BAJA PRESION",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "5c1100fec5",
+      "registrado": "2026-11-05 15:13"
     }
   ]
 }
