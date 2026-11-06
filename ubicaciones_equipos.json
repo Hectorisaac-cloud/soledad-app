@@ -3225,6 +3225,19 @@
       "notas": "",
       "actualizado": "",
       "aliases": []
+    },
+    "PS656": {
+      "id": "PS656",
+      "nombre": "PS656",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "MCI tipo Arrow",
+      "equipo_ub": "UBM tipo Weatherford",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "2026-11-06 16:31",
+      "aliases": []
     }
   },
   "cambios_equipo": [

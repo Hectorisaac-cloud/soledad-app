@@ -3318,6 +3318,22 @@
       "tipo_insumo": "Consumible",
       "id": "1781abaea9",
       "registrado": "2026-11-06 16:19"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-05",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Montaje",
+      "sector": "PS Soledad",
+      "insumo_id": "otros",
+      "insumo": "POLEA  6\"Ø",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "8e34485fb7",
+      "registrado": "2026-11-06 16:25"
     }
   ]
 }
