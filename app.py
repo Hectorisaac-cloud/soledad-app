@@ -7181,14 +7181,70 @@ def _texto_insumo_celda(columna: str, valor) -> str:
     return f"{columna}: {numero:g}"
 
 
+def _consumibles_en_comentario(texto: str) -> list[tuple[str, float]]:
+    """Recupera insumos que versiones anteriores guardaron como texto en comentarios."""
+    bruto = texto_visible(texto, "")
+    if not bruto:
+        return []
+    hallados: list[tuple[str, float]] = []
+    for marca, separador in (("Consumibles:", r"[,;\n]+"), ("Piezas rotativas:", r"\s*\|\s*")):
+        inicio = re.search(re.escape(marca), bruto, flags=re.I)
+        if not inicio:
+            continue
+        for parte in re.split(separador, bruto[inicio.end():]):
+            pieza = parte.strip(" ·")
+            if not pieza:
+                continue
+            nombre, cantidad = _partir_cantidad_consumible(pieza)
+            if cantidad is None:
+                hallado = re.search(r"^(.*?)(?:\s*[:x×]\s*)(\d+(?:[.,]\d+)?)\b", pieza, flags=re.I)
+                if not hallado:
+                    continue
+                nombre = hallado.group(1).strip(" -:x×")
+                try:
+                    cantidad = float(hallado.group(2).replace(",", "."))
+                except ValueError:
+                    continue
+            if nombre and cantidad > 0:
+                hallados.append((nombre, float(cantidad)))
+    return hallados
+
+
+def comentarios_sin_consumibles(texto) -> str:
+    """Deja en comentarios solo la observación; el insumo ya vive en materiales."""
+    bruto = texto_visible(texto, "")
+    if not bruto:
+        return ""
+    corte = len(bruto)
+    for marca in ("Consumibles:", "Piezas rotativas:"):
+        hallado = re.search(r"(?:^|[·|])\s*" + re.escape(marca), bruto, flags=re.I)
+        if hallado:
+            corte = min(corte, hallado.start())
+    return bruto[:corte].strip(" ·|;-")
+
+
 def consumibles_de_fila(fila) -> str:
     partes: list[str] = []
-    for col in getattr(fila, "index", []):
-        if not es_columna_insumo_excel(str(col)):
+    indice = [str(col) for col in getattr(fila, "index", [])]
+    columnas_con_cantidad: set[str] = set()
+    for nombre in indice:
+        if not _es_columna_cantidad_refaccion(nombre):
             continue
-        texto = _texto_insumo_celda(str(col), fila.get(col))
-        if texto:
-            partes.append(texto)
+        origen = _ESPEJO_INSUMO_BITACORA.get(nombre)
+        if origen and origen in indice:
+            continue
+        bruto = fila.get(nombre)
+        cantidad = cantidad_grasa_kg(bruto) if _es_grasa(nombre) else _numero_insumo(bruto)
+        if cantidad <= 0:
+            continue
+        columnas_con_cantidad.add(_clave_columna_bitacora(nombre))
+        partes.append(f"{etiqueta_refaccion(nombre)}: {_texto_cantidad_insumo(cantidad)}")
+    for nombre, cantidad in _consumibles_en_comentario(fila.get("COMENTARIOS") if hasattr(fila, "get") else ""):
+        columna = _columna_destino_insumo(nombre, indice)
+        if _clave_columna_bitacora(columna) in columnas_con_cantidad:
+            continue
+        columnas_con_cantidad.add(_clave_columna_bitacora(columna))
+        partes.append(f"{etiqueta_refaccion(columna)}: {_texto_cantidad_insumo(cantidad)}")
     if not partes:
         partes = list(insumos_de_fila(fila))
     vistos: set[str] = set()
@@ -7344,9 +7400,8 @@ def vista_revision_soledad(df: pd.DataFrame) -> pd.DataFrame:
                 "Ubicación": ubicacion,
                 "Descripción de Actividad": descripcion,
                 "Consumibles": consumibles_de_fila(fila),
-                "Comentarios": texto_visible(
-                    fila["COMENTARIOS"] if "COMENTARIOS" in fila.index else fila.get("OBSERVACIÓN REVISIÓN"),
-                    "",
+                "Comentarios": comentarios_sin_consumibles(
+                    fila["COMENTARIOS"] if "COMENTARIOS" in fila.index else fila.get("OBSERVACIÓN REVISIÓN")
                 ),
                 "Avance": avance_texto(fila["AVANCE %"] if "AVANCE %" in fila.index else fila.get("AVANCE")),
                 "Evidencia": estatus_evidencia_fila(fila),
@@ -7795,19 +7850,32 @@ def _cantidad_consumible(token: str, columna: str) -> float:
         return 1
 
 
-def _asignar_consumibles(texto: str, encabezados: list[tuple[int, str]]) -> tuple[dict[int, float], list[str]]:
+def _mapa_cantidades_texto_consumible(texto: str, columnas: list[str]) -> dict[str, float]:
+    """Lee 'Banda C-125: 2' y lo manda a su columna, sin dejarlo como texto de comentarios."""
     partes = [parte.strip() for parte in re.split(r"[,;\n]+", str(texto or "")) if parte.strip()]
-    usados: dict[int, float] = {}
-    sueltos: list[str] = []
+    mapa: dict[str, float] = {}
     for parte in partes:
         nombre, explicita = _partir_cantidad_consumible(parte)
-        elegido = _mejor_columna_consumible(nombre, encabezados)
-        if elegido is None:
-            sueltos.append(parte)
+        if explicita is None or explicita <= 0:
             continue
-        col, columna = elegido
-        usados[col] = explicita if explicita is not None else _cantidad_consumible(nombre, columna)
-    return usados, sueltos
+        nombre = re.sub(r"^(?:consumibles|piezas rotativas)\s*:\s*", "", nombre, flags=re.I).strip()
+        if not nombre:
+            continue
+        columna = _columna_destino_insumo(nombre, columnas)
+        mapa[columna] = float(mapa.get(columna) or 0) + float(explicita)
+    return mapa
+
+
+def _asignar_consumibles(texto: str, encabezados: list[tuple[int, str]]) -> tuple[dict[int, float], list[str]]:
+    columnas = [nombre for _, nombre in encabezados]
+    mapa = _mapa_cantidades_texto_consumible(texto, columnas)
+    indice = {_clave_columna_bitacora(nombre): col for col, nombre in encabezados if _clave_columna_bitacora(nombre)}
+    usados: dict[int, float] = {}
+    for nombre, cantidad in mapa.items():
+        col = indice.get(_clave_columna_bitacora(nombre))
+        if col:
+            usados[col] = float(usados.get(col) or 0) + float(cantidad)
+    return usados, []
 
 
 def _cantidades_consumibles_fila(fila) -> list[tuple[str, float]]:
@@ -7959,6 +8027,7 @@ def agregar_registro_bitacora_soledad(
     equipo: str = "",
     tipo_actividad: str = "",
     actividad_corta: str = "",
+    cantidades_insumos: dict | None = None,
 ) -> dict:
     """Agrega una fila a la hoja original de la bitácora y conserva el resto del Excel."""
     destino = ruta or EXCEL_FILE
@@ -7994,13 +8063,22 @@ def agregar_registro_bitacora_soledad(
         if col_ubicacion:
             ws.cell(fila, col_ubicacion).value = ubicacion.strip()
         ws.cell(fila, col_desc).value = descripcion.strip()
-        cantidades, sueltos = _asignar_consumibles(consumibles, encabezados)
-        for col, cantidad in cantidades.items():
-            ws.cell(fila, col).value = int(cantidad) if float(cantidad).is_integer() else float(cantidad)
+        columnas_hoja = [nombre for _, nombre in encabezados]
+        if cantidades_insumos:
+            mapa_insumos: dict[str, float] = {}
+            for nombre_insumo, bruto in cantidades_insumos.items():
+                try:
+                    numero = float(bruto or 0)
+                except (TypeError, ValueError):
+                    continue
+                if numero <= 0:
+                    continue
+                columna_insumo = _columna_destino_insumo(str(nombre_insumo), columnas_hoja)
+                mapa_insumos[columna_insumo] = float(mapa_insumos.get(columna_insumo) or 0) + numero
+        else:
+            mapa_insumos = _mapa_cantidades_texto_consumible(consumibles, columnas_hoja)
+        _escribir_cantidades_fila(ws, fila_header, fila, mapa_insumos)
         texto_coment = comentarios.strip()
-        if sueltos:
-            extra = "Consumibles: " + ", ".join(sueltos)
-            texto_coment = f"{texto_coment} · {extra}" if texto_coment else extra
         if col_coment and texto_coment:
             ws.cell(fila, col_coment).value = texto_coment
         if avance is not None:
@@ -10861,11 +10939,6 @@ def render_captura_actividades_campo() -> None:
                 ]
                 if parte.strip()
             )
-            nombres_consumo = [
-                texto_consumible_cantidad(item.get("nombre"), item.get("cantidad"))
-                for item in consumos
-                if str(item.get("nombre") or "").strip()
-            ]
             try:
                 agregar_registro_bitacora_soledad(
                     fecha,
@@ -10873,7 +10946,7 @@ def render_captura_actividades_campo() -> None:
                     personal,
                     captura.get("ubicacion") or pozo_final or sector_final,
                     descripcion,
-                    ", ".join(nombres_consumo),
+                    "",
                     "",
                     limitar_fotos(list(archivos_foto or [])),
                     secuencia=int(secuencia_n),
@@ -10881,6 +10954,7 @@ def render_captura_actividades_campo() -> None:
                     equipo=equipo_final,
                     tipo_actividad=tipo_actividad_final,
                     actividad_corta=actividad_corta_final,
+                    cantidades_insumos=cantidades_columnas_de_consumos(consumos),
                 )
             except Exception:
                 df_existente = cargar_bitacora()
@@ -11025,9 +11099,9 @@ _REGLAS_COLUMNA_INSUMO = (
     ("filtro de aceite ops", "FILTRO DE ACEITE (OPS)"),
     ("filtro aceite ops", "FILTRO DE ACEITE (OPS)"),
     ("filtro", "FILTRO DE ACEITE PJP4"),
-    ("bujia", "BUJIAS PJP4"),
     ("juego de cables", "JUEGO DE CABLES PARA BUJIAS"),
     ("cables para buj", "JUEGO DE CABLES PARA BUJIAS"),
+    ("bujia", "BUJIAS PJP4"),
     ("banda c 115", "BANDAS C115 PJP4"),
     ("banda c115", "BANDAS C115 PJP4"),
     ("banda c 112", "BANDAS C112 PJP4"),
@@ -11061,6 +11135,18 @@ def _titulo_columna_nuevo_insumo(nombre: str) -> str:
     return (texto.upper() or "OTRO INSUMO")[:80]
 
 
+def _columna_modelo_banda(clave: str) -> str:
+    """Cada medida de banda tiene su propia columna numérica, aunque no exista todavía."""
+    if "banda" not in clave:
+        return ""
+    if "micro" in clave:
+        return "BANDA MICRO V"
+    numero = re.search(r"\b(\d{2,4})\b", clave)
+    if not numero:
+        return ""
+    return f"BANDAS C{numero.group(1)} PJP4"
+
+
 def _columna_destino_insumo(nombre: str, columnas: list[str] | None = None) -> str:
     columnas = list(columnas or [])
     clave = _clave_columna_bitacora(nombre)
@@ -11071,6 +11157,8 @@ def _columna_destino_insumo(nombre: str, columnas: list[str] | None = None) -> s
             destino = columna
             break
     if not destino:
+        destino = _columna_modelo_banda(clave)
+    if not destino:
         coincidencia = _mejor_columna_consumible(
             nombre,
             [(indice + 1, col) for indice, col in enumerate(columnas)],
@@ -11079,6 +11167,24 @@ def _columna_destino_insumo(nombre: str, columnas: list[str] | None = None) -> s
             return coincidencia[1]
         destino = _titulo_columna_nuevo_insumo(nombre)
     return _columna_por_clave_insumo(destino, columnas) or destino
+
+
+def cantidades_columnas_de_consumos(consumos: list[dict] | None, columnas: list[str] | None = None) -> dict[str, float]:
+    """Pasa cada casilla del formulario a la columna numérica de materiales, con su cantidad."""
+    mapa: dict[str, float] = {}
+    for consumo in consumos or []:
+        nombre = str(consumo.get("nombre") or "").strip()
+        if not nombre:
+            continue
+        try:
+            cantidad = float(consumo.get("cantidad") or 0)
+        except (TypeError, ValueError):
+            continue
+        if cantidad <= 0:
+            continue
+        columna = _columna_destino_insumo(nombre, columnas)
+        mapa[columna] = float(mapa.get(columna) or 0) + cantidad
+    return mapa
 
 
 def _unidad_editor_insumo(nombre: str) -> str:
@@ -13367,7 +13473,7 @@ def render_insumos_registro_bitacora(epoch: int) -> dict:
     if nombres or rotativos:
         resumen = list(nombres)
         resumen.extend(texto_pieza_rotativa(pieza) for pieza in rotativos)
-        st.caption("Se guardará: " + " · ".join(resumen))
+        st.caption("Se guardará en materiales empleados: " + " · ".join(resumen))
     return {"nombres": nombres, "rotativos": rotativos, "consumos": consumos_registro}
 
 
@@ -13534,11 +13640,6 @@ def render_registro_actividad_bitacora() -> None:
         if error_cantidad:
             st.error(error_cantidad)
             return
-        consumibles = ", ".join(seleccion_insumos["nombres"])
-        notas_rotativas = [texto_pieza_rotativa(pieza) for pieza in seleccion_insumos["rotativos"]]
-        if notas_rotativas:
-            bloque = "Piezas rotativas: " + " | ".join(notas_rotativas)
-            comentarios = f"{str(comentarios or '').strip()} · {bloque}".strip(" ·") if str(comentarios or "").strip() else bloque
         try:
             resultado = agregar_registro_bitacora_soledad(
                 fecha,
@@ -13546,13 +13647,14 @@ def render_registro_actividad_bitacora() -> None:
                 personal,
                 ubicacion,
                 descripcion,
-                consumibles,
+                "",
                 comentarios,
                 limitar_fotos(list(fotos or [])),
                 secuencia=int(secuencia_n),
                 equipo=equipo_sel,
                 tipo_actividad=tipo_actividad_final,
                 actividad_corta=actividad_corta_final,
+                cantidades_insumos=cantidades_columnas_de_consumos(seleccion_insumos.get("consumos") or []),
             )
         except PermissionError:
             st.error("No se pudo guardar la bitácora. Cierra el Excel si lo tienes abierto e inténtalo de nuevo.")
@@ -15996,7 +16098,7 @@ def render_actividad_cuadrilla_ot(
         fila.get("DESCRIPCION DE LA ACTIVIDAD") or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD"),
         "Sin descripción de la OT",
     )
-    comentarios = texto_visible(
+    comentarios = comentarios_sin_consumibles(
         fila["COMENTARIOS"] if "COMENTARIOS" in getattr(fila, "index", []) else fila.get("OBSERVACIÓN REVISIÓN")
     )
     materiales = consumibles_de_fila(fila) or "Sin materiales registrados"
@@ -17149,7 +17251,7 @@ def render_reporte_cuadrilla(dia: date, cuadrilla: str, df_dia: pd.DataFrame) ->
         fila.get("DESCRIPCION DE LA ACTIVIDAD") or fila.get("DESCRIPCIÓN DE LA ACTIVIDAD"),
         "Sin descripción capturada.",
     )
-    comentarios = texto_visible(
+    comentarios = comentarios_sin_consumibles(
         fila["COMENTARIOS"] if "COMENTARIOS" in getattr(fila, "index", []) else fila.get("OBSERVACIÓN REVISIÓN")
     )
     avance = avance_texto(fila["AVANCE %"] if "AVANCE %" in getattr(fila, "index", []) else None) or "—"
@@ -22263,8 +22365,13 @@ def cantidad_grasa_kg(valor) -> float:
     Un valor mayor de 100, o con unidad g/gramos, se divide entre 1,000.
     Un valor de 100 o menos, o marcado en kg, se conserva en kilogramos.
     """
-    if isinstance(valor, bool):
+    if valor is None or isinstance(valor, bool):
         return 0.0
+    try:
+        if pd.isna(valor):
+            return 0.0
+    except (TypeError, ValueError):
+        pass
     if isinstance(valor, (int, float)):
         try:
             if pd.isna(valor):
@@ -22302,6 +22409,9 @@ def etiqueta_refaccion(columna: str) -> str:
     clave = _clave_columna_bitacora(columna)
     if clave in _ETIQUETAS_REFACCION:
         return _ETIQUETAS_REFACCION[clave]
+    modelo_banda = re.fullmatch(r"bandas c(\d+)(?: pjp4)?", clave)
+    if modelo_banda:
+        return f"Banda C-{modelo_banda.group(1)}"
     if columna in ETIQUETAS_INSUMO_SOPORTE:
         return ETIQUETAS_INSUMO_SOPORTE[columna]
     texto = re.sub(r"\s*(\(|\b)(PJP4|OPS)\)?\s*$", "", str(columna or ""), flags=re.IGNORECASE).strip()
@@ -22392,11 +22502,13 @@ def detalle_insumos_suministrados(df: pd.DataFrame | None) -> pd.DataFrame:
         if not isinstance(dia, date):
             continue
         ubicacion = _ubicacion_fila_refaccion(fila)
+        claves_fila: set[str] = set()
         for columna in columnas:
             bruto = fila.get(columna)
             cantidad = cantidad_grasa_kg(bruto) if _es_grasa(columna) else _numero_insumo(bruto)
             if cantidad <= 0:
                 continue
+            claves_fila.add(_clave_columna_bitacora(columna))
             filas.append(
                 {
                     "fecha": dia,
@@ -22407,12 +22519,29 @@ def detalle_insumos_suministrados(df: pd.DataFrame | None) -> pd.DataFrame:
                 }
             )
         for nombre, cantidad in _partes_otros_insumos(fila.get("OTROS INSUMOS")):
+            claves_fila.add(_clave_columna_bitacora(nombre))
             filas.append(
                 {
                     "fecha": dia,
                     "ubicacion": ubicacion,
                     "rubro": clasificar_rubro_refaccion(nombre),
                     "refaccion": nombre,
+                    "cantidad": cantidad,
+                }
+            )
+        indice = [str(col) for col in fila.index]
+        for nombre, cantidad in _consumibles_en_comentario(fila.get("COMENTARIOS")):
+            columna = _columna_destino_insumo(nombre, indice)
+            clave = _clave_columna_bitacora(columna)
+            if not clave or clave in claves_fila:
+                continue
+            claves_fila.add(clave)
+            filas.append(
+                {
+                    "fecha": dia,
+                    "ubicacion": ubicacion,
+                    "rubro": clasificar_rubro_refaccion(columna),
+                    "refaccion": etiqueta_refaccion(columna),
                     "cantidad": cantidad,
                 }
             )
@@ -25769,7 +25898,7 @@ CRITERIOS_REPORTE_EJECUTIVO = (
     ("Aceite", "insumo", ("aceite",), ("filtro",)),
     ("Grasa", "insumo", ("grasa",), ()),
     ("Filtros", "insumo", ("filtro",), ()),
-    ("Bujías", "insumo", ("bujia",), ()),
+    ("Bujías", "insumo", ("bujia",), ("cable",)),
     ("Mantenimientos mensuales y bimestrales", "mantenimiento", ("mensual", "bimestral"), ("semestral",)),
     ("Mantenimientos semestrales", "mantenimiento", ("semestral",), ()),
 )
@@ -25828,15 +25957,26 @@ def _insumos_fila_reporte(fila) -> list[tuple[str, float]]:
             continue
         columnas.append(nombre)
     salida = []
+    ya: set[str] = set()
     for columna in columnas:
         bruto = fila.get(columna)
         cantidad = cantidad_grasa_kg(bruto) if _es_grasa(columna) else _numero_insumo(bruto)
         if cantidad <= 0:
             continue
+        ya.add(_clave_columna_bitacora(columna))
         salida.append((etiqueta_refaccion(columna), float(cantidad)))
     for nombre, cantidad in _partes_otros_insumos(fila.get("OTROS INSUMOS")):
         if cantidad > 0:
+            ya.add(_clave_columna_bitacora(nombre))
             salida.append((nombre, float(cantidad)))
+    indice = [str(col) for col in getattr(fila, "index", [])]
+    for nombre, cantidad in _consumibles_en_comentario(fila.get("COMENTARIOS")):
+        columna = _columna_destino_insumo(nombre, indice)
+        clave = _clave_columna_bitacora(columna)
+        if not clave or clave in ya:
+            continue
+        ya.add(clave)
+        salida.append((etiqueta_refaccion(columna), float(cantidad)))
     return salida
 
 
