@@ -898,7 +898,12 @@ COLUMNAS_BITACORA_SOLEDAD = [
     "DESCRIPCION DE LA ACTIVIDAD",
     "ACEITE SAE 50 PJP4",
     "BANDAS C144 PJP4",
+    "BANDAS C112 PJP4",
     "BOMBA DE AGUA REPARADA PJP4",
+    "FILTRO DE ACEITE PJP4",
+    "FILTRO DE ACEITE (OPS)",
+    "BUJIAS PJP4",
+    "JUEGO DE CABLES PARA BUJIAS",
     "GRASA OPS",
     "REFRIGERANTE OPS",
     "COMENTARIOS",
@@ -907,7 +912,12 @@ COLUMNAS_BITACORA_SOLEDAD = [
 COLUMNAS_CONSUMIBLE_SOLEDAD = [
     "ACEITE SAE 50 PJP4",
     "BANDAS C144 PJP4",
+    "BANDAS C112 PJP4",
     "BOMBA DE AGUA REPARADA PJP4",
+    "FILTRO DE ACEITE PJP4",
+    "FILTRO DE ACEITE (OPS)",
+    "BUJIAS PJP4",
+    "JUEGO DE CABLES PARA BUJIAS",
     "GRASA OPS",
     "REFRIGERANTE OPS",
 ]
@@ -7350,11 +7360,38 @@ def _valor_fecha_exportacion(valor):
     return datetime(dia.year, dia.month, dia.day) if dia else ""
 
 
+def _columna_insumo_numerica(nombre: str) -> bool:
+    """True si la columna guarda una cantidad de insumo y no un texto de la bitácora."""
+    clave = _clave_columna_bitacora(nombre)
+    if not clave or clave in {
+        "equipo",
+        "personal",
+        "cuadrilla",
+        "ubicacion",
+        "comentarios",
+        "fecha",
+        "secuencia",
+        "avance",
+        "avance %",
+    }:
+        return False
+    if "descripcion" in clave or "comentario" in clave or "proporcionado" in clave or "estado origen" in clave:
+        return False
+    return _es_columna_cantidad_refaccion(nombre)
+
+
 def columnas_oficiales_exportacion_bitacora(df: pd.DataFrame) -> list[str]:
     columnas = list(COLUMNAS_BITACORA_SOLEDAD)
     for extra in ("REVISIÓN", "OBSERVACIÓN REVISIÓN", "EVIDENCIA"):
         if extra in df.columns and extra not in columnas:
             columnas.append(extra)
+    if df is not None:
+        for col in df.columns:
+            nombre = str(col)
+            if nombre.startswith("_") or nombre in columnas:
+                continue
+            if _columna_insumo_numerica(nombre):
+                columnas.append(nombre)
     return columnas
 
 
@@ -7486,7 +7523,7 @@ def normalizar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     for col in extras + list(COLUMNAS_BITACORA_SOLEDAD):
         if col not in df.columns:
             continue
-        if col in COLUMNAS_CONSUMIBLE_SOLEDAD or col == "AVANCE %":
+        if col in COLUMNAS_CONSUMIBLE_SOLEDAD or col == "AVANCE %" or _columna_insumo_numerica(col):
             df[col] = pd.to_numeric(df[col], errors="coerce")
         else:
             df[col] = df[col].fillna("").astype(str)
@@ -7560,6 +7597,10 @@ def guardar_en_excel(df_final: pd.DataFrame, *, sincronizar: bool = True) -> Non
     for col in list(COLUMNAS_BITACORA_SOLEDAD) + ["REVISIÓN", "OBSERVACIÓN REVISIÓN", "ID_REGISTRO", "EVIDENCIA"] + list(COLUMNAS_EXCEL):
         if col in df_final.columns and col not in columnas_salida:
             columnas_salida.append(col)
+    for col in df_final.columns:
+        nombre = str(col)
+        if nombre not in columnas_salida and _columna_insumo_numerica(nombre):
+            columnas_salida.append(nombre)
     salida = df_final[columnas_salida].copy()
     actuales = persistencia.contar_filas_bitacora(EXCEL_FILE) if os.path.exists(EXCEL_FILE) else 0
     if persistencia.debe_bloquear_vaciado(actuales, len(salida)):
@@ -7770,19 +7811,31 @@ def _asignar_consumibles(texto: str, encabezados: list[tuple[int, str]]) -> tupl
 
 
 def _cantidades_consumibles_fila(fila) -> list[tuple[str, float]]:
-    halladas: list[tuple[str, float]] = []
-    for col in getattr(fila, "index", []):
-        nombre = str(col)
-        if not es_columna_insumo_excel(nombre):
+    return [
+        (item["columna"], float(item["cantidad"]))
+        for item in _insumos_registrados_fila(fila)
+    ]
+
+
+def _ampliar_tablas_columna(ws, fila_header: int, col: int, fila: int) -> None:
+    """Incluye una columna nueva (y la fila editada) dentro de la tabla de la bitácora."""
+    from openpyxl.utils.cell import get_column_letter, range_boundaries
+
+    for tabla in ws.tables.values():
+        try:
+            min_col, min_row, max_col, max_row = range_boundaries(tabla.ref)
+        except (TypeError, ValueError):
             continue
-        texto = _texto_insumo_celda(nombre, fila.get(col))
-        if not texto:
+        if min_row != fila_header:
             continue
-        _etiqueta, cantidad = _partir_cantidad_consumible(texto)
-        if cantidad is None:
+        nuevo_col = max(int(max_col), int(col))
+        nuevo_fila = max(int(max_row), int(fila))
+        if nuevo_col == max_col and nuevo_fila == max_row:
             continue
-        halladas.append((nombre, cantidad))
-    return halladas
+        nuevo = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(nuevo_col)}{nuevo_fila}"
+        tabla.ref = nuevo
+        if getattr(tabla, "autoFilter", None) is not None:
+            tabla.autoFilter.ref = nuevo
 
 
 def _escribir_cantidades_fila(ws, fila_header: int, fila: int, cantidades: dict) -> None:
@@ -7791,16 +7844,27 @@ def _escribir_cantidades_fila(ws, fila_header: int, fila: int, cantidades: dict)
     indice: dict[str, int] = {}
     for col in range(1, int(ws.max_column or 0) + 1):
         nombre = str(ws.cell(fila_header, col).value or "").strip()
-        if nombre:
-            indice[nombre] = col
+        clave = _clave_columna_bitacora(nombre)
+        if clave and clave not in indice:
+            indice[clave] = col
+    ultima = int(ws.max_column or 0)
     for nombre, bruto in cantidades.items():
-        col = indice.get(str(nombre))
-        if not col:
+        clave = _clave_columna_bitacora(nombre)
+        if not clave:
             continue
         try:
             numero = float(bruto or 0)
         except (TypeError, ValueError):
             continue
+        col = indice.get(clave)
+        if col is None:
+            if numero <= 0:
+                continue
+            ultima += 1
+            col = ultima
+            ws.cell(fila_header, col).value = str(nombre).strip()
+            indice[clave] = col
+            _ampliar_tablas_columna(ws, fila_header, col, fila)
         if numero <= 0:
             ws.cell(fila, col).value = None
         elif numero.is_integer():
@@ -10951,6 +11015,177 @@ def _opciones_cuadrilla_edicion(df: pd.DataFrame, actual: str) -> list[str]:
     return sorted(por_clave.values(), key=orden_cuadrilla_oficial)
 
 
+_REGLAS_COLUMNA_INSUMO = (
+    ("aceite hidraul", "ACEITE HIDRÁULICO (LTS)"),
+    ("aceite sae", "ACEITE SAE 50 PJP4"),
+    ("refriger", "REFRIGERANTE OPS"),
+    ("anticongel", "REFRIGERANTE OPS"),
+    ("grasa", "GRASA OPS"),
+    ("filtro de aire", "FILTRO DE AIRE"),
+    ("filtro de aceite ops", "FILTRO DE ACEITE (OPS)"),
+    ("filtro aceite ops", "FILTRO DE ACEITE (OPS)"),
+    ("filtro", "FILTRO DE ACEITE PJP4"),
+    ("bujia", "BUJIAS PJP4"),
+    ("juego de cables", "JUEGO DE CABLES PARA BUJIAS"),
+    ("cables para buj", "JUEGO DE CABLES PARA BUJIAS"),
+    ("banda c 115", "BANDAS C115 PJP4"),
+    ("banda c115", "BANDAS C115 PJP4"),
+    ("banda c 112", "BANDAS C112 PJP4"),
+    ("banda c112", "BANDAS C112 PJP4"),
+    ("banda c 144", "BANDAS C144 PJP4"),
+    ("banda c144", "BANDAS C144 PJP4"),
+    ("banda c 240", "BANDAS C240 PJP4"),
+    ("banda c240", "BANDAS C240 PJP4"),
+    ("micro v", "BANDA MICRO V"),
+    ("bomba de agua", "BOMBA DE AGUA REPARADA PJP4"),
+    ("alternador", "ALTERNADOR CANTIDAD"),
+    ("motor de arranque", "MARCHA / MOTOR DE ARRANQUE"),
+    ("marcha", "MARCHA / MOTOR DE ARRANQUE"),
+    ("aceite", "ACEITE SAE 50 PJP4"),
+)
+
+
+def _columna_por_clave_insumo(objetivo: str, columnas: list[str]) -> str:
+    clave = _clave_columna_bitacora(objetivo)
+    if not clave:
+        return ""
+    for nombre in columnas:
+        if _clave_columna_bitacora(nombre) == clave:
+            return str(nombre)
+    return ""
+
+
+def _titulo_columna_nuevo_insumo(nombre: str) -> str:
+    texto = re.sub(r"[\[\]:\\/?*]+", " ", str(nombre or ""))
+    texto = re.sub(r"\s+", " ", texto).strip()
+    return (texto.upper() or "OTRO INSUMO")[:80]
+
+
+def _columna_destino_insumo(nombre: str, columnas: list[str] | None = None) -> str:
+    columnas = list(columnas or [])
+    clave = _clave_columna_bitacora(nombre)
+    destino = ""
+    for token, columna in _REGLAS_COLUMNA_INSUMO:
+        token_clave = _clave_columna_bitacora(token)
+        if token_clave and token_clave in clave:
+            destino = columna
+            break
+    if not destino:
+        coincidencia = _mejor_columna_consumible(
+            nombre,
+            [(indice + 1, col) for indice, col in enumerate(columnas)],
+        )
+        if coincidencia:
+            return coincidencia[1]
+        destino = _titulo_columna_nuevo_insumo(nombre)
+    return _columna_por_clave_insumo(destino, columnas) or destino
+
+
+def _unidad_editor_insumo(nombre: str) -> str:
+    clave = _clave_columna_bitacora(nombre)
+    if "grasa" in clave:
+        return "Kg"
+    if "filtro" in clave:
+        return "Pzas"
+    if any(token in clave for token in ("lts", "litro", "refriger", "diesel", "hidraul")):
+        return "L"
+    if "aceite" in clave:
+        return "L"
+    return "Pzas"
+
+
+def _etiqueta_editor_insumo(columna: str) -> str:
+    base = etiqueta_refaccion(columna)
+    if _es_grasa(columna):
+        return "Grasa"
+    unidad = _unidad_editor_insumo(columna)
+    if unidad and unidad.casefold() not in base.casefold():
+        return f"{base} ({unidad})"
+    return base
+
+
+def _paso_editor_insumo(columna: str, cantidad: float) -> float:
+    if _es_grasa(columna) and float(cantidad) > 100:
+        return 1.0
+    unidad = _unidad_editor_insumo(columna)
+    if unidad == "Kg":
+        return 0.1
+    if unidad == "L":
+        return 0.5
+    return 1.0
+
+
+def _insumos_registrados_fila(fila) -> list[dict]:
+    indice = [str(col) for col in getattr(fila, "index", [])]
+    registrados = []
+    for nombre in indice:
+        if not _es_columna_cantidad_refaccion(nombre):
+            continue
+        origen = _ESPEJO_INSUMO_BITACORA.get(nombre)
+        if origen and origen in indice:
+            continue
+        cantidad = _numero_insumo(fila.get(nombre))
+        if cantidad <= 0:
+            continue
+        unidad = _unidad_editor_insumo(nombre)
+        ayuda = "Un 0 quita este insumo del registro, del Excel y del reporte."
+        if _es_grasa(nombre):
+            ayuda = (
+                "Si el número es mayor de 100, el Excel lo tiene en gramos (200 = 0.2 Kg). "
+                "100 o menos se guarda como kilogramos. Un 0 quita la grasa del registro."
+            )
+        registrados.append(
+            {
+                "columna": nombre,
+                "etiqueta": _etiqueta_editor_insumo(nombre),
+                "cantidad": cantidad,
+                "unidad": unidad,
+                "entera": unidad == "Pzas",
+                "paso": _paso_editor_insumo(nombre, cantidad),
+                "ayuda": ayuda,
+            }
+        )
+    return registrados
+
+
+def _opciones_insumos_nuevos(columnas: list[str], claves_usadas: set[str]) -> list[str]:
+    opciones = []
+    vistos: set[str] = set()
+    nombres = [str(item.get("nombre") or "").strip() for item in _items_insumos_registro()]
+    nombres.extend(["Filtro de aceite OPS", "Aceite hidráulico"])
+    for nombre in nombres:
+        if not nombre or nombre.casefold() in vistos:
+            continue
+        destino = _columna_destino_insumo(nombre, columnas)
+        if _clave_columna_bitacora(destino) in claves_usadas:
+            continue
+        vistos.add(nombre.casefold())
+        opciones.append(nombre)
+    return opciones
+
+
+def _cantidad_editor_insumo(etiqueta: str, key: str, cantidad, entera: bool, paso: float, ayuda: str = ""):
+    if key not in st.session_state:
+        st.session_state[key] = int(round(float(cantidad or 0))) if entera else float(cantidad or 0)
+    extra = {"help": ayuda} if ayuda else {}
+    if entera:
+        return int(st.number_input(etiqueta, min_value=0, step=1, key=key, **extra))
+    return float(st.number_input(etiqueta, min_value=0.0, step=float(paso), key=key, **extra))
+
+
+def _cantidades_insumo_equivalentes(antes: dict, despues: dict) -> bool:
+    claves = set(antes) | set(despues)
+    for clave in claves:
+        if abs(float(antes.get(clave) or 0) - float(despues.get(clave) or 0)) >= 1e-9:
+            return False
+    return True
+
+
+def _recordar_widget(clave: str, valor):
+    if clave not in st.session_state:
+        st.session_state[clave] = valor
+
+
 def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
     fila = df.loc[idx]
     ver = int(st.session_state.get("_rev_ver", 0))
@@ -10971,65 +11206,143 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
     personal_actual = texto_visible(fila.get("PERSONAL"), "")
 
     st.markdown("##### ✏️ Editar datos del registro")
-    with st.form(f"rev_editar_{idx}_{ver}"):
-        c1, c2, c3 = st.columns([1, 1.2, 0.8])
-        with c1:
-            nueva_fecha = st.date_input("Fecha", value=dia, format="DD/MM/YYYY")
-        with c2:
-            clave_cuad_edit = f"rev_edit_cuadrilla_{idx}"
-            if clave_cuad_edit in st.session_state and st.session_state[clave_cuad_edit] not in opciones_cuadrilla:
-                st.session_state.pop(clave_cuad_edit, None)
-            if clave_cuad_edit not in st.session_state:
-                coincidencia = next(
-                    (op for op in opciones_cuadrilla if clave_cuadrilla_oficial(op) == clave_actual),
-                    None,
-                )
-                if coincidencia:
-                    st.session_state[clave_cuad_edit] = coincidencia
-            nueva_cuadrilla = st.selectbox(
-                "Cuadrilla",
-                opciones_cuadrilla,
-                index=None if clave_cuad_edit in st.session_state else indice_cuadrilla,
-                format_func=etiqueta_cuadrilla_historial,
-                key=clave_cuad_edit,
-                persist_state="session",
+    c1, c2, c3 = st.columns([1, 1.2, 0.8])
+    with c1:
+        clave_fecha = f"rev_edit_fecha_{idx}_{ver}"
+        _recordar_widget(clave_fecha, dia)
+        nueva_fecha = st.date_input("Fecha", format="DD/MM/YYYY", key=clave_fecha)
+    with c2:
+        clave_cuad_edit = f"rev_edit_cuadrilla_{idx}"
+        if clave_cuad_edit in st.session_state and st.session_state[clave_cuad_edit] not in opciones_cuadrilla:
+            st.session_state.pop(clave_cuad_edit, None)
+        if clave_cuad_edit not in st.session_state:
+            coincidencia = next(
+                (op for op in opciones_cuadrilla if clave_cuadrilla_oficial(op) == clave_actual),
+                None,
             )
-        with c3:
-            nueva_secuencia = st.number_input("Secuencia", min_value=1, step=1, value=int(secuencia_actual))
-        c4, c5 = st.columns([2, 1])
-        with c4:
-            nueva_ubic, nuevo_numero, _tag_edit = render_selector_ubicacion_captura(
-                f"rev_edit_{idx}_{ver}",
-                valor_actual=ubic_actual,
-            )
-        with c5:
-            clave_personal_edit = f"rev_edit_personal_{idx}"
-            if clave_personal_edit not in st.session_state:
-                st.session_state[clave_personal_edit] = personal_actual
-            nuevo_personal = st.text_input(
-                "Ficha / Personal",
-                key=clave_personal_edit,
-                persist_state="session",
-            )
-        nueva_desc = st.text_area("Descripción de la actividad", value=descripcion_actual, height=110)
-        nuevos_coment = st.text_area("Comentarios", value=comentarios_actual, height=80)
-        cantidades_actuales = _cantidades_consumibles_fila(fila)
-        nuevas_cantidades: dict[str, float] = {}
-        if cantidades_actuales:
-            st.markdown("**Consumibles**")
-            st.caption("Si la cantidad quedó en 1, corrígela aquí. Un 0 quita ese consumible del registro.")
+            if coincidencia:
+                st.session_state[clave_cuad_edit] = coincidencia
+        nueva_cuadrilla = st.selectbox(
+            "Cuadrilla",
+            opciones_cuadrilla,
+            index=None if clave_cuad_edit in st.session_state else indice_cuadrilla,
+            format_func=etiqueta_cuadrilla_historial,
+            key=clave_cuad_edit,
+            persist_state="session",
+        )
+    with c3:
+        clave_secuencia = f"rev_edit_sec_{idx}_{ver}"
+        _recordar_widget(clave_secuencia, int(secuencia_actual))
+        nueva_secuencia = st.number_input("Secuencia", min_value=1, step=1, key=clave_secuencia)
+    c4, c5 = st.columns([2, 1])
+    with c4:
+        nueva_ubic, nuevo_numero, _tag_edit = render_selector_ubicacion_captura(
+            f"rev_edit_{idx}_{ver}",
+            valor_actual=ubic_actual,
+        )
+    with c5:
+        clave_personal_edit = f"rev_edit_personal_{idx}"
+        _recordar_widget(clave_personal_edit, personal_actual)
+        nuevo_personal = st.text_input(
+            "Ficha / Personal",
+            key=clave_personal_edit,
+            persist_state="session",
+        )
+    clave_desc = f"rev_edit_desc_{idx}_{ver}"
+    clave_coment = f"rev_edit_coment_{idx}_{ver}"
+    _recordar_widget(clave_desc, descripcion_actual)
+    _recordar_widget(clave_coment, comentarios_actual)
+    nueva_desc = st.text_area("Descripción de la actividad", height=110, key=clave_desc)
+    nuevos_coment = st.text_area("Comentarios", height=80, key=clave_coment)
+
+    columnas_fila = [str(col) for col in fila.index]
+    registrados = _insumos_registrados_fila(fila)
+    claves_usadas = {_clave_columna_bitacora(item["columna"]) for item in registrados}
+    cantidades_editadas: dict[str, float] = {}
+    with st.container(border=True):
+        st.markdown("**Insumos ya suministrados**")
+        st.caption(
+            "Cada cantidad se puede corregir. Si un filtro, una bomba o un cable quedó en 1, "
+            "cambia el número aquí. Un 0 lo quita del Excel y del reporte."
+        )
+        if registrados:
             bloque_cant = st.columns(3)
-            for indice_cant, (nombre_cant, cantidad_cant) in enumerate(cantidades_actuales):
+            for indice_cant, item in enumerate(registrados):
                 with bloque_cant[indice_cant % 3]:
-                    nuevas_cantidades[nombre_cant] = st.number_input(
-                        nombre_cant,
-                        min_value=0.0,
-                        step=0.5,
-                        value=float(cantidad_cant),
-                        format="%g",
-                        key=f"rev_cant_{idx}_{ver}_{indice_cant}",
+                    cantidades_editadas[item["columna"]] = _cantidad_editor_insumo(
+                        item["etiqueta"],
+                        f"rev_cant_{idx}_{ver}_{slug_insumo(item['columna'])}",
+                        item["cantidad"],
+                        item["entera"],
+                        item["paso"],
+                        item["ayuda"],
                     )
-        guardar = st.form_submit_button("💾 Guardar Cambios en Bitácora", type="primary")
+        else:
+            st.caption("Este registro no tiene insumos capturados.")
+
+        st.markdown("**Agregar insumos que faltaron**")
+        clave_multi = f"rev_agregar_insumos_{idx}_{ver}"
+        opciones_nuevas = _opciones_insumos_nuevos(columnas_fila, claves_usadas)
+        for nombre_previo in list(st.session_state.get(clave_multi) or []):
+            if nombre_previo not in opciones_nuevas:
+                opciones_nuevas.append(nombre_previo)
+        seleccion_nueva = st.multiselect(
+            "Elige uno o varios del catálogo",
+            opciones_nuevas,
+            placeholder="Banda C-115, refrigerante, bujías…",
+            key=clave_multi,
+        )
+        clave_otro = f"rev_otro_insumo_{idx}_{ver}"
+        otro_insumo = st.text_input(
+            "Otro insumo que no está en la lista",
+            placeholder="Escribe el nombre y después indica la cantidad",
+            key=clave_otro,
+        ).strip()
+        nombres_nuevos = list(seleccion_nueva)
+        if otro_insumo and otro_insumo.casefold() not in {nombre.casefold() for nombre in nombres_nuevos}:
+            if _clave_columna_bitacora(_columna_destino_insumo(otro_insumo, columnas_fila)) in claves_usadas:
+                st.caption(f"«{otro_insumo}» ya está en el registro. Corrige su cantidad arriba.")
+            else:
+                nombres_nuevos.append(otro_insumo)
+        agregados: list[tuple[str, float]] = []
+        if nombres_nuevos:
+            bloque_nuevo = st.columns(3)
+            for indice_nuevo, nombre_nuevo in enumerate(nombres_nuevos):
+                destino_nuevo = _columna_destino_insumo(nombre_nuevo, columnas_fila)
+                unidad_nueva = _unidad_editor_insumo(destino_nuevo)
+                entera_nueva = unidad_nueva == "Pzas"
+                with bloque_nuevo[indice_nuevo % 3]:
+                    cantidad_nueva = _cantidad_editor_insumo(
+                        f"{nombre_nuevo} ({unidad_nueva})",
+                        f"rev_nueva_{idx}_{ver}_{slug_insumo(nombre_nuevo)}",
+                        0,
+                        entera_nueva,
+                        _paso_editor_insumo(destino_nuevo, 0),
+                        "Escribe la cantidad real. Si queda en 0, este insumo no se agrega.",
+                    )
+                agregados.append((nombre_nuevo, float(cantidad_nueva)))
+
+    destino_cantidades: dict[str, float] = {
+        item["columna"]: float(cantidades_editadas.get(item["columna"], item["cantidad"]))
+        for item in registrados
+    }
+    for nombre_nuevo, cantidad_nueva in agregados:
+        if cantidad_nueva <= 0:
+            continue
+        columna_nueva = _columna_destino_insumo(nombre_nuevo, list(destino_cantidades) + columnas_fila)
+        destino_cantidades[columna_nueva] = float(destino_cantidades.get(columna_nueva) or 0) + cantidad_nueva
+
+    visibles = [
+        f"{_etiqueta_editor_insumo(nombre)}: {_texto_cantidad_insumo(cantidad)}"
+        for nombre, cantidad in destino_cantidades.items()
+        if float(cantidad) > 0
+    ]
+    st.caption("Se guardará en la bitácora y en el reporte: " + (" · ".join(visibles) if visibles else "sin insumos."))
+    guardar = st.button(
+        "💾 Guardar Cambios en Bitácora",
+        type="primary",
+        key=f"rev_guardar_{idx}_{ver}",
+    )
     if not guardar:
         return
     captura = resolver_captura_ubicacion(nueva_ubic, nuevo_numero, _tag_edit)
@@ -11042,22 +11355,18 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
         "personal": nuevo_personal,
         "descripcion": nueva_desc,
         "comentarios": nuevos_coment,
-        "consumibles": nuevas_cantidades,
+        "consumibles": destino_cantidades,
     }
-    cantidades_previas = {nombre: cantidad for nombre, cantidad in cantidades_actuales}
-    consumibles_iguales = all(
-        abs(float(nuevas_cantidades.get(nombre, 0)) - float(cantidad)) < 1e-9
-        for nombre, cantidad in cantidades_previas.items()
-    )
+    cantidades_previas = {item["columna"]: float(item["cantidad"]) for item in registrados}
     sin_cambios = (
         nueva_fecha == dia
-        and clave_cuadrilla_oficial(nueva_cuadrilla) == clave_actual
+        and clave_cuadrilla_oficial(str(nueva_cuadrilla or "")) == clave_actual
         and int(nueva_secuencia) == int(secuencia_actual)
         and cambios["ubicacion"] == ubic_actual
-        and nuevo_personal.strip() == personal_actual
-        and nueva_desc.strip() == descripcion_actual
-        and nuevos_coment.strip() == comentarios_actual
-        and consumibles_iguales
+        and str(nuevo_personal or "").strip() == personal_actual
+        and str(nueva_desc or "").strip() == descripcion_actual
+        and str(nuevos_coment or "").strip() == comentarios_actual
+        and _cantidades_insumo_equivalentes(cantidades_previas, destino_cantidades)
     )
     if sin_cambios:
         st.info("No hay cambios por guardar.")
@@ -11072,6 +11381,10 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
         return
     sync = despues_de_cambio_bitacora("Edición de registro en bitácora")
     texto = f"Registro actualizado en la fila {resultado['fila']} de la bitácora."
+    if visibles:
+        texto += " Insumos: " + " · ".join(visibles) + "."
+    else:
+        texto += " El registro quedó sin insumos."
     if resultado["fotos_movidas"]:
         texto += f" Se movieron {resultado['fotos_movidas']} foto(s) a la carpeta de la nueva fecha, cuadrilla o secuencia."
     texto += _texto_sync_calendario(sync)
@@ -21866,8 +22179,13 @@ _ESPEJO_INSUMO_BITACORA = {
 _ETIQUETAS_REFACCION = {
     "aceite sae 50 pjp4": "Aceite SAE 50",
     "aceite lts": "Aceite SAE 50",
-    "bandas c144 pjp4": "Bandas C144",
-    "bandas c112 pjp4": "Bandas C112",
+    "aceite hidraulico lts": "Aceite hidráulico (L)",
+    "bandas c144 pjp4": "Banda C-144",
+    "bandas c115 pjp4": "Banda C-115",
+    "bandas c112 pjp4": "Banda C-112",
+    "bandas c240 pjp4": "Banda C-240",
+    "banda micro v": "Banda Micro V",
+    "marcha motor de arranque": "Marcha / Motor de arranque",
     "bandas cantidad": "Bandas",
     "bomba de agua reparada pjp4": "Bomba de agua",
     "filtro de aceite pjp4": "Filtro de aceite",
@@ -21875,7 +22193,7 @@ _ETIQUETAS_REFACCION = {
     "filtros pzas": "Filtro de aceite",
     "bujias pjp4": "Bujías",
     "bujias pzas": "Bujías",
-    "juego de cables para bujias": "Cables de bujías",
+    "juego de cables para bujias": "Juego de cables para bujías",
     "grasa ops": "Grasa (Kg)",
     "grasa kg": "Grasa (Kg)",
     "refrigerante ops": "Refrigerante",
