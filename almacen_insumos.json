@@ -3014,6 +3014,22 @@
       "tipo_insumo": "Consumible",
       "id": "a04a990e58",
       "registrado": "2026-11-06 15:31"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-05",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PPB",
+      "insumo_id": "grasa",
+      "insumo": "Grasa",
+      "cantidad": 2.0,
+      "unidad": "Kg",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "15cf040a30",
+      "registrado": "2026-11-06 15:33"
     }
   ]
 }
