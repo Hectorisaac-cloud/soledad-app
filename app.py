@@ -24975,6 +24975,15 @@ _PREFIJOS_NOMBRE_LARGO = (
     ("PS", "SOLEDAD"),
     ("PC", "COYOTE"),
 )
+_ZONA_NOMBRE_MATRIZ = {
+    "soledad": "SOLEDAD",
+    "soledad-norte": "SOLEDAD NORTE",
+    "aragon": "ARAGON",
+    "gallo": "GALLO",
+    "palo-blanco": "PALO BLANCO",
+    "coyotes": "COYOTE",
+}
+_RE_CODIGO_POZO_MATRIZ = re.compile(r"(PSN|PPB|PGA|PS|PA|PC|PB|PG)(\d+[A-Z]?)")
 
 
 def _norm_etiqueta_equivalencia(valor) -> str:
@@ -25077,6 +25086,49 @@ def _absorber_rejilla_equivalencias(grid: list[list], mapa: dict[str, str], cort
                 _absorber_equivalencia(mapa, cortos, corto, largo)
 
 
+def _codigo_pozo_matriz(texto: str) -> str:
+    """PS509, PB-109 o 'PC162 · inspección' quedan en el código compacto del pozo."""
+    for parte in re.split(r"[·|;,/]+", str(texto or "")):
+        plana = clave_pozo_plana(parte)
+        if _RE_CODIGO_POZO_MATRIZ.fullmatch(plana or ""):
+            return plana
+    return ""
+
+
+def _nombre_largo_desde_alias(alias: str) -> str:
+    texto = re.sub(r"^POZO\s+", "", _norm_etiqueta_equivalencia(alias)).strip()
+    if not texto or not re.search(r"\d", texto):
+        return ""
+    if any(zona in texto for zona in ("SOLEDAD NORTE", "PALO BLANCO", "SOLEDAD", "ARAGON", "GALLO", "COYOTE")):
+        return texto
+    return ""
+
+
+def _absorber_fichas_nombre_largo(datos, mapa: dict[str, str], cortos: list[str]) -> None:
+    """El JSON de ubicaciones guarda el código corto. La matriz pide el nombre largo."""
+    if not isinstance(datos, dict):
+        return
+    for ficha in (datos.get("fichas") or {}).values():
+        if not isinstance(ficha, dict):
+            continue
+        codigo = _codigo_pozo_matriz(ficha.get("nombre") or ficha.get("id") or "")
+        if not codigo:
+            continue
+        largo = ""
+        for alias in ficha.get("aliases") or []:
+            largo = _nombre_largo_desde_alias(alias)
+            if largo:
+                break
+        if not largo:
+            zona = _ZONA_NOMBRE_MATRIZ.get(str(ficha.get("zona_id") or ""))
+            numero = _RE_CODIGO_POZO_MATRIZ.fullmatch(codigo)
+            if zona and numero:
+                largo = f"{zona} {numero.group(2)}"
+        if largo:
+            _absorber_equivalencia(mapa, cortos, codigo, largo)
+            _absorber_equivalencia(mapa, cortos, ficha.get("nombre"), largo)
+
+
 def _rutas_catalogo_equivalencias() -> list[str]:
     rutas = []
     if os.path.isdir(UBICACIONES_EXCEL_DIR):
@@ -25087,6 +25139,8 @@ def _rutas_catalogo_equivalencias() -> list[str]:
             if "ubicacion" not in bajo or not bajo.endswith((".json", ".xlsx", ".xlsm")):
                 continue
             rutas.append(os.path.join(UBICACIONES_EXCEL_DIR, nombre))
+    if os.path.isfile(UBICACIONES_FILE):
+        rutas.append(UBICACIONES_FILE)
     if os.path.isfile(PLANTILLA_SUMINISTROS):
         rutas.append(PLANTILLA_SUMINISTROS)
     return rutas
@@ -25112,7 +25166,11 @@ def _equivalencias_pozo() -> tuple[dict[str, str], list[str]]:
             if os.path.abspath(ruta) == plantilla and mapa:
                 continue
             if ruta.casefold().endswith(".json"):
-                _absorber_json_equivalencias(leer_json(ruta, {}), mapa, cortos)
+                datos = leer_json(ruta, {})
+                if isinstance(datos, dict) and isinstance(datos.get("fichas"), dict):
+                    _absorber_fichas_nombre_largo(datos, mapa, cortos)
+                else:
+                    _absorber_json_equivalencias(datos, mapa, cortos)
             else:
                 _absorber_rejilla_equivalencias(_rejilla_hoja_equivalencias(ruta), mapa, cortos)
         except Exception:
@@ -25141,13 +25199,20 @@ def nombre_largo_excel(corto: str, diccionario: dict[str, str] | None = None) ->
     plana = clave_pozo_plana(bruto)
     if plana in diccionario:
         return diccionario[plana]
+    codigo = _codigo_pozo_matriz(bruto)
+    if codigo and codigo in diccionario:
+        return diccionario[codigo]
     compacto = re.sub(r"[^A-Z0-9]", "", _norm_etiqueta_equivalencia(bruto))
     for largo in diccionario.values():
         if compacto and compacto == re.sub(r"[^A-Z0-9]", "", _norm_etiqueta_equivalencia(largo)):
             return largo
+    base = codigo or plana
     for prefijo, zona in _PREFIJOS_NOMBRE_LARGO:
-        if plana.startswith(prefijo) and len(plana) > len(prefijo) and plana[len(prefijo)].isdigit():
-            return f"{zona} {plana[len(prefijo):]}"
+        if not base.startswith(prefijo) or len(base) <= len(prefijo) or not base[len(prefijo)].isdigit():
+            continue
+        resto = base[len(prefijo):]
+        if re.fullmatch(r"\d+[A-Z]?", resto):
+            return f"{zona} {resto}"
     return bruto
 
 
@@ -25380,19 +25445,306 @@ def _grupos_filas_lista(hoja, fila_ini: int, fila_fin: int) -> dict[str, list[in
     return grupos
 
 
-def _vaciar_lista_mantenimiento(hoja, programados: list[dict]) -> tuple[int, list[str]]:
-    """Escribe el aceite de mantenimiento en la fila del nombre largo, sin borrar el esqueleto ni las sumas."""
+def _familia_motor_texto(texto: str) -> str:
+    plano = _norm_etiqueta_equivalencia(texto)
+    if "WEICHAI" in plano:
+        return "WEICHAI"
+    if "CUMMIN" in plano:
+        return "CUMMINS"
+    if "VORTEC" in plano:
+        v6 = bool(re.search(r"\bV\s*6\b|\b6\b", plano))
+        v8 = bool(re.search(r"\bV\s*8\b|\b8\b", plano))
+        if v6 and not v8:
+            return "VORTEC6"
+        if v8 and not v6:
+            return "VORTEC8"
+        return "VORTEC"
+    if "ARROW" in plano:
+        return "ARROW"
+    return ""
+
+
+def _familias_encabezado_motor(texto: str) -> set[str]:
+    plano = _norm_etiqueta_equivalencia(texto)
+    familias: set[str] = set()
+    if "WEICHAI" in plano:
+        familias.add("WEICHAI")
+    if "CUMMIN" in plano:
+        familias.add("CUMMINS")
+    if "ARROW" in plano:
+        familias.add("ARROW")
+    if "VORTEC" in plano:
+        v6 = bool(re.search(r"\bV\s*6\b", plano))
+        v8 = bool(re.search(r"\bV\s*8\b", plano))
+        if v6 and v8:
+            familias.update({"VORTEC", "VORTEC6", "VORTEC8"})
+        elif v6:
+            familias.add("VORTEC6")
+        elif v8:
+            familias.add("VORTEC8")
+        else:
+            familias.update({"VORTEC", "VORTEC6", "VORTEC8"})
+    return familias
+
+
+def _rubro_banda_texto(texto: str) -> str:
+    hallado = re.search(r"\bC\s*-?\s*(\d{3})\b", _norm_etiqueta_equivalencia(texto))
+    if not hallado:
+        return ""
+    return f"BANDA C{hallado.group(1)}"
+
+
+def _rubro_plantilla_insumo(nombre: str, descripcion_bandas: str = "") -> str:
+    """Traduce la columna de la bitácora al rubro de la pestaña de proyecto."""
+    clave = _clave_columna_bitacora(nombre)
+    if not clave:
+        return ""
+    if clave in {"bandas cantidad", "bandas"}:
+        return _rubro_banda_texto(descripcion_bandas or nombre)
+    banda = re.fullmatch(r"bandas c(\d+)(?: pjp4)?", clave)
+    if banda:
+        return f"BANDA C{banda.group(1)}"
+    if "banda" in clave:
+        return _rubro_banda_texto(nombre)
+    if "filtro" in clave and "aire" in clave:
+        return "FILTRO AIRE"
+    if "filtro" in clave and ("aceite" in clave or clave.startswith("filtros")):
+        return "FILTRO ACEITE"
+    if "cable" in clave and "bujia" in clave:
+        return "CABLES BUJIA"
+    if "bujia" in clave:
+        return "BUJIA"
+    if "bomba de agua" in clave:
+        return "BOMBA AGUA REPARADA" if "repar" in clave else "BOMBA AGUA"
+    if "alternador" in clave:
+        return "ALTERNADOR REPARADO" if "repar" in clave else "ALTERNADOR"
+    if "radiador" in clave:
+        return "RADIADOR REPARADO" if "repar" in clave else "RADIADOR"
+    if "aceite hidraul" in clave:
+        return "ACEITE HIDRAULICO"
+    if "aceite" in clave:
+        return "ACEITE"
+    if "refrigerante" in clave or "anticongel" in clave:
+        return "REFRIGERANTE"
+    if "grasa" in clave:
+        return "GRASA"
+    return ""
+
+
+def _rubro_encabezado_plantilla(texto: str) -> str:
+    """El filtro de aceite no es la columna de litros, ni la manguera engrasadora es la de grasa."""
+    plano = _norm_etiqueta_equivalencia(texto)
+    if not plano or plano.startswith("POZO") or plano in {"OT", "OT.", "TRABAJO", "FECHA", "CUADRILLA", "MOTOR", "UBM", "VALE", "DESPACHO"}:
+        return ""
+    if any(token in plano for token in ("ANEXO", "KIT DE", "JUEGO DE REFACC", "JUEGO DE REPAR")):
+        return ""
+    if "FILTRO" in plano and "AIRE" in plano:
+        return "FILTRO AIRE"
+    if "FILTRO" in plano and "PULMON" in plano:
+        return "FILTRO PULMON"
+    if "FILTRO" in plano and "HIDRAUL" in plano:
+        return "FILTRO HIDRAULICO"
+    if "FILTRO" in plano and "ACEITE" in plano:
+        return "FILTRO ACEITE"
+    if "CABLE" in plano and "BUJIA" in plano:
+        return "CABLES BUJIA"
+    if "BUJIA" in plano:
+        return "BUJIA"
+    if "BANDA" in plano and "ALTERNADOR" not in plano:
+        banda = _rubro_banda_texto(plano)
+        if banda:
+            return banda
+    if "BANDA" in plano and "ALTERNADOR" in plano:
+        return "BANDA ALTERNADOR"
+    if "BOMBA DE AGUA" in plano and "REPAR" in plano:
+        return "BOMBA AGUA REPARADA"
+    if "BOMBA DE AGUA" in plano:
+        return "BOMBA AGUA"
+    if "ALTERNADOR" in plano and "REPAR" in plano:
+        return "ALTERNADOR REPARADO"
+    if "ALTERNADOR" in plano and "VOLT" in plano:
+        return "ALTERNADOR"
+    if "RADIADOR" in plano and "REPAR" in plano:
+        return "RADIADOR REPARADO"
+    if "ACEITE" in plano and "HIDRAUL" in plano:
+        return "ACEITE HIDRAULICO"
+    if "ACEITE SAE" in plano:
+        return "ACEITE"
+    if "REFRIGERANTE" in plano or "ANTICONGELANTE" in plano:
+        return "REFRIGERANTE"
+    if re.search(r"\bGRASA\b", plano):
+        return "GRASA"
+    return ""
+
+
+def _fila_encabezado_proyecto(hoja) -> int:
+    limite = min(int(hoja.max_row or 1), 6)
+    for fila in range(1, limite + 1):
+        if _norm_etiqueta_equivalencia(hoja.cell(fila, 1).value).startswith("POZO"):
+            return fila
+    return 2
+
+
+def _indice_columnas_proyecto(hoja) -> dict[str, list[tuple[int, set[str]]]]:
+    fila = _fila_encabezado_proyecto(hoja)
+    indice: dict[str, list[tuple[int, set[str]]]] = {}
+    limite = min(int(hoja.max_column or 1), 160)
+    for col in range(1, limite + 1):
+        texto = hoja.cell(fila, col).value
+        rubro = _rubro_encabezado_plantilla(texto)
+        if not rubro:
+            continue
+        indice.setdefault(rubro, []).append((col, _familias_encabezado_motor(str(texto or ""))))
+    return indice
+
+
+def _columna_para_rubro(candidatas: list[tuple[int, set[str]]], familia: str) -> int | None:
+    """Elige la columna del rubro. Si el motor no coincide, no usa la de otro motor."""
+    if not candidatas:
+        return None
+    if len(candidatas) == 1:
+        return candidatas[0][0]
+    if not familia:
+        universales = [col for col, familias in candidatas if not familias]
+        return universales[0] if len(universales) == 1 else None
+    compatibles = [(col, familias) for col, familias in candidatas if not familias or familia in familias]
+    if not compatibles:
+        return None
+    compatibles.sort(key=lambda item: (len(item[1]) if item[1] else 99, item[0]))
+    return compatibles[0][0]
+
+
+def _familia_grupo_pozo(hoja, grupos: dict[str, list[int]], pozo: str) -> str:
+    for clave in _claves_busqueda_excel(pozo):
+        for fila in grupos.get(clave, []):
+            familia = _familia_motor_texto(hoja.cell(fila, 9).value)
+            if familia:
+                return familia
+    return ""
+
+
+def _familia_motor_ubicacion(tag: str, fila) -> str:
+    for texto in (_equipo_fila_suministros(fila), _texto_celda_admin(fila.get("EQUIPO"))):
+        familia = _familia_motor_texto(texto)
+        if familia:
+            return familia
+    consultas = [tag, canonizar_nombre_ubicacion(tag)]
+    indice = _indice_pozos_planos()
+    for clave in _variantes_clave_ubicacion(*consultas):
+        ficha = indice.get(clave)
+        if not isinstance(ficha, dict):
+            continue
+        familia = _familia_motor_texto(ficha.get("equipo_mci") or "")
+        if familia:
+            return familia
+    return ""
+
+
+def _celda_esta_vacia(hoja, fila: int, col: int) -> bool:
+    celda = _destino_escritura(hoja, fila, col)
+    return celda is not None and celda.value in (None, "")
+
+
+def _columnas_cantidad_exportacion(columnas) -> list[str]:
+    nombres = [str(col) for col in columnas]
+    salida = []
+    for columna in nombres:
+        if not _es_columna_cantidad_refaccion(columna):
+            continue
+        origen = _ESPEJO_INSUMO_BITACORA.get(columna)
+        if origen and origen in nombres:
+            continue
+        salida.append(columna)
+    return salida
+
+
+def _sumar_rubro_plantilla(totales: dict[str, float], rubro: str, cantidad: float) -> None:
+    if not rubro or cantidad <= 0:
+        return
+    totales[rubro] = totales.get(rubro, 0.0) + float(cantidad)
+
+
+def _cantidades_plantilla_fila(fila, columnas: list[str]) -> dict[str, float]:
+    """Cantidad real de cada rubro. La grasa pasa de gramos a kilogramos; el resto no se toca."""
+    totales: dict[str, float] = {}
+    claves: set[str] = set()
+    descripcion_bandas = fila.get("BANDAS DESCRIPCIÓN")
+    for columna in columnas:
+        bruto = fila.get(columna)
+        cantidad = cantidad_grasa_kg(bruto) if _es_grasa(columna) else _numero_insumo(bruto)
+        if cantidad <= 0:
+            continue
+        rubro = _rubro_plantilla_insumo(columna, descripcion_bandas)
+        if not rubro:
+            continue
+        claves.add(_clave_columna_bitacora(columna))
+        _sumar_rubro_plantilla(totales, rubro, cantidad)
+    for nombre, cantidad in _partes_otros_insumos(fila.get("OTROS INSUMOS")):
+        rubro = _rubro_plantilla_insumo(nombre, "")
+        clave = _clave_columna_bitacora(nombre)
+        if not rubro or not clave or clave in claves:
+            continue
+        claves.add(clave)
+        _sumar_rubro_plantilla(totales, rubro, cantidad)
+    indice = [str(col) for col in fila.index]
+    for nombre, cantidad in _consumibles_en_comentario(fila.get("COMENTARIOS")):
+        columna = _columna_destino_insumo(nombre, indice)
+        clave = _clave_columna_bitacora(columna)
+        if not clave or clave in claves:
+            continue
+        rubro = _rubro_plantilla_insumo(columna, "")
+        if not rubro:
+            continue
+        claves.add(clave)
+        _sumar_rubro_plantilla(totales, rubro, cantidad)
+    return totales
+
+
+def _hoja_proyecto_refacciones(wb):
+    """Pestaña oficial de refacciones: POZOS en A y TRABAJO en C, no una hoja nueva."""
+    for nombre in wb.sheetnames:
+        if "detalle de insumos" in nombre.casefold():
+            continue
+        hoja = wb[nombre]
+        pozo = str(hoja.cell(2, 1).value or "").strip().casefold()
+        trabajo = str(hoja.cell(2, 3).value or "").strip().casefold()
+        if pozo.startswith("pozo") and trabajo.startswith("trabajo"):
+            return hoja
+    return _hoja_programados_suministros(wb)
+
+
+def _vaciar_lista_mantenimiento(hoja, programados: list[dict]) -> tuple[int, list[str], int, int]:
+    """Escribe cada insumo en la columna de su rubro, en la fila del nombre largo.
+
+    No borra el nombre del pozo, el motor ni el UBM que ya trae la plantilla.
+    Si el pozo no tiene renglón libre, la cantidad se suma en el último.
+    """
     fila_ini, fila_fin = _fila_datos_programados(hoja)
-    col_aceite = _columna_aceite_lista(hoja)
-    columnas = [2, 3, 4, 5, 6, 7, col_aceite]
+    indice = _indice_columnas_proyecto(hoja)
+    columnas = [2, 3, 4, 5, 6, 7]
+    for candidatas in indice.values():
+        columnas.extend(col for col, _familias in candidatas)
+    columnas = list(dict.fromkeys(columnas))
     _desunir_columnas(hoja, fila_ini, fila_fin, columnas)
     _limpiar_columnas_datos(hoja, fila_ini, fila_fin, columnas)
     grupos = _grupos_filas_lista(hoja, fila_ini, fila_fin)
     usados: set[int] = set()
     puestos = 0
+    celdas = 0
+    sin_columna = 0
     faltantes: list[str] = []
+    familias: dict[str, str] = {}
     for item in programados:
         pozo = str(item.get("pozo") or "").strip()
+        cantidades = {
+            rubro: float(valor)
+            for rubro, valor in (item.get("cantidades") or {}).items()
+            if float(valor or 0) > 0
+        }
+        if not cantidades and item.get("litros"):
+            cantidades = {"ACEITE": float(item["litros"])}
+        if not cantidades:
+            continue
         fila = None
         for clave in _claves_busqueda_excel(pozo):
             for candidata in grupos.get(clave, []):
@@ -25401,34 +25753,45 @@ def _vaciar_lista_mantenimiento(hoja, programados: list[dict]) -> tuple[int, lis
                     break
             if fila:
                 break
+        reutilizar = False
         if fila is None:
-            ultima = None
             for clave in _claves_busqueda_excel(pozo):
                 if grupos.get(clave):
-                    ultima = grupos[clave][-1]
+                    fila = grupos[clave][-1]
+                    reutilizar = True
                     break
-            if ultima is None:
-                faltantes.append(pozo)
-                continue
-            if _sumar_litros(hoja, ultima, col_aceite, item["litros"]):
-                puestos += 1
+        if fila is None:
+            faltantes.append(pozo)
             continue
-        usados.add(fila)
-        if item.get("ot"):
-            _poner_valor_celda(hoja, fila, 2, item["ot"])
-        if item.get("trabajo"):
-            _poner_valor_celda(hoja, fila, 3, item["trabajo"])
-        if item.get("fecha"):
-            _poner_valor_celda(hoja, fila, 5, item["fecha"], "DD/MM/YYYY")
-        if item.get("cuadrilla"):
-            _poner_valor_celda(hoja, fila, 6, item["cuadrilla"])
-        if item.get("ubm"):
-            _poner_valor_celda(hoja, fila, 8, item["ubm"])
-        if item.get("motor"):
-            _poner_valor_celda(hoja, fila, 9, item["motor"])
-        _sumar_litros(hoja, fila, col_aceite, item["litros"])
-        puestos += 1
-    return puestos, faltantes
+        if pozo not in familias:
+            familias[pozo] = _familia_grupo_pozo(hoja, grupos, pozo)
+        familia = familias[pozo] or str(item.get("familia") or "")
+        if not reutilizar:
+            usados.add(fila)
+            if item.get("ot"):
+                _poner_valor_celda(hoja, fila, 2, item["ot"])
+            if item.get("trabajo"):
+                _poner_valor_celda(hoja, fila, 3, item["trabajo"])
+            if item.get("fecha"):
+                _poner_valor_celda(hoja, fila, 5, item["fecha"], "DD/MM/YYYY")
+            if item.get("cuadrilla"):
+                _poner_valor_celda(hoja, fila, 6, item["cuadrilla"])
+            if item.get("ubm") and _celda_esta_vacia(hoja, fila, 8):
+                _poner_valor_celda(hoja, fila, 8, item["ubm"])
+            if item.get("motor") and _celda_esta_vacia(hoja, fila, 9):
+                _poner_valor_celda(hoja, fila, 9, item["motor"])
+        escribio = False
+        for rubro, cantidad in cantidades.items():
+            columna = _columna_para_rubro(indice.get(rubro) or [], familia)
+            if not columna:
+                sin_columna += 1
+                continue
+            if _sumar_litros(hoja, fila, columna, cantidad):
+                escribio = True
+                celdas += 1
+        if escribio:
+            puestos += 1
+    return puestos, faltantes, celdas, sin_columna
 
 
 def _hoja_matriz_por_nombre(wb, fragmento: str):
@@ -25578,13 +25941,80 @@ def _renombrar_hojas_al_mes(wb, hojas: list, mes: int, anio: int) -> list[str]:
     return titulos
 
 
+def _tag_pozo_suministros(fila) -> str:
+    tag = _ubicacion_fila_refaccion(fila)
+    if not tag or tag == "Sin ubicación":
+        tag = _texto_celda_admin(fila.get("POZO")) or _texto_celda_admin(fila.get("UBICACIÓN"))
+    return tag or "Sin pozo"
+
+
+def _consumos_oficiales_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[str, str], dict[int, float]]]:
+    """Insumos del rango con el nombre largo del pozo y la cantidad capturada.
+
+    El aceite de inspección y suministro va a la matriz de relleno.
+    El resto (aceite de otras actividades, bandas, refrigerante, filtros, bujías, grasa)
+    va a la pestaña de proyecto, cada uno en su rubro.
+    """
+    inicio, fin = min(desde, hasta), max(desde, hasta)
+    base = bitacora_con_fechas(cargar_bitacora())
+    registros: list[dict] = []
+    relleno: dict[tuple[str, str], dict[int, float]] = {}
+    if base.empty or "_fecha" not in base.columns:
+        return registros, relleno
+    diccionario = diccionario_equivalencias_pozo()
+    programadas = _actividades_programadas_suministros()
+    columnas = _columnas_cantidad_exportacion(base.columns)
+    periodo = base.loc[
+        base["_fecha"].map(lambda dia: isinstance(dia, date) and inicio <= dia <= fin)
+    ]
+    for _, fila in periodo.iterrows():
+        cantidades = _cantidades_plantilla_fila(fila, columnas)
+        if not cantidades:
+            continue
+        dia = fila.get("_fecha")
+        if not isinstance(dia, date):
+            continue
+        destino = _destino_hoja_suministros(
+            fila.get("TIPO DE ACTIVIDAD"),
+            programadas,
+            _descripcion_fila_admin(fila),
+        )
+        tag = _tag_pozo_suministros(fila)
+        pozo = nombre_largo_excel(tag, diccionario)
+        cuadrilla = _cuadrilla_plantilla_suministros(fila.get("CUADRILLA"))
+        if destino == "relleno" and cantidades.get("ACEITE", 0) > 0:
+            litros = cantidades.pop("ACEITE")
+            dias = relleno.setdefault((cuadrilla, pozo), {})
+            dias[dia.day] = dias.get(dia.day, 0) + litros
+        if not cantidades:
+            continue
+        ubm, motor = _ubm_y_motor(_equipo_fila_suministros(fila))
+        registros.append(
+            {
+                "pozo": pozo,
+                "ot": numero_secuencia_actividad(fila.get("SECUENCIA")) or _texto_celda_admin(fila.get("SECUENCIA")),
+                "trabajo": _descripcion_fila_admin(fila) or _texto_celda_admin(fila.get("TIPO DE ACTIVIDAD")),
+                "fecha": datetime(dia.year, dia.month, dia.day),
+                "cuadrilla": cuadrilla,
+                "ubm": ubm,
+                "motor": motor,
+                "familia": _familia_motor_ubicacion(tag, fila),
+                "destino": destino,
+                "cantidades": cantidades,
+                "litros": float(cantidades.get("ACEITE") or 0),
+            }
+        )
+    registros.sort(key=lambda item: (item["fecha"], item["pozo"], str(item["ot"])))
+    return registros, relleno
+
+
 def generar_reporte_suministros_xlsm(desde: date, hasta: date) -> dict:
     """Llena la plantilla oficial sin tocar macros ni fórmulas.
 
     El nombre corto de la bitácora se traduce al nombre largo y la cantidad
-    se suma en la fila de ese pozo. En la matriz diaria, la columna C es el día 1.
+    real se escribe en la columna de ese insumo. El aceite de relleno entra
+    en la matriz diaria (C es el día 1). No se crea una hoja aparte.
     Las hojas de proyecto y relleno quedan con el mes del rango.
-    Incluye cada consumo del rango, tenga o no fotografías.
     """
     from openpyxl import load_workbook
 
@@ -25599,42 +26029,47 @@ def generar_reporte_suministros_xlsm(desde: date, hasta: date) -> dict:
             candidata = _hoja_relleno_suministros(wb)
             if candidata is not None and _matriz_dias(candidata):
                 hoja_relleno = candidata
-        hoja_lista = None if hoja_manttos is not None else _hoja_programados_suministros(wb)
-        if hoja_manttos is None and hoja_relleno is None and hoja_lista is None:
-            raise ValueError("La plantilla no tiene las hojas de aceite de manttos y de relleno.")
-        programados, relleno = _aceite_en_rango(desde, hasta)
+        hoja_proyecto = _hoja_proyecto_refacciones(wb)
+        if hoja_proyecto is None and hoja_relleno is None and hoja_manttos is None:
+            raise ValueError("La plantilla no tiene las hojas de proyecto y de aceite de relleno.")
+        registros, relleno = _consumos_oficiales_rango(desde, hasta)
         sin_fila: list[str] = []
-        if hoja_manttos is not None:
-            puestos_programados, faltan = _vaciar_matriz_dias(hoja_manttos, _agrupar_litros_por_dia(programados))
+        celdas = 0
+        sin_columna = 0
+        if hoja_manttos is not None and hoja_manttos is not hoja_proyecto:
+            programados = [
+                item
+                for item in registros
+                if item.get("destino") == "programado" and float((item.get("cantidades") or {}).get("ACEITE") or 0) > 0
+            ]
+            for item in programados:
+                item["litros"] = item["cantidades"].pop("ACEITE")
+            _puestos, faltan = _vaciar_matriz_dias(hoja_manttos, _agrupar_litros_por_dia(programados))
             sin_fila.extend(faltan)
-        elif hoja_lista is not None:
-            puestos_programados, faltan = _vaciar_lista_mantenimiento(hoja_lista, programados)
+            celdas += sum(len(dias) for dias in _agrupar_litros_por_dia(programados).values())
+        if hoja_proyecto is not None:
+            puestos_programados, faltan, celdas_proyecto, sin_columna = _vaciar_lista_mantenimiento(
+                hoja_proyecto, registros
+            )
             sin_fila.extend(faltan)
+            celdas += celdas_proyecto
         else:
             puestos_programados = 0
+        matriz_relleno = _relleno_por_pozo(relleno)
         if hoja_relleno is not None:
-            puestos_relleno, faltan = _vaciar_matriz_dias(hoja_relleno, _relleno_por_pozo(relleno))
+            puestos_relleno, faltan = _vaciar_matriz_dias(hoja_relleno, matriz_relleno)
             sin_fila.extend(faltan)
+            celdas += sum(len(dias) for dias in matriz_relleno.values())
         else:
             puestos_relleno = 0
         mes, anio = _mes_anio_reporte(desde, hasta)
         hojas_mes = []
-        for hoja in (hoja_manttos, hoja_lista, hoja_relleno):
+        for hoja in (hoja_manttos, hoja_proyecto, hoja_relleno):
             if hoja is not None and hoja not in hojas_mes:
                 hojas_mes.append(hoja)
         titulos_mes = _renombrar_hojas_al_mes(wb, hojas_mes, mes, anio)
-        detalle = _insumos_rango_admin(desde, hasta)
         if "Detalle de insumos" in wb.sheetnames:
             del wb["Detalle de insumos"]
-        detalle_hoja = wb.create_sheet("Detalle de insumos")
-        for columna, titulo in enumerate(("Fecha", "Ubicación", "Rubro", "Insumo", "Cantidad"), start=1):
-            detalle_hoja.cell(1, columna).value = titulo
-        for desplazamiento, fila in enumerate(detalle.itertuples(index=False), start=2):
-            detalle_hoja.cell(desplazamiento, 1).value = fila.fecha
-            detalle_hoja.cell(desplazamiento, 2).value = fila.ubicacion
-            detalle_hoja.cell(desplazamiento, 3).value = fila.rubro
-            detalle_hoja.cell(desplazamiento, 4).value = fila.refaccion
-            detalle_hoja.cell(desplazamiento, 5).value = fila.cantidad
         buffer = io.BytesIO()
         wb.save(buffer)
     finally:
@@ -25645,7 +26080,8 @@ def generar_reporte_suministros_xlsm(desde: date, hasta: date) -> dict:
         "nombre": f"suministros_{inicio.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.xlsm",
         "programados": puestos_programados,
         "relleno": puestos_relleno,
-        "insumos": int(len(detalle)),
+        "insumos": int(celdas),
+        "sin_columna": int(sin_columna),
         "sin_fila": len(list(dict.fromkeys(sin_fila))),
         "mes": _etiqueta_mes_hoja(mes, anio),
         "hojas": titulos_mes,
@@ -25666,6 +26102,10 @@ def _insumos_rango_admin(desde: date, hasta: date) -> pd.DataFrame:
     if detalle.empty:
         return detalle
     detalle = detalle.copy()
+    diccionario = diccionario_equivalencias_pozo()
+    detalle["ubicacion"] = detalle["ubicacion"].map(
+        lambda valor: nombre_largo_excel(str(valor or ""), diccionario) or valor
+    )
     detalle["fecha"] = detalle["fecha"].map(lambda dia: dia.strftime("%d/%m/%Y") if isinstance(dia, date) else dia)
     return detalle
 
@@ -25674,8 +26114,11 @@ def render_extraccion_evidencia_admin(jornada: date) -> None:
     st.caption(
         "El Excel usa la Actividad oficial. Si el registro antiguo no la trae, lee la descripción: "
         "«Inspección y suministro» va a relleno; bimestral, semestral, habilitado, puesta en marcha o preventivo va a programados. "
-        "El nombre corto (PSN334, PA67) se traduce al nombre largo de la matriz (SOLEDAD NORTE 334, ARAGON 67) "
-        "y la cantidad se suma en la fila de ese pozo. En la matriz diaria, C es el día 1 y L es el día 10. "
+        "El nombre corto (PS509, PB109, PSN334) se traduce al nombre largo de la matriz "
+        "(SOLEDAD 509, PALO BLANCO 109, SOLEDAD NORTE 334). "
+        "El aceite de relleno entra en la matriz diaria; el aceite de otras actividades, las bandas, "
+        "el refrigerante, los filtros, las bujías y la grasa entran en su columna de la pestaña de proyecto. "
+        "La cantidad es la capturada en la bitácora. En la matriz diaria, C es el día 1 y L es el día 10. "
         "Las pestañas de proyecto y relleno toman el mes del rango, por ejemplo NOVIEMBRE 2026."
     )
     desde_col, hasta_col = st.columns(2)
@@ -25706,13 +26149,17 @@ def render_extraccion_evidencia_admin(jornada: date) -> None:
             st.session_state.adm_m_ins_filas = int(paquete["programados"] + paquete["relleno"])
             st.session_state.adm_m_ins_resumen = (
                 f"{paquete.get('mes', '')}: "
-                f"{paquete['programados']} mantenimiento(s) programado(s) · "
+                f"{paquete['programados']} registro(s) en el proyecto · "
                 f"{paquete['relleno']} pozo(s) de relleno · "
-                f"{paquete.get('insumos', 0)} consumo(s) de insumos."
+                f"{paquete.get('insumos', 0)} cantidad(es) en las pestañas oficiales."
             ).lstrip(": ")
             if paquete.get("sin_fila"):
                 st.session_state.adm_m_ins_resumen += (
                     f" {paquete['sin_fila']} pozo(s) no están en la matriz."
+                )
+            if paquete.get("sin_columna"):
+                st.session_state.adm_m_ins_resumen += (
+                    f" {paquete['sin_columna']} cantidad(es) no tienen columna para ese motor."
                 )
     if st.session_state.get("adm_m_ins_xlsx"):
         st.caption(st.session_state.get("adm_m_ins_resumen") or "Plantilla de suministros lista.")
