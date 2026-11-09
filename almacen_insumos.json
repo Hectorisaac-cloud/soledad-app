@@ -3398,6 +3398,22 @@
       "tipo_insumo": "Consumible",
       "id": "b0fcb1ebbd",
       "registrado": "2026-11-09 15:50"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-06",
+      "secuencia": "Act. 4",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PPB",
+      "insumo_id": "otros",
+      "insumo": "1 ALTRONIC RECUPERADO",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "64082fb867",
+      "registrado": "2026-11-09 15:52"
     }
   ]
 }
