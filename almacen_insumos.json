@@ -3334,6 +3334,22 @@
       "tipo_insumo": "Consumible",
       "id": "8e34485fb7",
       "registrado": "2026-11-06 16:25"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-06",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PS Soledad",
+      "insumo_id": "otros",
+      "insumo": "2 MANGUERAS DE 1 PULGADA",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "93245a42e4",
+      "registrado": "2026-11-09 15:42"
     }
   ]
 }
