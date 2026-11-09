@@ -3238,6 +3238,19 @@
       "notas": "",
       "actualizado": "2026-11-06 16:31",
       "aliases": []
+    },
+    "PS119": {
+      "id": "PS119",
+      "nombre": "PS119",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
     }
   },
   "cambios_equipo": [
