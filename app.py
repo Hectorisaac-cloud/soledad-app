@@ -910,6 +910,7 @@ COLUMNAS_BITACORA_SOLEDAD = [
     "REFRIGERANTE OPS",
     "COMENTARIOS",
     "AVANCE %",
+    "HORAS DE EJECUCION",
 ]
 COLUMNAS_CONSUMIBLE_SOLEDAD = [
     "ACEITE SAE 50 PJP4",
@@ -7195,6 +7196,10 @@ def _alias_columna_bitacora(nombre: str) -> str:
         "comentarios": "COMENTARIOS",
         "avance": "AVANCE %",
         "avance %": "AVANCE %",
+        "horas de ejecucion": "HORAS DE EJECUCION",
+        "tiempo empleado": "HORAS DE EJECUCION",
+        "tiempo empleado horas": "HORAS DE EJECUCION",
+        "horas": "HORAS DE EJECUCION",
         "revision": "REVISIÓN",
         "observacion revision": "OBSERVACIÓN REVISIÓN",
         "programado": COLUMNA_PROGRAMADO,
@@ -7263,6 +7268,10 @@ _CLAVES_NO_INSUMO = {
     "comentarios",
     "avance",
     "avance %",
+    "horas de ejecucion",
+    "tiempo empleado",
+    "tiempo empleado horas",
+    "horas",
     "campo",
     "ot",
 }
@@ -7421,6 +7430,38 @@ def avance_texto(valor) -> str:
     return f"{int(round(num))}%"
 
 
+def _horas_ejecucion_registro(valor) -> float:
+    try:
+        numero = float(str(valor).replace(",", ".").replace("h", "").strip())
+    except (TypeError, ValueError):
+        numero = 0.0
+    numero = min(24.0, max(0.0, numero))
+    numero = round(numero, 2)
+    if numero.is_integer():
+        return float(int(numero))
+    return numero
+
+
+def horas_texto(valor) -> str:
+    if valor is None:
+        return ""
+    try:
+        if pd.isna(valor):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    texto = str(valor).strip()
+    if not texto or texto.lower() in {"nan", "none", "<na>"}:
+        return ""
+    try:
+        numero = _horas_ejecucion_registro(texto)
+    except (TypeError, ValueError):
+        return ""
+    if numero.is_integer():
+        return f"{int(numero)} h"
+    return f"{numero:.2f}".rstrip("0").rstrip(".") + " h"
+
+
 def mapear_soledad_a_interno(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
@@ -7483,6 +7524,7 @@ def vista_revision_soledad(df: pd.DataFrame) -> pd.DataFrame:
                 "Consumibles",
                 "Comentarios",
                 "Avance",
+                "Horas",
                 "Evidencia",
             ]
         )
@@ -7515,6 +7557,7 @@ def vista_revision_soledad(df: pd.DataFrame) -> pd.DataFrame:
                     fila["COMENTARIOS"] if "COMENTARIOS" in fila.index else fila.get("OBSERVACIÓN REVISIÓN")
                 ),
                 "Avance": avance_texto(fila["AVANCE %"] if "AVANCE %" in fila.index else fila.get("AVANCE")),
+                "Horas": horas_texto(fila.get("HORAS DE EJECUCION")) or "—",
                 "Evidencia": estatus_evidencia_fila(fila),
             }
         )
@@ -7539,6 +7582,9 @@ def _columna_insumo_numerica(nombre: str) -> bool:
         "secuencia",
         "avance",
         "avance %",
+        "horas de ejecucion",
+        "tiempo empleado",
+        "horas",
     }:
         return False
     if "descripcion" in clave or "comentario" in clave or "proporcionado" in clave or "estado origen" in clave:
@@ -7689,7 +7735,7 @@ def normalizar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     for col in extras + list(COLUMNAS_BITACORA_SOLEDAD):
         if col not in df.columns:
             continue
-        if col in COLUMNAS_CONSUMIBLE_SOLEDAD or col == "AVANCE %" or _columna_insumo_numerica(col):
+        if col in COLUMNAS_CONSUMIBLE_SOLEDAD or col in {"AVANCE %", "HORAS DE EJECUCION"} or _columna_insumo_numerica(col):
             df[col] = pd.to_numeric(df[col], errors="coerce")
         else:
             df[col] = df[col].fillna("").astype(str)
@@ -8135,6 +8181,7 @@ def agregar_registro_bitacora_soledad(
     raiz_fotos: str | None = None,
     secuencia: int | None = None,
     avance: int | float | None = None,
+    horas: int | float | None = None,
     equipo: str = "",
     tipo_actividad: str = "",
     actividad_corta: str = "",
@@ -8199,6 +8246,21 @@ def agregar_registro_bitacora_soledad(
                 ws.cell(fila_header, col_avance).value = "AVANCE %"
                 encabezados.append((col_avance, "AVANCE %"))
             ws.cell(fila, col_avance).value = _porcentaje_avance_registro(avance)
+        if horas is not None:
+            col_horas = _columna_encabezado(
+                encabezados,
+                "HORAS DE EJECUCION",
+                "HORAS DE EJECUCIÓN",
+                "TIEMPO EMPLEADO (HORAS)",
+                "TIEMPO EMPLEADO",
+            )
+            if not col_horas:
+                col_horas = max((col for col, _nombre in encabezados), default=0) + 1
+                ws.cell(fila_header, col_horas).value = "HORAS DE EJECUCION"
+                encabezados.append((col_horas, "HORAS DE EJECUCION"))
+            celda_horas = ws.cell(fila, col_horas)
+            celda_horas.value = _horas_ejecucion_registro(horas)
+            celda_horas.number_format = "0.0"
         equipo_final = nombre_equipo_catalogo(equipo)
         if equipo_final:
             col_equipo = _columna_encabezado(encabezados, "EQUIPO")
@@ -9504,6 +9566,7 @@ def construir_registro(
     cobertura: dict[str, str] | None = None,
     programado: str = "",
     porcentaje_avance: int | float = 100,
+    horas_ejecucion: int | float = 0,
 ) -> dict:
     insumos = insumos or {}
     fotos = fotos or []
@@ -9572,6 +9635,7 @@ def construir_registro(
         "UBICACIÓN": sitio or sitios_operativos.texto_ubicacion_final(*partes_ubicacion),
         "COMENTARIOS": "",
         "AVANCE %": _porcentaje_avance_registro(porcentaje_avance),
+        "HORAS DE EJECUCION": _horas_ejecucion_registro(horas_ejecucion),
         "ID_REGISTRO": "",
         "EVIDENCIA": EVIDENCIA_PENDIENTE,
         COLUMNA_PROGRAMADO: _normalizar_marca_programado(programado),
@@ -10969,7 +11033,7 @@ def render_captura_actividades_campo() -> None:
     st.markdown("---")
     st.markdown("#### 📝 Estatus y actividad")
 
-    col_desc, col_est, col_avance = st.columns([2.6, 1.15, 1.15], gap="medium")
+    col_desc, col_est, col_avance, col_horas = st.columns([2.2, 1.05, 1.05, 1.1], gap="medium")
     with col_desc:
         descripcion = st.text_area(
             "Descripción de la actividad",
@@ -10991,6 +11055,17 @@ def render_captura_actividades_campo() -> None:
             value=100,
             step=1,
             key=f"avance_{form_id}",
+        )
+    with col_horas:
+        horas_ejecucion = st.number_input(
+            "Tiempo empleado (horas)",
+            min_value=0.0,
+            max_value=24.0,
+            value=0.0,
+            step=0.5,
+            format="%.1f",
+            key=f"horas_{form_id}",
+            help="Horas invertidas en esta actividad. Se guardan en la bitácora.",
         )
 
     st.markdown("")
@@ -11041,6 +11116,7 @@ def render_captura_actividades_campo() -> None:
             cobertura=cobertura,
             programado="Sí" if confirma_programa else "No",
             porcentaje_avance=porcentaje_avance,
+            horas_ejecucion=horas_ejecucion,
         )
 
         try:
@@ -11064,6 +11140,7 @@ def render_captura_actividades_campo() -> None:
                     limitar_fotos(list(archivos_foto or [])),
                     secuencia=int(secuencia_n),
                     avance=porcentaje_avance,
+                    horas=horas_ejecucion,
                     equipo=equipo_final,
                     tipo_actividad=tipo_actividad_final,
                     actividad_corta=actividad_corta_final,
@@ -16230,6 +16307,8 @@ def render_actividad_cuadrilla_ot(
                 <div class="v">{html.escape(equipo or "—")}</div></div>
                 <div class="ot-field"><div class="k">Ubicación</div>
                 <div class="v">{html.escape(ubicacion)}</div></div>
+                <div class="ot-field"><div class="k">Tiempo empleado</div>
+                <div class="v">{html.escape(horas_texto(fila.get("HORAS DE EJECUCION")) or "—")}</div></div>
                 <div class="ot-field ot-span"><div class="k">Personal</div>
                 <div class="v">{html.escape(personal)}</div></div>
             </div>
@@ -17369,6 +17448,7 @@ def render_reporte_cuadrilla(dia: date, cuadrilla: str, df_dia: pd.DataFrame) ->
         fila["COMENTARIOS"] if "COMENTARIOS" in getattr(fila, "index", []) else fila.get("OBSERVACIÓN REVISIÓN")
     )
     avance = avance_texto(fila["AVANCE %"] if "AVANCE %" in getattr(fila, "index", []) else None) or "—"
+    horas = horas_texto(fila.get("HORAS DE EJECUCION") if hasattr(fila, "get") else None) or "—"
     estatus = texto_visible(fila.get("EVALUACIÓN DEL ESTATUS"))
     marca_ot = clasificar_estatus_equipo(estatus)
     if marca_ot == "paro":
@@ -17412,6 +17492,8 @@ def render_reporte_cuadrilla(dia: date, cuadrilla: str, df_dia: pd.DataFrame) ->
                     <div class="v">{html.escape(ubicacion)}</div></div>
                     <div class="ot-field"><div class="k">Avance %</div>
                     <div class="v">{html.escape(avance)}</div></div>
+                    <div class="ot-field"><div class="k">Tiempo empleado</div>
+                    <div class="v">{html.escape(horas)}</div></div>
                     <div class="ot-field"><div class="k">Fecha</div>
                     <div class="v">{html.escape(dia.strftime("%d/%m/%Y"))}</div></div>
                 </div>
@@ -17704,6 +17786,7 @@ def actividades_reporte_fotografico(inicio: date, fin: date) -> list[dict]:
             avance = avance_texto(fila.get("AVANCE %"))
         else:
             avance = avance_texto(fila.get("AVANCE"))
+        horas = horas_texto(fila.get("HORAS DE EJECUCION"))
         fotos = [ruta for ruta in rutas_fotos_fila(fila) if ruta and os.path.isfile(ruta)]
         actividades.append(
             {
@@ -17717,6 +17800,7 @@ def actividades_reporte_fotografico(inicio: date, fin: date) -> list[dict]:
                 "equipo": campos.get("equipo ubicacion", ""),
                 "descripcion": descripcion,
                 "avance": avance,
+                "horas": horas,
                 "cuadrilla": cuadrilla,
                 "fotos": fotos,
             }

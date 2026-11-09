@@ -517,7 +517,12 @@ def _escribir_encabezado(ws: Worksheet, actividad: dict, continuacion: str) -> N
         ws["D4"].number_format = "DD/MM/YYYY"
     ws["E3"] = descripcion
     ws["K4"] = _texto_avance_pdf(actividad.get("avance"))
+    horas = str(actividad.get("horas") or "").strip()
     ws["L4"] = str(actividad.get("cuadrilla") or "")
+    if horas:
+        nota = f"Tiempo empleado: {horas}"
+        actual = str(ws["E3"].value or "").strip()
+        ws["E3"] = f"{actual} | {nota}" if actual else nota
     for coordenada in ("C4", "E3", "L4"):
         ws[coordenada].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
