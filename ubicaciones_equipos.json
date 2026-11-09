@@ -3251,6 +3251,19 @@
       "notas": "",
       "actualizado": "",
       "aliases": []
+    },
+    "PS505": {
+      "id": "PS505",
+      "nombre": "PS505",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
     }
   },
   "cambios_equipo": [
