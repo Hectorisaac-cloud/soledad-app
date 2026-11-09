@@ -3258,11 +3258,11 @@
       "zona_id": "soledad",
       "prefijo": "PS",
       "sector": "Soledad (S)",
-      "equipo_mci": "",
-      "equipo_ub": "",
+      "equipo_mci": "MCI tipo Arrow",
+      "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "",
+      "actualizado": "2026-11-09 15:40",
       "aliases": []
     }
   },
