@@ -3350,6 +3350,22 @@
       "tipo_insumo": "Consumible",
       "id": "93245a42e4",
       "registrado": "2026-11-09 15:42"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-06",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PS Soledad",
+      "insumo_id": "otros",
+      "insumo": "4 MANGUERAS RECUPERADAS",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "9579c38016",
+      "registrado": "2026-11-09 15:44"
     }
   ]
 }
