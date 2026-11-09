@@ -104,6 +104,8 @@ PATRON_OT_DIARIO = re.compile(r"^(\d{2})(\d{2})(\d{4})$")
 NOMBRES_DIA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 SOPORTE_FILE = "soporte_refacciones.json"
 ACTIVIDADES_FILE = "actividades_cuadrillas.json"
+CATALOGO_ACTIVIDADES_XLSX = os.path.join("assets", "catalogo_actividades.xlsx")
+HOJA_CATALOGO_ACTIVIDADES = "ACTIVIDADES POR ESPECIALIDAD DE"
 PERSONAL_FILE = "personal_cuadrillas.json"
 LISTA_ASISTENCIA_FILE = os.path.join(DATABASE_DIR, "lista_asistencia.xlsx")
 CALENDARIO_ASISTENCIA_FILE = os.path.join(DATABASE_DIR, "calendario_asistencia.xlsx")
@@ -6442,11 +6444,114 @@ def guardar_catalogo_actividades(datos: dict) -> None:
     escribir_json(ACTIVIDADES_FILE, limpios)
 
 
+def ruta_catalogo_actividades_excel() -> str:
+    """Resuelve el Excel de actividades aunque Windows haya guardado la extensión dos veces."""
+    nombres = ("catalogo_actividades.xlsx", "catalogo_actividades.xlsx.xlsx")
+    bases = (
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets"),
+        "assets",
+    )
+    for base in bases:
+        for nombre in nombres:
+            ruta = os.path.join(base, nombre)
+            if os.path.isfile(ruta):
+                return ruta
+    return os.path.join(bases[0], nombres[0])
+
+
+def _grupo_desde_encabezado_actividad(valor) -> str | None:
+    clave = _sin_acentos(_texto_celda(valor)).casefold()
+    if "actividad" not in clave:
+        return None
+    for token, grupo in (
+        ("electric", "ELECTRICO"),
+        ("instrument", "INSTRUMENTOS"),
+        ("mecan", "MECANICOS"),
+        ("montaje", "MONTAJE"),
+        ("soldad", "SOLDADURA"),
+    ):
+        if token in clave:
+            return grupo
+    return None
+
+
+def _es_actividad_libre_excel(nombre: str) -> bool:
+    return _sin_acentos(nombre).casefold().strip() in {"otro", "otra"}
+
+
+def _hoja_catalogo_actividades(libro: pd.ExcelFile) -> str:
+    objetivo = _sin_acentos(HOJA_CATALOGO_ACTIVIDADES).casefold()
+    for hoja in libro.sheet_names:
+        if _sin_acentos(hoja).casefold().strip() == objetivo:
+            return hoja
+    for hoja in libro.sheet_names:
+        if objetivo in _sin_acentos(hoja).casefold():
+            return hoja
+    raise ValueError(f"No está la pestaña {HOJA_CATALOGO_ACTIVIDADES}.")
+
+
+@st.cache_data(show_spinner=False)
+def _leer_catalogo_actividades_excel(ruta: str, firma: tuple[float, int]) -> dict[str, list[dict]]:
+    del firma
+    copia = _copia_excel_legible(ruta)
+    libro = pd.ExcelFile(copia, engine="openpyxl")
+    tabla = pd.read_excel(libro, sheet_name=_hoja_catalogo_actividades(libro), header=None, dtype=object)
+    columnas: dict[int, str] = {}
+    fila_encabezado = None
+    for indice, fila in tabla.iterrows():
+        halladas = {}
+        for col, valor in enumerate(fila.tolist()):
+            grupo = _grupo_desde_encabezado_actividad(valor)
+            if grupo and grupo not in halladas.values():
+                halladas[col] = grupo
+        if len(halladas) >= 2:
+            fila_encabezado = indice
+            columnas = halladas
+            break
+    catalogo = {grupo: [] for grupo in GRUPOS_ACTIVIDAD}
+    if fila_encabezado is None:
+        return catalogo
+    vistos = {grupo: set() for grupo in GRUPOS_ACTIVIDAD}
+    for _, fila in tabla.iloc[int(fila_encabezado) + 1 :].iterrows():
+        valores = fila.tolist()
+        for col, grupo in columnas.items():
+            if col >= len(valores):
+                continue
+            nombre = " ".join(_texto_celda(valores[col]).split())
+            if not nombre or _es_actividad_libre_excel(nombre):
+                continue
+            clave = nombre.casefold()
+            if clave in vistos[grupo]:
+                continue
+            vistos[grupo].add(clave)
+            catalogo[grupo].append({"nombre": nombre, "corto": nombre, "activa": True})
+    return catalogo
+
+
+def catalogo_actividades_desde_excel() -> dict[str, list[dict]]:
+    """Catálogo vivo de la pestaña ACTIVIDADES POR ESPECIALIDAD DE."""
+    ruta = ruta_catalogo_actividades_excel()
+    catalogo_actividades_desde_excel.aviso = ""
+    if not os.path.isfile(ruta):
+        catalogo_actividades_desde_excel.aviso = (
+            "No se encontró assets/catalogo_actividades.xlsx."
+        )
+        return {}
+    try:
+        return _leer_catalogo_actividades_excel(ruta, _firma_archivo(ruta))
+    except Exception:
+        catalogo_actividades_desde_excel.aviso = (
+            "No se pudo leer la pestaña ACTIVIDADES POR ESPECIALIDAD DE "
+            "de assets/catalogo_actividades.xlsx."
+        )
+        return {}
+
+
 def actividades_de_cuadrilla(cuadrilla: str, *, incluir_inactivas: bool = False) -> list[dict]:
     grupo = grupo_actividades_cuadrilla(cuadrilla)
     if not grupo:
         return []
-    items = list(cargar_catalogo_actividades().get(grupo) or [])
+    items = list(catalogo_actividades_desde_excel().get(grupo) or [])
     if incluir_inactivas:
         return items
     return [item for item in items if actividad_esta_activa(item)]
@@ -6482,6 +6587,9 @@ def render_selector_actividad_cuadrilla(key: str, cuadrilla: str) -> tuple:
         st.session_state.pop(key, None)
     grupo = grupo_actividades_cuadrilla(cuadrilla) or ""
     etiqueta = ETIQUETAS_GRUPO_ACTIVIDAD.get(grupo, grupo)
+    aviso = getattr(catalogo_actividades_desde_excel, "aviso", "")
+    if aviso and len([opcion for opcion in opciones if opcion != "Otra"]) == 0:
+        st.caption(aviso)
     tipo = st.selectbox(
         "Actividad oficial",
         opciones,
@@ -6489,7 +6597,10 @@ def render_selector_actividad_cuadrilla(key: str, cuadrilla: str) -> tuple:
         placeholder="Seleccionar...",
         key=key,
         persist_state="session",
-        help=f"Catálogo maestro {etiqueta}. Solo se listan las actividades activas de esta cuadrilla.",
+        help=(
+            f"Opciones de {etiqueta} leídas de assets/catalogo_actividades.xlsx, "
+            f"pestaña {HOJA_CATALOGO_ACTIVIDADES}."
+        ),
     )
     otro = ""
     corto = ""
@@ -6508,7 +6619,7 @@ def render_selector_actividad_cuadrilla(key: str, cuadrilla: str) -> tuple:
         )
     elif tipo:
         oficial = buscar_actividad_catalogo(cuadrilla, tipo)
-        if oficial:
+        if oficial and str(oficial.get("corto") or "").casefold() != str(oficial.get("nombre") or "").casefold():
             st.caption(f"Nombre corto: **{oficial['corto']}**")
     return tipo, otro, corto
 
@@ -9580,10 +9691,12 @@ def _sitios_demo() -> list[tuple[str, str, str]]:
 
 def _actividades_grupo_demo(cuadrilla: str) -> list[dict]:
     grupo = grupo_actividades_cuadrilla(cuadrilla)
-    catalogo = leer_json(ACTIVIDADES_FILE, CATALOGO_ACTIVIDADES_DEFAULT)
-    if not isinstance(catalogo, dict):
-        catalogo = CATALOGO_ACTIVIDADES_DEFAULT
-    items = catalogo.get(grupo) if grupo else None
+    items = actividades_de_cuadrilla(cuadrilla)
+    if not items:
+        catalogo = leer_json(ACTIVIDADES_FILE, CATALOGO_ACTIVIDADES_DEFAULT)
+        if not isinstance(catalogo, dict):
+            catalogo = CATALOGO_ACTIVIDADES_DEFAULT
+        items = catalogo.get(grupo) if grupo else None
     if not isinstance(items, list) or not items:
         items = CATALOGO_ACTIVIDADES_DEFAULT.get(grupo or "MECANICOS", [])
     limpios = []
@@ -12121,8 +12234,9 @@ def _nombre_actividad_repetido(items: list[dict], nombre: str, id_item: str = ""
 def render_gestionar_actividades() -> None:
     st.markdown('<div class="section-title">Gestionar Actividades</div>', unsafe_allow_html=True)
     st.caption(
-        f"Catálogo de mantenimiento por especialidad. Cada alta, edición o baja se guarda en "
-        f"`{ACTIVIDADES_FILE}` y el selector de la bitácora usa las actividades activas de inmediato."
+        "Catálogo editable de respaldo. El selector de Actividad oficial de la bitácora "
+        f"lee `{CATALOGO_ACTIVIDADES_XLSX}`, pestaña «{HOJA_CATALOGO_ACTIVIDADES}». "
+        f"Los cambios de esta pantalla se guardan solo en `{ACTIVIDADES_FILE}`."
     )
     datos = cargar_catalogo_actividades()
     grupo = st.selectbox(
@@ -24932,8 +25046,10 @@ def _es_mantenimiento_preventivo_catalogo(nombre: str) -> bool:
 
 
 def _actividades_programadas_suministros() -> set[str]:
-    datos = leer_json(ACTIVIDADES_FILE, catalogo_actividades_default())
-    catalogo = normalizar_catalogo_actividades(datos)
+    catalogo = catalogo_actividades_desde_excel()
+    if not any(catalogo.values()):
+        datos = leer_json(ACTIVIDADES_FILE, catalogo_actividades_default())
+        catalogo = normalizar_catalogo_actividades(datos)
     nombres: set[str] = set()
     for items in catalogo.values():
         for item in items or []:
