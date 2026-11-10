@@ -463,6 +463,40 @@
       "destino_retirada": "Enviada a Taller de Reparación",
       "id": "b606dfcdb8",
       "registrado": "2026-11-10 16:10"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-09",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PS Soledad",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 5.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "c9aa595dd0",
+      "registrado": "2026-11-10 16:17"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-09",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PS Soledad",
+      "insumo_id": "bomba-de-agua",
+      "insumo": "Bomba de agua",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Componente Rotativo / Reparable",
+      "condicion_instalada": "Reparado por PJP4",
+      "destino_retirada": "Enviada a Taller de Reparación",
+      "id": "ff37cb77fd",
+      "registrado": "2026-11-10 16:17"
     }
   ]
 }
