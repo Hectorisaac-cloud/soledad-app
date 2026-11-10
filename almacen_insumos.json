@@ -397,6 +397,22 @@
       "tipo_insumo": "Consumible",
       "id": "3613765263",
       "registrado": "2026-11-10 15:56"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-09",
+      "secuencia": "Act. 4",
+      "cuadrilla": "Montaje",
+      "sector": "PSN",
+      "insumo_id": "otros",
+      "insumo": "BALERO PILOTO\n1 JUEGO DE PASTAS DENTADAS",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "de1895ecfd",
+      "registrado": "2026-11-10 15:59"
     }
   ]
 }
