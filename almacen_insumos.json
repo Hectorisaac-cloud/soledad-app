@@ -109,5 +109,22 @@
       "activo": true
     }
   ],
-  "movimientos": []
+  "movimientos": [
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-09",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 7.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "f33df6bd62",
+      "registrado": "2026-11-10 15:16"
+    }
+  ]
 }
