@@ -225,10 +225,16 @@ def aplicar_evidencias_eliminadas() -> int:
     return borradas
 
 
-def debe_bloquear_vaciado(filas_actuales: int, filas_nuevas: int) -> bool:
-    if filas_nuevas > 0:
+def debe_bloquear_vaciado(filas_actuales: int, filas_nuevas: int, bajas: int = 0) -> bool:
+    """Impide sustituir la bitácora por una copia vacía o más corta que la ya guardada.
+
+    `bajas` son borrados intencionales todavía no reflejados en el conteo anterior.
+    """
+    if filas_actuales <= 0:
         return False
-    return filas_actuales != 0
+    if filas_nuevas <= 0:
+        return True
+    return filas_nuevas + max(0, int(bajas or 0)) < filas_actuales
 
 
 def git_blob_sha(contenido: bytes) -> str:

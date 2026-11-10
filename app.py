@@ -7815,7 +7815,7 @@ def guardar_en_excel(df_final: pd.DataFrame, *, sincronizar: bool = True) -> Non
             columnas_salida.append(nombre)
     salida = df_final[columnas_salida].copy()
     actuales = persistencia.contar_filas_bitacora(EXCEL_FILE) if os.path.exists(EXCEL_FILE) else 0
-    if persistencia.debe_bloquear_vaciado(actuales, len(salida)):
+    if persistencia.debe_bloquear_vaciado(actuales, len(salida), persistencia.leer_bajas_bitacora()):
         return
     fd, tmp = tempfile.mkstemp(suffix=".xlsx")
     os.close(fd)
