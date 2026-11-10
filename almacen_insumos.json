@@ -317,6 +317,22 @@
       "tipo_insumo": "Consumible",
       "id": "6b210d4782",
       "registrado": "2026-11-10 15:34"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-09",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PGA Gallo",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 3.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "4b925ace67",
+      "registrado": "2026-11-10 15:46"
     }
   ]
 }
