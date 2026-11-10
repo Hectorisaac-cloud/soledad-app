@@ -293,9 +293,9 @@
       "equipo_ub": "",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
+      "actualizado": "",
       "aliases": [
-        "BAT. SOL. I"
+        "OLD BSI 8\"Ø"
       ]
     },
     "BSII": {
@@ -308,10 +308,8 @@
       "equipo_ub": "",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "BAT. SOL. II"
-      ]
+      "actualizado": "",
+      "aliases": []
     },
     "BSNI": {
       "id": "BSNI",
@@ -323,10 +321,8 @@
       "equipo_ub": "",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "BAT. SOL. NORTE"
-      ]
+      "actualizado": "",
+      "aliases": []
     },
     "BPB": {
       "id": "BPB",
@@ -338,10 +334,8 @@
       "equipo_ub": "",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "BAT. PALO BLANCO"
-      ]
+      "actualizado": "",
+      "aliases": []
     },
     "ECSII": {
       "id": "ECSII",
@@ -353,10 +347,8 @@
       "equipo_ub": "",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "ESTACION DE COMPRESORAS -2 SUR"
-      ]
+      "actualizado": "",
+      "aliases": []
     },
     "AOPS": {
       "id": "AOPS",
@@ -428,135 +420,117 @@
       "nombre": "ps4",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS4",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 4"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS141": {
       "id": "PS141",
       "nombre": "PS141",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS141",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Weichai",
       "equipo_ub": "HLU (Unidad Hidráulica)",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 141"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PB109": {
       "id": "PB109",
       "nombre": "PB109",
       "zona_id": "palo-blanco",
       "prefijo": "PPB",
-      "sector": "PB109",
+      "sector": "Palo Blanco (PB)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "PALO BLANCO 109"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PB129": {
       "id": "PB129",
       "nombre": "PB129",
       "zona_id": "palo-blanco",
       "prefijo": "PPB",
-      "sector": "PB129",
+      "sector": "Palo Blanco (PB)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "PALO BLANCO 129"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PB163": {
       "id": "PB163",
       "nombre": "PB163",
       "zona_id": "palo-blanco",
       "prefijo": "PPB",
-      "sector": "PB163",
+      "sector": "Palo Blanco (PB)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "HLU (Unidad Hidráulica)",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "PALO BLANCO 163"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PB264": {
       "id": "PB264",
       "nombre": "PB264",
       "zona_id": "palo-blanco",
       "prefijo": "PPB",
-      "sector": "PB264",
+      "sector": "Palo Blanco (PB)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "PALO BLANCO 264"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PGA368": {
       "id": "PGA368",
       "nombre": "PGA368",
       "zona_id": "gallo",
       "prefijo": "PGA",
-      "sector": "PGA368",
+      "sector": "Gallo (GA)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "GALLO 368"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PGA374": {
       "id": "PGA374",
       "nombre": "PGA374",
       "zona_id": "gallo",
       "prefijo": "PGA",
-      "sector": "PGA374",
+      "sector": "Gallo (GA)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Lufkin",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "GALLO 374"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PA67": {
       "id": "PA67",
       "nombre": "PA67",
       "zona_id": "aragon",
       "prefijo": "PA",
-      "sector": "PA67",
+      "sector": "Aragon (A)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Lufkin",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "ARAGON 67"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PA159": {
       "id": "PA159",
@@ -589,749 +563,651 @@
       "nombre": "PS631",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS631",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Lufkin",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 631"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS653": {
       "id": "PS653",
       "nombre": "PS653",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS653",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 653"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS695": {
       "id": "PS695",
       "nombre": "PS695",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS695",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 695"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS697": {
       "id": "PS697",
       "nombre": "PS697",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS697",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 697"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS708": {
       "id": "PS708",
       "nombre": "PS708",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS708",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 708"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS792": {
       "id": "PS792",
       "nombre": "PS792",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS792",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 792"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS594": {
       "id": "PS594",
       "nombre": "PS594",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS594",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 594"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS673": {
       "id": "PS673",
       "nombre": "PS673",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS673",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 673"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS674": {
       "id": "PS674",
       "nombre": "PS674",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS674",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 674"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS774": {
       "id": "PS774",
       "nombre": "PS774",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS774",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 774"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS796": {
       "id": "PS796",
       "nombre": "PS796",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS796",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Lufkin",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 796"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS123": {
       "id": "PS123",
       "nombre": "PS123",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS123",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Weichai",
       "equipo_ub": "HLU (Unidad Hidráulica)",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 123"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS110D": {
       "id": "PS110D",
       "nombre": "PS110D",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS110D",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Vortec V8",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 110D"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS652": {
       "id": "PS652",
       "nombre": "PS652",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS652",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 652"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS539": {
       "id": "PS539",
       "nombre": "PS539",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS539",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 539"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS509": {
       "id": "PS509",
       "nombre": "PS509",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS509",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 509"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS108": {
       "id": "PS108",
       "nombre": "PS108",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS108",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 108"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS515": {
       "id": "PS515",
       "nombre": "PS515",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS515",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 515"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS626": {
       "id": "PS626",
       "nombre": "PS626",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS626",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Lufkin",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 626"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS658": {
       "id": "PS658",
       "nombre": "PS658",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS658",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 658"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS678": {
       "id": "PS678",
       "nombre": "PS678",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS678",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 678"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS694": {
       "id": "PS694",
       "nombre": "PS694",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS694",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 694"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS696": {
       "id": "PS696",
       "nombre": "PS696",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS696",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 696"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS702": {
       "id": "PS702",
       "nombre": "PS702",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS702",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 702"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS703": {
       "id": "PS703",
       "nombre": "PS703",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS703",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 703"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS507": {
       "id": "PS507",
       "nombre": "PS507",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS507",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 507"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS537": {
       "id": "PS537",
       "nombre": "PS537",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS537",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 537"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS672": {
       "id": "PS672",
       "nombre": "PS672",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS672",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 672"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS636": {
       "id": "PS636",
       "nombre": "PS636",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS636",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Lufkin",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 636"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS106": {
       "id": "PS106",
       "nombre": "PS106",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS106",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 106"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS662": {
       "id": "PS662",
       "nombre": "PS662",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS662",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 662"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS112": {
       "id": "PS112",
       "nombre": "PS112",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS112",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 112"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS118": {
       "id": "PS118",
       "nombre": "PS118",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS118",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 118"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN272": {
       "id": "PSN272",
       "nombre": "PSN272",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN272",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 272"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN190": {
       "id": "PSN190",
       "nombre": "PSN190",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN190",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 190"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN222": {
       "id": "PSN222",
       "nombre": "PSN222",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN222",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Weichai",
       "equipo_ub": "HLU (Unidad Hidráulica)",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 222"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN224": {
       "id": "PSN224",
       "nombre": "PSN224",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN224",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Lufkin",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 224"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN281": {
       "id": "PSN281",
       "nombre": "PSN281",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN281",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 281"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN249": {
       "id": "PSN249",
       "nombre": "PSN249",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN249",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 249"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN76": {
       "id": "PSN76",
       "nombre": "PSN76",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN76",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "HLU (Unidad Hidráulica)",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 76"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN263": {
       "id": "PSN263",
       "nombre": "PSN263",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN263",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE263"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN261": {
       "id": "PSN261",
       "nombre": "PSN261",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN261",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 261"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN334": {
       "id": "PSN334",
       "nombre": "PSN334",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN334",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Vortec V8",
       "equipo_ub": "HLU (Unidad Hidráulica)",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 334"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN118": {
       "id": "PSN118",
       "nombre": "PSN118",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN118",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE118"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN291": {
       "id": "PSN291",
       "nombre": "PSN291",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN291",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 291"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN294": {
       "id": "PSN294",
       "nombre": "PSN294",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN294",
-      "equipo_mci": "MCI tipo Vortec V6",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "MCI tipo Vortec V8",
       "equipo_ub": "HLU (Unidad Hidráulica)",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:10",
-      "aliases": [
-        "SOLEDAD NORTE 294"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN68": {
       "id": "PSN68",
       "nombre": "PSN68",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN68",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 68"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN2930": {
       "id": "PSN2930",
       "nombre": "PSN2930",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN2930",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 2930"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN269": {
       "id": "PSN269",
       "nombre": "PSN269",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN269",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE269"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PC125": {
       "id": "PC125",
       "nombre": "PC125",
       "zona_id": "coyotes",
       "prefijo": "PC",
-      "sector": "PC125",
+      "sector": "Coyotes (Coy)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
+      "actualizado": "2026-09-27 23:50",
       "aliases": [
-        "COYOTE 125"
+        "POZO COY 125"
       ]
     },
     "PC141": {
@@ -1339,105 +1215,91 @@
       "nombre": "PC141",
       "zona_id": "coyotes",
       "prefijo": "PC",
-      "sector": "PC141",
+      "sector": "Coyotes (Coy)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "COYOTE 141"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PC163": {
       "id": "PC163",
       "nombre": "PC163",
       "zona_id": "coyotes",
       "prefijo": "PC",
-      "sector": "PC163",
+      "sector": "Coyotes (Coy)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "COYOTE 163"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PC146": {
       "id": "PC146",
       "nombre": "PC146",
       "zona_id": "coyotes",
       "prefijo": "PC",
-      "sector": "PC146",
+      "sector": "Coyotes (Coy)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "COYOTE 146"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PC69": {
       "id": "PC69",
       "nombre": "PC69",
       "zona_id": "coyotes",
       "prefijo": "PC",
-      "sector": "PC69",
+      "sector": "Coyotes (Coy)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "COYOTE 69"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PC161": {
       "id": "PC161",
       "nombre": "PC161",
       "zona_id": "coyotes",
       "prefijo": "PC",
-      "sector": "PC161",
+      "sector": "Coyotes (Coy)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "COYOTE 161"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PC162": {
       "id": "PC162",
       "nombre": "PC162",
       "zona_id": "coyotes",
       "prefijo": "PC",
-      "sector": "PC162",
+      "sector": "Coyotes (Coy)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "COYOTE 162"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PC186": {
       "id": "PC186",
       "nombre": "PC186",
       "zona_id": "coyotes",
       "prefijo": "PC",
-      "sector": "PC186",
+      "sector": "Coyotes (Coy)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "COYOTE 186"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PC123": {
       "id": "PC123",
@@ -1587,552 +1449,221 @@
       "nombre": "PS1019",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS1019",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 1019"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PS692H": {
       "id": "PS692H",
       "nombre": "PS692H",
       "zona_id": "soledad",
       "prefijo": "PS",
-      "sector": "PS692H",
+      "sector": "Soledad (S)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 692H"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN209": {
       "id": "PSN209",
       "nombre": "PSN209",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN209",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 209"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN77": {
       "id": "PSN77",
       "nombre": "PSN77",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN77",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 77"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN108": {
       "id": "PSN108",
       "nombre": "PSN108",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN108",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 108"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN252": {
       "id": "PSN252",
       "nombre": "PSN252",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN252",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 252"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN293": {
       "id": "PSN293",
       "nombre": "PSN293",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN293",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 293"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN116": {
       "id": "PSN116",
       "nombre": "PSN116",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN116",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 116"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN174": {
       "id": "PSN174",
       "nombre": "PSN174",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN174",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 174"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN46": {
       "id": "PSN46",
       "nombre": "PSN46",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN46",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 46"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN397": {
       "id": "PSN397",
       "nombre": "PSN397",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN397",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 397"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN303": {
       "id": "PSN303",
       "nombre": "PSN303",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN303",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Weichai",
       "equipo_ub": "HLU (Unidad Hidráulica)",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 303"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN306": {
       "id": "PSN306",
       "nombre": "PSN306",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN306",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 306"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN33": {
       "id": "PSN33",
       "nombre": "PSN33",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN33",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 33"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN352": {
       "id": "PSN352",
       "nombre": "PSN352",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN352",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Weatherford",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 352"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN289": {
       "id": "PSN289",
       "nombre": "PSN289",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN289",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Vortec V8",
       "equipo_ub": "HLU (Unidad Hidráulica)",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 289"
-      ]
+      "actualizado": "2026-09-27 23:50",
+      "aliases": []
     },
     "PSN202": {
       "id": "PSN202",
       "nombre": "PSN202",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN202",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "MCI tipo Arrow",
       "equipo_ub": "UBM tipo Lufkin",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 202"
-      ]
-    },
-    "NOMBRE CORTO DEL POZO EN LA APP": {
-      "id": "NOMBRE CORTO DEL POZO EN LA APP",
-      "nombre": "NOMBRE CORTO DEL POZO EN LA APP",
-      "zona_id": "gallo",
-      "prefijo": "PGA",
-      "sector": "Gallo (GA)",
-      "equipo_mci": "NOMBRE LARGO DEL POZO EN EXCEL",
-      "equipo_ub": "MCI",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-10-27 16:21",
+      "actualizado": "2026-09-27 23:50",
       "aliases": []
-    },
-    "PGA356": {
-      "id": "PGA356",
-      "nombre": "PGA356",
-      "zona_id": "gallo",
-      "prefijo": "PGA",
-      "sector": "PGA356",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "GALLO 356"
-      ]
-    },
-    "PGA358": {
-      "id": "PGA358",
-      "nombre": "PGA358",
-      "zona_id": "gallo",
-      "prefijo": "PGA",
-      "sector": "PGA358",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Lufkin",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "GALLO 358"
-      ]
-    },
-    "PGA398": {
-      "id": "PGA398",
-      "nombre": "PGA398",
-      "zona_id": "gallo",
-      "prefijo": "PGA",
-      "sector": "PGA398",
-      "equipo_mci": "MCI tipo Vortec V8",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "GALLO 398"
-      ]
-    },
-    "PGA352": {
-      "id": "PGA352",
-      "nombre": "PGA352",
-      "zona_id": "gallo",
-      "prefijo": "PGA",
-      "sector": "PGA352",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "GALLO 352"
-      ]
-    },
-    "PS794": {
-      "id": "PS794",
-      "nombre": "PS794",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "Soledad (S)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "PSN251": {
-      "id": "PSN251",
-      "nombre": "PSN251",
-      "zona_id": "soledad-norte",
-      "prefijo": "PSN",
-      "sector": "Soledad Norte (SN)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "PS418": {
-      "id": "PS418",
-      "nombre": "PS418",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "Soledad (S)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "PS116": {
-      "id": "PS116",
-      "nombre": "PS116",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "Soledad (S)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "PSN262": {
-      "id": "PSN262",
-      "nombre": "PSN262",
-      "zona_id": "soledad-norte",
-      "prefijo": "PSN",
-      "sector": "PSN262",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 262"
-      ]
-    },
-    "PSN36": {
-      "id": "PSN36",
-      "nombre": "PSN36",
-      "zona_id": "soledad-norte",
-      "prefijo": "PSN",
-      "sector": "PSN36",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 36"
-      ]
-    },
-    "PSN456": {
-      "id": "PSN456",
-      "nombre": "PSN456",
-      "zona_id": "soledad-norte",
-      "prefijo": "PSN",
-      "sector": "Soledad Norte (SN)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "PSN232": {
-      "id": "PSN232",
-      "nombre": "PSN232",
-      "zona_id": "soledad-norte",
-      "prefijo": "PSN",
-      "sector": "Soledad Norte (SN)",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-06 15:48",
-      "aliases": []
-    },
-    "PS628": {
-      "id": "PS628",
-      "nombre": "PS628",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "Soledad (S)",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-10-26 17:16",
-      "aliases": []
-    },
-    "PSN301": {
-      "id": "PSN301",
-      "nombre": "PSN301",
-      "zona_id": "soledad-norte",
-      "prefijo": "PSN",
-      "sector": "Bateria de Separacion Soledad Norte (BSNI)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "MOD I": {
-      "id": "MOD I",
-      "nombre": "MOD I",
-      "zona_id": "instalaciones",
-      "prefijo": "INS",
-      "sector": "Modulo I Soledad Norte (MOD I)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "MODULO-I"
-      ]
-    },
-    "MOD II": {
-      "id": "MOD II",
-      "nombre": "MOD II",
-      "zona_id": "instalaciones",
-      "prefijo": "INS",
-      "sector": "Modulo II Soledad Norte (MOD II)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "MODULO-II"
-      ]
-    },
-    "MOD III": {
-      "id": "MOD III",
-      "nombre": "MOD III",
-      "zona_id": "instalaciones",
-      "prefijo": "INS",
-      "sector": "Modulo III Soledad Norte (MOD III)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "MODULO-III"
-      ]
-    },
-    "MOD IV": {
-      "id": "MOD IV",
-      "nombre": "MOD IV",
-      "zona_id": "instalaciones",
-      "prefijo": "INS",
-      "sector": "Modulo IV Soledad Norte (MOD IV)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "MODULO-IV"
-      ]
-    },
-    "ECSN": {
-      "id": "ECSN",
-      "nombre": "ECSN",
-      "zona_id": "instalaciones",
-      "prefijo": "INS",
-      "sector": "Estacion de Compresion Soledad Norte (ECSN)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "ESTACION DE COMPRESORAS SOLEDAD NORTE"
-      ]
-    },
-    "BSE PJP4": {
-      "id": "BSE PJP4",
-      "nombre": "BSE PJP4",
-      "zona_id": "instalaciones",
-      "prefijo": "INS",
-      "sector": "Base Soledad (BSE PJP4)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "BASE SOLEDAD"
-      ]
     },
     "GDO-BSPB-IQ-SIN-01": {
       "id": "GDO-BSPB-IQ-SIN-01",
@@ -2262,7 +1793,10 @@
       "estatus": "Operativo",
       "notas": "CBN TDE SEG C-TDR SEG A SOL 6\" x 4.762 Km",
       "actualizado": "",
-      "aliases": []
+      "aliases": [
+        "CBN KM4.762",
+        "SEG A-C"
+      ]
     },
     "CBN-TDSGB-IQ-SIN-11": {
       "id": "CBN-TDSGB-IQ-SIN-11",
@@ -2275,7 +1809,9 @@
       "estatus": "Operativo",
       "notas": "CBN TDE SEG B - TDR SEG H SOL 6\"x5.584 Km",
       "actualizado": "",
-      "aliases": []
+      "aliases": [
+        "SEG B-H"
+      ]
     },
     "CBN-TDSGD-IQ-SIN-12": {
       "id": "CBN-TDSGD-IQ-SIN-12",
@@ -2288,7 +1824,9 @@
       "estatus": "Operativo",
       "notas": "CBN TDE SEG D-TDR SEG G SOL 6\"x3.716 Km",
       "actualizado": "",
-      "aliases": []
+      "aliases": [
+        "SEG D-G"
+      ]
     },
     "CBN-TDSGF-IQ-SIN-13": {
       "id": "CBN-TDSGF-IQ-SIN-13",
@@ -2301,7 +1839,9 @@
       "estatus": "Operativo",
       "notas": "CBN TDE SEG F-TDR SEG E SOL 6\"x6.057 Km",
       "actualizado": "",
-      "aliases": []
+      "aliases": [
+        "SEG F-E"
+      ]
     },
     "OLD-BSSI-IQ-SIN-14": {
       "id": "OLD-BSSI-IQ-SIN-14",
@@ -2771,207 +2311,103 @@
       "actualizado": "",
       "aliases": []
     },
-    "MPA159": {
-      "id": "MPA159",
-      "nombre": "MPA159",
-      "zona_id": "aragon",
-      "prefijo": "PA",
-      "sector": "MPA159",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
+    "MOD I": {
+      "id": "MOD I",
+      "nombre": "MOD I",
+      "zona_id": "instalaciones",
+      "prefijo": "INS",
+      "sector": "Modulo I Soledad Norte (MOD I)",
+      "equipo_mci": "",
+      "equipo_ub": "",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "ARAGON 159"
-      ]
+      "actualizado": "",
+      "aliases": []
     },
-    "PB266": {
-      "id": "PB266",
-      "nombre": "PB266",
+    "MOD II": {
+      "id": "MOD II",
+      "nombre": "MOD II",
+      "zona_id": "instalaciones",
+      "prefijo": "INS",
+      "sector": "Modulo II Soledad Norte (MOD II)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "MOD III": {
+      "id": "MOD III",
+      "nombre": "MOD III",
+      "zona_id": "instalaciones",
+      "prefijo": "INS",
+      "sector": "Modulo III Soledad Norte (MOD III)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "MOD IV": {
+      "id": "MOD IV",
+      "nombre": "MOD IV",
+      "zona_id": "instalaciones",
+      "prefijo": "INS",
+      "sector": "Modulo IV Soledad Norte (MOD IV)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-232": {
+      "id": "PSN-232",
+      "nombre": "PSN-232",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-794": {
+      "id": "PS-794",
+      "nombre": "PS-794",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-302": {
+      "id": "PSN-302",
+      "nombre": "PSN-302",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PPB-162": {
+      "id": "PPB-162",
+      "nombre": "PPB-162",
       "zona_id": "palo-blanco",
       "prefijo": "PPB",
-      "sector": "PB266",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "PALO BLANCO 266"
-      ]
-    },
-    "PS569": {
-      "id": "PS569",
-      "nombre": "PS569",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "PS569",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 569"
-      ]
-    },
-    "PS567": {
-      "id": "PS567",
-      "nombre": "PS567",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "PS567",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 567"
-      ]
-    },
-    "PS519": {
-      "id": "PS519",
-      "nombre": "PS519",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "PS519",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 519"
-      ]
-    },
-    "PS547": {
-      "id": "PS547",
-      "nombre": "PS547",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "PS547",
-      "equipo_mci": "MCI tipo Weichai",
-      "equipo_ub": "HLU (Unidad Hidráulica)",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 547"
-      ]
-    },
-    "PS549": {
-      "id": "PS549",
-      "nombre": "PS549",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "PS549",
-      "equipo_mci": "MCI tipo Weichai",
-      "equipo_ub": "HLU (Unidad Hidráulica)",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 549"
-      ]
-    },
-    "PS579": {
-      "id": "PS579",
-      "nombre": "PS579",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "PS579",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD 579"
-      ]
-    },
-    "PSN375": {
-      "id": "PSN375",
-      "nombre": "PSN375",
-      "zona_id": "soledad-norte",
-      "prefijo": "PSN",
-      "sector": "PSN375",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 375"
-      ]
-    },
-    "PSN24": {
-      "id": "PSN24",
-      "nombre": "PSN24",
-      "zona_id": "soledad-norte",
-      "prefijo": "PSN",
-      "sector": "PSN24",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 24"
-      ]
-    },
-    "PSN217": {
-      "id": "PSN217",
-      "nombre": "PSN217",
-      "zona_id": "soledad-norte",
-      "prefijo": "PSN",
-      "sector": "PSN217",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Lufkin",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 217"
-      ]
-    },
-    "PSN377": {
-      "id": "PSN377",
-      "nombre": "PSN377",
-      "zona_id": "soledad-norte",
-      "prefijo": "PSN",
-      "sector": "PSN377",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 377"
-      ]
-    },
-    "PSN379": {
-      "id": "PSN379",
-      "nombre": "PSN379",
-      "zona_id": "soledad-norte",
-      "prefijo": "PSN",
-      "sector": "PSN379",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-09 15:09",
-      "aliases": [
-        "SOLEDAD NORTE 379"
-      ]
-    },
-    "PS671": {
-      "id": "PS671",
-      "nombre": "PS671",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "PS671",
+      "sector": "Palo Blanco (PB)",
       "equipo_mci": "",
       "equipo_ub": "",
       "estatus": "Operativo",
@@ -2979,12 +2415,38 @@
       "actualizado": "",
       "aliases": []
     },
-    "PSN302": {
-      "id": "PSN302",
-      "nombre": "PSN302",
+    "PS-418": {
+      "id": "PS-418",
+      "nombre": "PS-418",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-569": {
+      "id": "PS-569",
+      "nombre": "PS-569",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-88": {
+      "id": "PSN-88",
+      "nombre": "PSN-88",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
-      "sector": "PSN302",
+      "sector": "Soledad Norte (SN)",
       "equipo_mci": "",
       "equipo_ub": "",
       "estatus": "Operativo",
@@ -2992,87 +2454,9 @@
       "actualizado": "",
       "aliases": []
     },
-    "PS498": {
-      "id": "PS498",
-      "nombre": "PS498",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "PS498",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "PS127": {
-      "id": "PS127",
-      "nombre": "PS127",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "PS127",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "PSN313": {
-      "id": "PSN313",
-      "nombre": "PSN313",
-      "zona_id": "soledad-norte",
-      "prefijo": "PSN",
-      "sector": "PSN313",
-      "equipo_mci": "MCI tipo Weichai",
-      "equipo_ub": "HLU (Unidad Hidráulica)",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-02 16:49",
-      "aliases": []
-    },
-    "PSN88": {
-      "id": "PSN88",
-      "nombre": "PSN88",
-      "zona_id": "soledad-norte",
-      "prefijo": "PSN",
-      "sector": "PSN88",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "PS691": {
-      "id": "PS691",
-      "nombre": "PS691",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "PS691",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "PS701": {
-      "id": "PS701",
-      "nombre": "PS701",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "PS701",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "PGA204": {
-      "id": "PGA204",
-      "nombre": "PGA204",
+    "PGA-398": {
+      "id": "PGA-398",
+      "nombre": "PGA-398",
       "zona_id": "gallo",
       "prefijo": "PGA",
       "sector": "Gallo (GA)",
@@ -3083,87 +2467,9 @@
       "actualizado": "",
       "aliases": []
     },
-    "PPB129": {
-      "id": "PPB129",
-      "nombre": "PPB129",
-      "zona_id": "palo-blanco",
-      "prefijo": "PPB",
-      "sector": "Palo Blanco (PB)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "PS458": {
-      "id": "PS458",
-      "nombre": "PS458",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "Soledad (S)",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-10-30 17:04",
-      "aliases": []
-    },
-    "PB142": {
-      "id": "PB142",
-      "nombre": "PB142",
-      "zona_id": "palo-blanco",
-      "prefijo": "PPB",
-      "sector": "Bateria Palo Blanco (BPB)",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-02 17:12",
-      "aliases": []
-    },
-    "PPB142": {
-      "id": "PPB142",
-      "nombre": "PPB142",
-      "zona_id": "palo-blanco",
-      "prefijo": "PPB",
-      "sector": "Palo Blanco (PB)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "PPB266": {
-      "id": "PPB266",
-      "nombre": "PPB266",
-      "zona_id": "palo-blanco",
-      "prefijo": "PPB",
-      "sector": "Palo Blanco (PB)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "PS319": {
-      "id": "PS319",
-      "nombre": "PS319",
-      "zona_id": "soledad",
-      "prefijo": "PS",
-      "sector": "Soledad (S)",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "2026-11-02 17:22",
-      "aliases": []
-    },
-    "PSN282": {
-      "id": "PSN282",
-      "nombre": "PSN282",
+    "PSN-377": {
+      "id": "PSN-377",
+      "nombre": "PSN-377",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
       "sector": "Soledad Norte (SN)",
@@ -3174,9 +2480,9 @@
       "actualizado": "",
       "aliases": []
     },
-    "PSN275": {
-      "id": "PSN275",
-      "nombre": "PSN275",
+    "PSN-262": {
+      "id": "PSN-262",
+      "nombre": "PSN-262",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
       "sector": "Soledad Norte (SN)",
@@ -3187,9 +2493,48 @@
       "actualizado": "",
       "aliases": []
     },
-    "PPB264": {
-      "id": "PPB264",
-      "nombre": "PPB264",
+    "MPS106": {
+      "id": "MPS106",
+      "nombre": "MPS106",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "MPS128": {
+      "id": "MPS128",
+      "nombre": "MPS128",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-458": {
+      "id": "PS-458",
+      "nombre": "PS-458",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PPB-266": {
+      "id": "PPB-266",
+      "nombre": "PPB-266",
       "zona_id": "palo-blanco",
       "prefijo": "PPB",
       "sector": "Palo Blanco (PB)",
@@ -3200,22 +2545,9 @@
       "actualizado": "",
       "aliases": []
     },
-    "PPB163": {
-      "id": "PPB163",
-      "nombre": "PPB163",
-      "zona_id": "palo-blanco",
-      "prefijo": "PPB",
-      "sector": "Palo Blanco (PB)",
-      "equipo_mci": "",
-      "equipo_ub": "",
-      "estatus": "Operativo",
-      "notas": "",
-      "actualizado": "",
-      "aliases": []
-    },
-    "PSN1": {
-      "id": "PSN1",
-      "nombre": "PSN1",
+    "PSN-36": {
+      "id": "PSN-36",
+      "nombre": "PSN-36",
       "zona_id": "soledad-norte",
       "prefijo": "PSN",
       "sector": "Soledad Norte (SN)",
@@ -3226,22 +2558,76 @@
       "actualizado": "",
       "aliases": []
     },
-    "PS656": {
-      "id": "PS656",
-      "nombre": "PS656",
+    "PSN-375": {
+      "id": "PSN-375",
+      "nombre": "PSN-375",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-379": {
+      "id": "PSN-379",
+      "nombre": "PSN-379",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-187": {
+      "id": "PSN-187",
+      "nombre": "PSN-187",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-116": {
+      "id": "PS-116",
+      "nombre": "PS-116",
       "zona_id": "soledad",
       "prefijo": "PS",
       "sector": "Soledad (S)",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
+      "equipo_mci": "",
+      "equipo_ub": "",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-06 16:31",
+      "actualizado": "",
+      "aliases": [
+        "SOLEDAD 116"
+      ]
+    },
+    "BLQ-SOL-SUR": {
+      "id": "BLQ-SOL-SUR",
+      "nombre": "BLQ.SOL-SUR",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
       "aliases": []
     },
-    "PS119": {
-      "id": "PS119",
-      "nombre": "PS119",
+    "PS-339": {
+      "id": "PS-339",
+      "nombre": "PS-339",
       "zona_id": "soledad",
       "prefijo": "PS",
       "sector": "Soledad (S)",
@@ -3252,17 +2638,1214 @@
       "actualizado": "",
       "aliases": []
     },
-    "PS505": {
-      "id": "PS505",
-      "nombre": "PS505",
+    "PS-628": {
+      "id": "PS-628",
+      "nombre": "PS-628",
       "zona_id": "soledad",
       "prefijo": "PS",
       "sector": "Soledad (S)",
-      "equipo_mci": "MCI tipo Arrow",
-      "equipo_ub": "UBM tipo Weatherford",
+      "equipo_mci": "",
+      "equipo_ub": "",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "2026-11-09 15:40",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-701": {
+      "id": "PS-701",
+      "nombre": "PS-701",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "OLD MODI 6\"": {
+      "id": "OLD MODI 6\"",
+      "nombre": "OLD MODI 6\"",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PPB-161": {
+      "id": "PPB-161",
+      "nombre": "PPB-161",
+      "zona_id": "palo-blanco",
+      "prefijo": "PPB",
+      "sector": "Palo Blanco (PB)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "MPSN66": {
+      "id": "MPSN66",
+      "nombre": "MPSN66",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-217": {
+      "id": "PSN-217",
+      "nombre": "PSN-217",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "MPS130": {
+      "id": "MPS130",
+      "nombre": "MPS130",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-24": {
+      "id": "PSN-24",
+      "nombre": "PSN-24",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PGA-358": {
+      "id": "PGA-358",
+      "nombre": "PGA-358",
+      "zona_id": "gallo",
+      "prefijo": "PGA",
+      "sector": "Gallo (GA)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PGA-352": {
+      "id": "PGA-352",
+      "nombre": "PGA-352",
+      "zona_id": "gallo",
+      "prefijo": "PGA",
+      "sector": "Gallo (GA)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": [
+        "POZO GALLO 352"
+      ]
+    },
+    "OLG PS794": {
+      "id": "OLG PS794",
+      "nombre": "OLG PS794",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "OLG 539": {
+      "id": "OLG 539",
+      "nombre": "OLG 539",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "OLG 549": {
+      "id": "OLG 549",
+      "nombre": "OLG 549",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-339": {
+      "id": "PSN-339",
+      "nombre": "PSN-339",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "BLQ-SOL-NTE": {
+      "id": "BLQ-SOL-NTE",
+      "nombre": "BLQ-SOL-NTE",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-130": {
+      "id": "PS-130",
+      "nombre": "PS-130",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "MPS794": {
+      "id": "MPS794",
+      "nombre": "MPS794",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-567": {
+      "id": "PS-567",
+      "nombre": "PS-567",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": [
+        "P567"
+      ]
+    },
+    "PSN-3": {
+      "id": "PSN-3",
+      "nombre": "PSN-3",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-547": {
+      "id": "PS-547",
+      "nombre": "PS-547",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-358": {
+      "id": "PSN-358",
+      "nombre": "PSN-358",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PGA-204": {
+      "id": "PGA-204",
+      "nombre": "PGA-204",
+      "zona_id": "gallo",
+      "prefijo": "PGA",
+      "sector": "Gallo (GA)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-313": {
+      "id": "PSN-313",
+      "nombre": "PSN-313",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-519": {
+      "id": "PS-519",
+      "nombre": "PS-519",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-579": {
+      "id": "PS-579",
+      "nombre": "PS-579",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PGA-356": {
+      "id": "PGA-356",
+      "nombre": "PGA-356",
+      "zona_id": "gallo",
+      "prefijo": "PGA",
+      "sector": "Gallo (GA)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": [
+        "POZO GALLO 356"
+      ]
+    },
+    "PGA-218": {
+      "id": "PGA-218",
+      "nombre": "PGA-218",
+      "zona_id": "gallo",
+      "prefijo": "PGA",
+      "sector": "Gallo (GA)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-549": {
+      "id": "PS-549",
+      "nombre": "PS-549",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": [
+        "POZO SOLEDAD 549"
+      ]
+    },
+    "PS-127": {
+      "id": "PS-127",
+      "nombre": "PS-127",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-242": {
+      "id": "PSN-242",
+      "nombre": "PSN-242",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "OLG PGA204": {
+      "id": "OLG PGA204",
+      "nombre": "OLG PGA204",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "OLG PSN269": {
+      "id": "OLG PSN269",
+      "nombre": "OLG PSN269",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "GDO ECSN": {
+      "id": "GDO ECSN",
+      "nombre": "GDO ECSN",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-319": {
+      "id": "PS-319",
+      "nombre": "PS-319",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "OLG PS529": {
+      "id": "OLG PS529",
+      "nombre": "OLG PS529",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "OLG PS539": {
+      "id": "OLG PS539",
+      "nombre": "OLG PS539",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-498": {
+      "id": "PS-498",
+      "nombre": "PS-498",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "OLD-BSMI": {
+      "id": "OLD-BSMI",
+      "nombre": "OLD-BSMI",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "GDO-BSMI": {
+      "id": "GDO-BSMI",
+      "nombre": "GDO-BSMI",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-31": {
+      "id": "PSN-31",
+      "nombre": "PSN-31",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-656": {
+      "id": "PS-656",
+      "nombre": "PS-656",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-101": {
+      "id": "PS-101",
+      "nombre": "PS-101",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-181": {
+      "id": "PSN-181",
+      "nombre": "PSN-181",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-153": {
+      "id": "PS-153",
+      "nombre": "PS-153",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-374": {
+      "id": "PSN-374",
+      "nombre": "PSN-374",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-279": {
+      "id": "PSN-279",
+      "nombre": "PSN-279",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PA-175": {
+      "id": "PA-175",
+      "nombre": "PA-175",
+      "zona_id": "aragon",
+      "prefijo": "PA",
+      "sector": "Aragon (A)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-251": {
+      "id": "PSN-251",
+      "nombre": "PSN-251",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-120": {
+      "id": "PS-120",
+      "nombre": "PS-120",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-516": {
+      "id": "PS-516",
+      "nombre": "PS-516",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-172": {
+      "id": "PS-172",
+      "nombre": "PS-172",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "ALMACEN NORTE": {
+      "id": "ALMACEN NORTE",
+      "nombre": "ALMACEN NORTE",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-201": {
+      "id": "PSN-201",
+      "nombre": "PSN-201",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PA-1363": {
+      "id": "PA-1363",
+      "nombre": "PA-1363",
+      "zona_id": "aragon",
+      "prefijo": "PA",
+      "sector": "Aragon (A)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-151": {
+      "id": "PSN-151",
+      "nombre": "PSN-151",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-312": {
+      "id": "PSN-312",
+      "nombre": "PSN-312",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-172": {
+      "id": "PSN-172",
+      "nombre": "PSN-172",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-211": {
+      "id": "PSN-211",
+      "nombre": "PSN-211",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-282": {
+      "id": "PSN-282",
+      "nombre": "PSN-282",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-692": {
+      "id": "PS-692",
+      "nombre": "PS-692",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-372": {
+      "id": "PSN-372",
+      "nombre": "PSN-372",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-96": {
+      "id": "PSN-96",
+      "nombre": "PSN-96",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-158": {
+      "id": "PSN-158",
+      "nombre": "PSN-158",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-9": {
+      "id": "PS-9",
+      "nombre": "PS-9",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": [
+        "PS09"
+      ]
+    },
+    "PSN-72": {
+      "id": "PSN-72",
+      "nombre": "PSN-72",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PDN272": {
+      "id": "PDN272",
+      "nombre": "PDN272",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-43": {
+      "id": "PSN-43",
+      "nombre": "PSN-43",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-152": {
+      "id": "PSN-152",
+      "nombre": "PSN-152",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PA-1691": {
+      "id": "PA-1691",
+      "nombre": "PA-1691",
+      "zona_id": "aragon",
+      "prefijo": "PA",
+      "sector": "Aragon (A)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-576": {
+      "id": "PS-576",
+      "nombre": "PS-576",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PPB-286": {
+      "id": "PPB-286",
+      "nombre": "PPB-286",
+      "zona_id": "palo-blanco",
+      "prefijo": "PPB",
+      "sector": "Palo Blanco (PB)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": [
+        "PB286"
+      ]
+    },
+    "PS-128": {
+      "id": "PS-128",
+      "nombre": "PS-128",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-691": {
+      "id": "PS-691",
+      "nombre": "PS-691",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-224": {
+      "id": "PS-224",
+      "nombre": "PS-224",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-207": {
+      "id": "PSN-207",
+      "nombre": "PSN-207",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-176": {
+      "id": "PSN-176",
+      "nombre": "PSN-176",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-212": {
+      "id": "PSN-212",
+      "nombre": "PSN-212",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-237": {
+      "id": "PSN-237",
+      "nombre": "PSN-237",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-241": {
+      "id": "PSN-241",
+      "nombre": "PSN-241",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PPB-1019": {
+      "id": "PPB-1019",
+      "nombre": "PPB-1019",
+      "zona_id": "palo-blanco",
+      "prefijo": "PPB",
+      "sector": "Palo Blanco (PB)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": [
+        "PB1019"
+      ]
+    },
+    "PSN-301": {
+      "id": "PSN-301",
+      "nombre": "PSN-301",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-529": {
+      "id": "PS-529",
+      "nombre": "PS-529",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-707": {
+      "id": "PS-707",
+      "nombre": "PS-707",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "AREA SUR": {
+      "id": "AREA SUR",
+      "nombre": "AREA SUR",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "SOLEDAD NORTE": {
+      "id": "SOLEDAD NORTE",
+      "nombre": "SOLEDAD NORTE",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "CASA STAFF OPS": {
+      "id": "CASA STAFF OPS",
+      "nombre": "CASA STAFF OPS",
+      "zona_id": "otros",
+      "prefijo": "OTR",
+      "sector": "",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-286": {
+      "id": "PS-286",
+      "nombre": "PS-286",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PSN-145": {
+      "id": "PSN-145",
+      "nombre": "PSN-145",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-377": {
+      "id": "PS-377",
+      "nombre": "PS-377",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-671": {
+      "id": "PS-671",
+      "nombre": "PS-671",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PS-271": {
+      "id": "PS-271",
+      "nombre": "PS-271",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "ECSN": {
+      "id": "ECSN",
+      "nombre": "ECSN",
+      "zona_id": "instalaciones",
+      "prefijo": "INS",
+      "sector": "Estacion de Compresion Soledad Norte (ECSN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
       "aliases": []
     }
   },
@@ -3282,11 +3865,11 @@
     }
   ],
   "migracion": {
-    "archivo": "/mount/src/soledad-app/ubicacion_equipo/ubicaciones_equipos.json.xlsx",
-    "mtime": 1794230648.7448902,
-    "fecha": "2026-11-09 15:09",
+    "archivo": "C:\\Users\\torif\\OneDrive\\Desktop\\App_bitacora_pjp4\\ubicacion_equipo\\ubicaciones_equipos.json.xlsx",
+    "mtime": 1790574614.0,
+    "fecha": "2026-09-27 23:50",
     "nuevos": 0,
-    "actualizados": 113,
-    "total_excel": 113
+    "actualizados": 96,
+    "total_excel": 96
   }
 }
