@@ -116,6 +116,15 @@
       "tipo": "Consumible",
       "precargado": false,
       "activo": true
+    },
+    {
+      "id": "radiador",
+      "nombre": "Radiador",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Consumible",
+      "precargado": false,
+      "activo": true
     }
   ],
   "movimientos": [
@@ -810,6 +819,22 @@
       "tipo_insumo": "Consumible",
       "id": "2b0f790595",
       "registrado": "2026-11-11 16:11"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-10",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PS Soledad",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 2.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "ecbcb78452",
+      "registrado": "2026-11-11 16:15"
     }
   ]
 }
