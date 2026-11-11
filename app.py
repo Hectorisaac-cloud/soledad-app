@@ -7593,18 +7593,119 @@ def _columna_insumo_numerica(nombre: str) -> bool:
 
 
 def columnas_oficiales_exportacion_bitacora(df: pd.DataFrame) -> list[str]:
-    columnas = list(COLUMNAS_BITACORA_SOLEDAD)
-    for extra in ("REVISIÓN", "OBSERVACIÓN REVISIÓN", "EVIDENCIA"):
-        if extra in df.columns and extra not in columnas:
-            columnas.append(extra)
+    """Orden de la bitácora: fecha, cuadrilla, personal, secuencia, ubicación, actividad, consumibles, comentarios y avance."""
+    columnas: list[str] = []
+    for col in COLUMNAS_BITACORA_SOLEDAD:
+        if col == "UBICACIÓN" and "SECUENCIA" not in columnas:
+            columnas.append("SECUENCIA")
+        if col not in columnas:
+            columnas.append(col)
+    if "SECUENCIA" not in columnas:
+        columnas.insert(min(3, len(columnas)), "SECUENCIA")
     if df is not None:
+        for extra in ("REVISIÓN", "OBSERVACIÓN REVISIÓN", "EVIDENCIA"):
+            if extra in df.columns and extra not in columnas:
+                columnas.append(extra)
+        extras_insumo = []
         for col in df.columns:
             nombre = str(col)
             if nombre.startswith("_") or nombre in columnas:
                 continue
             if _columna_insumo_numerica(nombre):
-                columnas.append(nombre)
+                extras_insumo.append(nombre)
+        if extras_insumo:
+            if "COMENTARIOS" in columnas:
+                indice = columnas.index("COMENTARIOS")
+            elif "AVANCE %" in columnas:
+                indice = columnas.index("AVANCE %")
+            else:
+                indice = len(columnas)
+            for desplazamiento, nombre in enumerate(extras_insumo):
+                columnas.insert(indice + desplazamiento, nombre)
     return columnas
+
+
+def _alineacion_excel_filtrado(nombre: str) -> str:
+    clave = _clave_columna_bitacora(nombre)
+    if (
+        "descripcion" in clave
+        or "comentario" in clave
+        or clave in {"tipo de actividad", "actividad corta", "observacion revision"}
+    ):
+        return "left"
+    if clave in {"fecha", "secuencia", "avance", "avance %", "horas de ejecucion"} or _columna_insumo_numerica(nombre):
+        return "center"
+    if clave in {"cuadrilla", "personal", "ubicacion", "equipo", "revision", "evidencia"}:
+        return "center"
+    return "left"
+
+
+def _aplicar_formato_excel_filtrado(ws) -> None:
+    """Encabezado corporativo, bordes, alineación, anchos y autofiltro sobre la hoja ya escrita."""
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    if ws.max_row < 1 or ws.max_column < 1:
+        return
+    azul = PatternFill(start_color="1B6EC2", end_color="1B6EC2", fill_type="solid")
+    borde = Border(
+        left=Side(style="thin", color="D0D5DD"),
+        right=Side(style="thin", color="D0D5DD"),
+        top=Side(style="thin", color="D0D5DD"),
+        bottom=Side(style="thin", color="D0D5DD"),
+    )
+    fuente_titulo = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+    fuente_dato = Font(name="Calibri", size=10, color="1F2933")
+    encabezados = [str(ws.cell(1, col).value or "") for col in range(1, ws.max_column + 1)]
+    anchos: list[float] = []
+    for col, titulo in enumerate(encabezados, start=1):
+        horizontal = _alineacion_excel_filtrado(titulo)
+        ajusta = horizontal == "left"
+        celda_titulo = ws.cell(1, col)
+        celda_titulo.fill = azul
+        celda_titulo.font = fuente_titulo
+        celda_titulo.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        celda_titulo.border = borde
+        ancho = max(12, min(len(titulo) + 3, 28))
+        for fila in range(2, ws.max_row + 1):
+            celda = ws.cell(fila, col)
+            celda.font = fuente_dato
+            celda.border = borde
+            celda.alignment = Alignment(horizontal=horizontal, vertical="center", wrap_text=ajusta)
+            valor = celda.value
+            clave = _clave_columna_bitacora(titulo)
+            if clave == "fecha" and isinstance(valor, datetime):
+                celda.number_format = "DD/MM/YYYY"
+                largo = 12
+            elif clave in {"avance", "avance %"} and isinstance(valor, (int, float)) and not isinstance(valor, bool):
+                celda.number_format = "0%" if 0 <= float(valor) <= 1 else "0"
+                largo = 8
+            elif clave == "secuencia" and isinstance(valor, (int, float)) and not isinstance(valor, bool):
+                celda.number_format = "0"
+                largo = 8
+            elif clave == "horas de ejecucion" and isinstance(valor, (int, float)) and not isinstance(valor, bool):
+                celda.number_format = "0.0"
+                largo = 8
+            else:
+                largo = len(str(valor)) if valor not in (None, "") else 0
+            if ajusta:
+                ancho = max(ancho, min(largo + 2, 48))
+            else:
+                ancho = max(ancho, min(largo + 2, 32))
+        ws.column_dimensions[get_column_letter(col)].width = ancho
+        anchos.append(ancho)
+    ws.row_dimensions[1].height = 32
+    for fila in range(2, ws.max_row + 1):
+        lineas = 1
+        for col, ancho in enumerate(anchos, start=1):
+            if _alineacion_excel_filtrado(encabezados[col - 1]) != "left":
+                continue
+            texto = str(ws.cell(fila, col).value or "")
+            if not texto:
+                continue
+            lineas = max(lineas, (len(texto) + max(int(ancho), 8) - 1) // max(int(ancho), 8))
+        ws.row_dimensions[fila].height = min(18 * lineas, 120)
+    ws.auto_filter.ref = ws.dimensions
 
 
 def excel_bitacora_filtrada(df: pd.DataFrame) -> bytes:
@@ -7622,6 +7723,7 @@ def excel_bitacora_filtrada(df: pd.DataFrame) -> bytes:
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         salida.to_excel(writer, sheet_name=SHEET_NAME, index=False)
+        _aplicar_formato_excel_filtrado(writer.sheets[SHEET_NAME])
     return buffer.getvalue()
 
 
