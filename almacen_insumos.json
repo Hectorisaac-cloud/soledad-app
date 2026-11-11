@@ -1911,6 +1911,38 @@
       "tipo_insumo": "Consumible",
       "id": "69257e9807",
       "registrado": "2026-11-11 20:44"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-08-11",
+      "secuencia": "Act. 6",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PPB",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 15.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "1667961f26",
+      "registrado": "2026-11-11 20:46"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-08-11",
+      "secuencia": "Act. 6",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PPB",
+      "insumo_id": "radiador",
+      "insumo": "Radiador",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "f979c58bf1",
+      "registrado": "2026-11-11 20:46"
     }
   ]
 }
