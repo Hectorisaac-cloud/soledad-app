@@ -134,6 +134,15 @@
       "tipo": "Consumible",
       "precargado": false,
       "activo": true
+    },
+    {
+      "id": "bandas-c-144",
+      "nombre": "Bandas C-144",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Consumible",
+      "precargado": false,
+      "activo": true
     }
   ],
   "movimientos": [
@@ -1436,6 +1445,22 @@
       "tipo_insumo": "Consumible",
       "id": "3cf82eba86",
       "registrado": "2026-11-11 18:40"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-08-06",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PS Soledad",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 8.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "94f6c63928",
+      "registrado": "2026-11-11 18:50"
     }
   ]
 }
