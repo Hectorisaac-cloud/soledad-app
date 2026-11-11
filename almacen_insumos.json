@@ -1637,6 +1637,54 @@
       "tipo_insumo": "Consumible",
       "id": "e2ad69b4d0",
       "registrado": "2026-11-11 19:12"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-08-08",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PGA Gallo",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 16.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "d2b6651c7a",
+      "registrado": "2026-11-11 20:06"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-08-08",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PGA Gallo",
+      "insumo_id": "grasa",
+      "insumo": "Grasa",
+      "cantidad": 0.2,
+      "unidad": "Kg",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "b122905b4c",
+      "registrado": "2026-11-11 20:06"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-08-08",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PGA Gallo",
+      "insumo_id": "filtro-de-aceite",
+      "insumo": "Filtro de aceite",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "2f07b0e6d4",
+      "registrado": "2026-11-11 20:06"
     }
   ]
 }
