@@ -1461,6 +1461,54 @@
       "tipo_insumo": "Consumible",
       "id": "94f6c63928",
       "registrado": "2026-11-11 18:50"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-08-07",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 4.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "bf8cf1ea19",
+      "registrado": "2026-11-11 18:54"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-08-07",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 4.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "2caaa483f9",
+      "registrado": "2026-11-11 18:54"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-08-07",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "bandas-c-144",
+      "insumo": "Bandas C-144",
+      "cantidad": 2.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "e932ca1bd8",
+      "registrado": "2026-11-11 18:54"
     }
   ]
 }
