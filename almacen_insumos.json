@@ -1845,6 +1845,24 @@
       "tipo_insumo": "Consumible",
       "id": "8cf490a222",
       "registrado": "2026-11-11 20:37"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-08-11",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PS Soledad",
+      "insumo_id": "marcha-motor-arranque",
+      "insumo": "Marcha / Motor de arranque",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Componente Rotativo / Reparable",
+      "condicion_instalada": "Nuevo",
+      "destino_retirada": "Enviada a Taller de Reparación",
+      "id": "7d4285edea",
+      "registrado": "2026-11-11 20:41"
     }
   ]
 }
