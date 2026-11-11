@@ -835,6 +835,38 @@
       "tipo_insumo": "Consumible",
       "id": "ecbcb78452",
       "registrado": "2026-11-11 16:15"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-10",
+      "secuencia": "Act. 6",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PS Soledad",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 5.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "f1c665658d",
+      "registrado": "2026-11-11 16:29"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-10",
+      "secuencia": "Act. 6",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PS Soledad",
+      "insumo_id": "radiador",
+      "insumo": "Radiador",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "46d332437c",
+      "registrado": "2026-11-11 16:29"
     }
   ]
 }
