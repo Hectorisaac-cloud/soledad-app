@@ -120,6 +120,15 @@ evidencia_fotografica_octubre/electricos/05-11-2026/01/08_100_8389.jpg
 evidencia_fotografica_octubre/electricos/05-11-2026/01/08_100_8391.jpg
 evidencia_fotografica_octubre/electricos/05-11-2026/01/09_100_8362.jpg
 evidencia_fotografica_octubre/electricos/05-11-2026/01/09_100_8391.jpg
+evidencia_fotografica_octubre/electricos/10-11-2026/01/01_129_0416.jpg
+evidencia_fotografica_octubre/electricos/10-11-2026/01/02_100_8400.jpg
+evidencia_fotografica_octubre/electricos/10-11-2026/01/03_100_8402.jpg
+evidencia_fotografica_octubre/electricos/10-11-2026/01/04_100_8403.jpg
+evidencia_fotografica_octubre/electricos/10-11-2026/01/05_100_8409.jpg
+evidencia_fotografica_octubre/electricos/10-11-2026/01/06_100_8411.jpg
+evidencia_fotografica_octubre/electricos/10-11-2026/01/07_100_8413.jpg
+evidencia_fotografica_octubre/electricos/10-11-2026/01/08_100_8414.jpg
+evidencia_fotografica_octubre/electricos/10-11-2026/01/09_100_8416.jpg
 evidencia_fotografica_octubre/electricos/28-10-2026/01/01_100_8159.jpg
 evidencia_fotografica_octubre/electricos/28-10-2026/01/02_100_8150.jpg
 evidencia_fotografica_octubre/electricos/28-10-2026/01/03_100_8152.jpg
@@ -353,6 +362,32 @@ evidencia_fotografica_octubre/instrumentos/06-11-2026/06/06_104_6717.jpg
 evidencia_fotografica_octubre/instrumentos/06-11-2026/06/07_104_6719.jpg
 evidencia_fotografica_octubre/instrumentos/06-11-2026/06/08_104_6722.jpg
 evidencia_fotografica_octubre/instrumentos/06-11-2026/06/09_104_6723.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/01/01_104_6734.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/01/02_104_6788.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/01/03_104_6789.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/01/04_104_6791.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/01/05_104_6793.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/01/06_104_6794.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/01/07_104_6797.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/01/08_104_6798.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/01/09_104_6800.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/02/01_104_6734.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/02/02_104_6776.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/02/03_104_6778.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/02/04_104_6779.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/02/05_104_6781.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/02/06_104_6782.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/02/07_104_6785.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/02/08_104_6786.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/03/01_104_6734.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/03/02_104_6801.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/03/03_104_6803.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/03/04_104_6806.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/03/05_104_6808.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/03/06_104_6810.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/03/07_104_6813.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/03/08_104_6815.jpg
+evidencia_fotografica_octubre/instrumentos/10-11-2026/03/09_104_6821.jpg
 evidencia_fotografica_octubre/instrumentos/28-10-2026/01/01_104_6151.jpg
 evidencia_fotografica_octubre/instrumentos/28-10-2026/01/02_104_6152.jpg
 evidencia_fotografica_octubre/instrumentos/28-10-2026/01/03_104_6153.jpg
@@ -748,6 +783,68 @@ evidencia_fotografica_octubre/mecanico 1/06-11-2026/07/06_P1880102.jpg
 evidencia_fotografica_octubre/mecanico 1/06-11-2026/07/07_P1880103.jpg
 evidencia_fotografica_octubre/mecanico 1/06-11-2026/07/08_P1880106.jpg
 evidencia_fotografica_octubre/mecanico 1/06-11-2026/07/09_P1880107.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/01/01_104_8613.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/01/02_104_8614.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/01/03_104_8615.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/01/04_104_8618.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/01/05_104_8620.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/01/06_104_8622.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/01/07_104_8624.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/01/08_104_8627.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/01/09_104_8631.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/02/01_104_8633.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/02/02_104_8634.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/02/03_104_8644.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/02/04_104_8641.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/02/05_104_8646.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/02/06_104_8655.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/02/07_104_8637.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/02/08_104_8638.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/02/09_104_8653.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/03/01_104_8659.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/03/02_104_8660.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/03/03_104_8661.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/03/04_104_8663.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/03/05_104_8667.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/03/06_104_8671.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/03/07_104_8673.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/03/08_104_8676.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/03/09_104_8681.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/04/01_104_8682.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/04/02_104_8683.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/04/03_104_8684.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/04/04_104_8685.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/04/05_104_8687.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/04/06_104_8688.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/04/07_104_8690.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/04/08_104_8691.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/05/01_104_8695.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/05/02_104_8696.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/05/03_104_8697.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/05/04_104_8698.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/05/05_104_8700.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/05/06_104_8701.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/05/07_104_8702.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/05/08_104_8703.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/05/09_104_8705.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/06/01_104_8708.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/06/02_104_8709.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/06/03_104_8710.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/06/04_104_8712.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/06/05_104_8714.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/06/06_104_8716.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/06/07_104_8717.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/06/08_104_8722.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/06/09_104_8727.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/07/01_104_8730.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/07/02_104_8731.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/07/03_104_8732.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/07/04_104_8735.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/07/05_104_8737.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/07/06_104_8738.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/07/07_104_8740.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/07/08_104_8742.jpg
+evidencia_fotografica_octubre/mecanico 1/10-11-2026/07/09_104_8744.jpg
 evidencia_fotografica_octubre/mecanico 1/28-10-2026/01/01_P1870061.jpg
 evidencia_fotografica_octubre/mecanico 1/28-10-2026/01/01_P1870061_2.jpg
 evidencia_fotografica_octubre/mecanico 1/28-10-2026/01/02_P1870062.jpg
@@ -1913,6 +2010,15 @@ evidencia_fotografica_octubre/montaje/06-11-2026/04/06_129_1189.jpg
 evidencia_fotografica_octubre/montaje/06-11-2026/04/07_129_1190.jpg
 evidencia_fotografica_octubre/montaje/06-11-2026/04/08_129_1192.jpg
 evidencia_fotografica_octubre/montaje/06-11-2026/04/09_129_1193.jpg
+evidencia_fotografica_octubre/montaje/10-11-2026/01/01_129_1337.jpg
+evidencia_fotografica_octubre/montaje/10-11-2026/01/02_129_1353.jpg
+evidencia_fotografica_octubre/montaje/10-11-2026/01/03_129_1357.jpg
+evidencia_fotografica_octubre/montaje/10-11-2026/01/04_129_1365.jpg
+evidencia_fotografica_octubre/montaje/10-11-2026/01/05_129_1376.jpg
+evidencia_fotografica_octubre/montaje/10-11-2026/01/06_129_1411.jpg
+evidencia_fotografica_octubre/montaje/10-11-2026/01/07_129_1414.jpg
+evidencia_fotografica_octubre/montaje/10-11-2026/01/08_129_1416.jpg
+evidencia_fotografica_octubre/montaje/10-11-2026/01/09_129_1421.jpg
 evidencia_fotografica_octubre/montaje/30-10-2026/01/01_129_0810.jpg
 evidencia_fotografica_octubre/montaje/30-10-2026/01/02_129_0811.jpg
 evidencia_fotografica_octubre/montaje/30-10-2026/01/03_129_0812.jpg
@@ -2065,6 +2171,24 @@ evidencia_fotografica_octubre/soldadura/06-11-2026/03/06_124_1635.jpg
 evidencia_fotografica_octubre/soldadura/06-11-2026/03/07_124_1638.jpg
 evidencia_fotografica_octubre/soldadura/06-11-2026/03/08_124_1658.jpg
 evidencia_fotografica_octubre/soldadura/06-11-2026/03/09_124_1659.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/01/01_124_1842.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/01/02_124_1843.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/01/03_124_1845.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/01/04_124_1846.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/01/05_124_1848.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/01/06_124_1851.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/01/07_124_1853.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/01/08_124_1854.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/01/09_124_1855.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/02/01_124_1825.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/02/02_124_1831.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/02/03_124_1857.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/02/04_124_1865.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/02/05_124_1884.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/02/06_124_1904.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/02/07_124_1907.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/02/08_124_1914.jpg
+evidencia_fotografica_octubre/soldadura/10-11-2026/02/09_124_1919.jpg
 evidencia_fotografica_octubre/soldadura/20-10-2026/02/01_123_9950.jpg
 evidencia_fotografica_octubre/soldadura/20-10-2026/02/02_123_9951.jpg
 evidencia_fotografica_octubre/soldadura/20-10-2026/02/03_123_9952.jpg
