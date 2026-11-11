@@ -899,6 +899,22 @@
       "tipo_insumo": "Consumible",
       "id": "54a6fb7e99",
       "registrado": "2026-11-11 16:55"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-08-01",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PA Aragón",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 5.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "69359cafe4",
+      "registrado": "2026-11-11 16:57"
     }
   ]
 }
