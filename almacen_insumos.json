@@ -1541,6 +1541,38 @@
       "tipo_insumo": "Consumible",
       "id": "626f09ffec",
       "registrado": "2026-11-11 18:58"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-08-07",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 8.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "311aaa9821",
+      "registrado": "2026-11-11 19:01"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-08-07",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 6.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "31a793016e",
+      "registrado": "2026-11-11 19:01"
     }
   ]
 }
