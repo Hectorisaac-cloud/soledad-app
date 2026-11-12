@@ -8064,11 +8064,89 @@ def _porcentaje_exportacion(fila):
     return ""
 
 
+_RE_POZO_EXPORTACION = re.compile(
+    r"\b((?:PSN|PGA|PPB|PS|PA|PB|PC)-?\d+[A-Za-z]?)\b",
+    re.IGNORECASE,
+)
+_RE_INFRA_EXPORTACION = re.compile(
+    r"\b((?:GDO|CBN|OLD|OLG)-[A-Z0-9]+-IQ-SIN-\d+)\b",
+    re.IGNORECASE,
+)
+_RE_PARENTESIS_EXPORTACION = re.compile(r"\(([^)]+)\)")
+_ZONAS_PARENTESIS_EXPORTACION = {"S", "SN", "A", "COY", "GA", "NTE", "SUR", "INS", "OTR"}
+_ETIQUETA_ALMACEN_OPS = "ALMACEN OPS"
+
+
+def _es_almacen_ops_exportacion(texto: str) -> bool:
+    if sitios_operativos.clave_sitio(texto) == "AOPS":
+        return True
+    return bool(re.search(r"ALMAC[EÉ]N\s*(?:OPS|OPERACIONES)|\bAOPS\b", str(texto or ""), re.IGNORECASE))
+
+
+def _compactar_pozo_exportacion(tag: str) -> str:
+    return re.sub(r"(?<=[A-Z])-(?=\d)", "", str(tag or "").strip().upper())
+
+
+def _tag_parentesis_exportacion(texto: str) -> str:
+    """Tag dentro de paréntesis. Las zonas (SN, S, A) solo sirven si no hay un sitio más específico."""
+    sitios: list[str] = []
+    zonas: list[str] = []
+    for crudo in _RE_PARENTESIS_EXPORTACION.findall(str(texto or "")):
+        tag = " ".join(crudo.split())
+        if not tag or sitios_operativos.es_vacio_sitio(tag):
+            continue
+        if _es_almacen_ops_exportacion(tag):
+            return _ETIQUETA_ALMACEN_OPS
+        clave = sitios_operativos.clave_sitio(tag)
+        if clave == "AOPS":
+            return _ETIQUETA_ALMACEN_OPS
+        if clave:
+            sitios.append(clave)
+            continue
+        compacto = tag.upper()
+        if compacto in _ZONAS_PARENTESIS_EXPORTACION:
+            zonas.append(compacto)
+            continue
+        if re.fullmatch(r"[A-Z0-9]+(?:[ /-][A-Z0-9]+)*", compacto) and len(compacto) <= 16:
+            sitios.append(compacto)
+    if sitios:
+        return sitios[0]
+    if zonas:
+        return zonas[0]
+    return ""
+
+
+def _tag_corto_ubicacion_exportacion(texto: str) -> str:
+    """Deja el pozo, el tag del paréntesis o la clave corta. Almacén OPS no se reduce a AOPS."""
+    bruto = sitios_operativos.quitar_ninguno(texto)
+    if not bruto or sitios_operativos.es_vacio_sitio(bruto):
+        return ""
+    if _es_almacen_ops_exportacion(bruto):
+        return _ETIQUETA_ALMACEN_OPS
+    pozo = _RE_POZO_EXPORTACION.search(bruto)
+    if pozo:
+        return _compactar_pozo_exportacion(pozo.group(1))
+    infra = _RE_INFRA_EXPORTACION.search(bruto.replace(" ", "")) or _RE_INFRA_EXPORTACION.search(bruto)
+    if infra:
+        return infra.group(1).upper()
+    tag = _tag_parentesis_exportacion(bruto)
+    if tag:
+        return tag
+    clave = sitios_operativos.clave_sitio(bruto)
+    if clave == "AOPS":
+        return _ETIQUETA_ALMACEN_OPS
+    if clave and not sitios_operativos.es_vacio_sitio(clave):
+        return clave
+    sin_parentesis = re.sub(r"\s*\([^)]*\)", "", bruto)
+    primero = " ".join(re.split(r"\s*[·|/]\s*", sin_parentesis)[0].split())
+    return primero or bruto
+
+
 def _ubicacion_exportacion(fila) -> str:
     ubicacion = etiqueta_ubicacion_fila(fila) or str(
         fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or fila.get("POZO") or fila.get("SECTOR") or ""
     ).strip()
-    return texto_visible(ubicacion, "")
+    return _tag_corto_ubicacion_exportacion(texto_visible(ubicacion, ""))
 
 
 COLUMNAS_TEXTO_REPORTE_RESUMEN = (
