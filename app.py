@@ -8071,9 +8071,23 @@ def _ubicacion_exportacion(fila) -> str:
     return texto_visible(ubicacion, "")
 
 
+COLUMNAS_TEXTO_REPORTE_RESUMEN = (
+    "UBICACIÓN",
+    "CUADRILLA",
+    "NOMBRE DEL PERSONAL",
+    "DESCRIPCIÓN DE LA ACTIVIDAD",
+    "MATERIALES SUMINISTRADOS POR PJP4",
+    "MATERIALES SUMINISTRADOS POR OPS",
+)
+
+
+def _texto_mayusculas_exportacion(valor) -> str:
+    return str(valor or "").upper()
+
+
 def _fila_reporte_resumen(fila) -> dict:
     pjp4, ops = materiales_resumen_fila(fila)
-    return {
+    fila_resumen = {
         "FECHA": _valor_fecha_exportacion(fila.get("FECHA")),
         "UBICACIÓN": _ubicacion_exportacion(fila),
         "CUADRILLA": texto_visible(fila.get("CUADRILLA"), ""),
@@ -8085,6 +8099,9 @@ def _fila_reporte_resumen(fila) -> dict:
         "TIEMPO EMPLEADO": _tiempo_exportacion(fila),
         "PORCENTAJE DE AVANCE": _porcentaje_exportacion(fila),
     }
+    for columna in COLUMNAS_TEXTO_REPORTE_RESUMEN:
+        fila_resumen[columna] = _texto_mayusculas_exportacion(fila_resumen[columna])
+    return fila_resumen
 
 
 _RE_MECANICO_EXPORTACION = re.compile(r"^mecanicos?(?:[\s._-]*)(\d+)?$")
