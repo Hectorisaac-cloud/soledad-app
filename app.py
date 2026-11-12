@@ -12713,6 +12713,8 @@ def render_revision_bitacoras() -> None:
     if filtro_evidencia != "Todas":
         mask_ev = filtrado.apply(lambda r: estatus_evidencia_fila(r) == filtro_evidencia, axis=1)
         filtrado = filtrado.loc[mask_ev]
+    if not filtrado.empty:
+        filtrado = ordenar_bitacora_exportacion(filtrado)
 
     firma_export = hashlib.md5(
         "|".join(
