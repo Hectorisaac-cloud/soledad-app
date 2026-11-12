@@ -143,6 +143,33 @@
       "tipo": "Consumible",
       "precargado": false,
       "activo": true
+    },
+    {
+      "id": "pasta-de-baquelita-de-72-dientes-para-toma-de-fuerza-modelo-sp111hp3",
+      "nombre": "PASTA DE BAQUELITA DE 72 DIENTES PARA TOMA DE FUERZA MODELO SP111HP3",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Consumible",
+      "precargado": false,
+      "activo": true
+    },
+    {
+      "id": "balero-piloto-para-toma-de-fuerza-modelo-sp111hp3",
+      "nombre": "BALERO PILOTO PARA TOMA DE FUERZA MODELO SP111HP3",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Consumible",
+      "precargado": false,
+      "activo": true
+    },
+    {
+      "id": "flecha-de-mando",
+      "nombre": "Flecha de mando",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Consumible",
+      "precargado": false,
+      "activo": true
     }
   ],
   "movimientos": [
@@ -2315,6 +2342,38 @@
       "destino_retirada": "Enviada a Taller de Reparación",
       "id": "f04ee7fc32",
       "registrado": "2026-11-12 15:59"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-11",
+      "secuencia": "Act. 8",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PS Soledad",
+      "insumo_id": "banda-c-112",
+      "insumo": "Banda C-112",
+      "cantidad": 2.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "abb2fd0501",
+      "registrado": "2026-11-12 16:01"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-11",
+      "secuencia": "Act. 7",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 3.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "8b9664cd7c",
+      "registrado": "2026-11-12 16:01"
     }
   ]
 }
