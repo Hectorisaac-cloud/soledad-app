@@ -7625,17 +7625,66 @@ def columnas_oficiales_exportacion_bitacora(df: pd.DataFrame) -> list[str]:
     return columnas
 
 
+COLUMNAS_REPORTE_RESUMEN = [
+    "FECHA",
+    "UBICACIÓN",
+    "CUADRILLA",
+    "NOMBRE DEL PERSONAL",
+    "SECUENCIA DE ACTIVIDAD",
+    "DESCRIPCIÓN DE LA ACTIVIDAD",
+    "MATERIALES SUMINISTRADOS POR PJP4",
+    "MATERIALES SUMINISTRADOS POR OPS",
+    "TIEMPO EMPLEADO",
+    "PORCENTAJE DE AVANCE",
+]
+_ANCHOS_REPORTE_RESUMEN = {
+    "fecha": 14,
+    "ubicacion": 26,
+    "cuadrilla": 18,
+    "nombre del personal": 32,
+    "secuencia de actividad": 16,
+    "descripcion de la actividad": 42,
+    "materiales suministrados por pjp4": 40,
+    "materiales suministrados por ops": 40,
+    "tiempo empleado": 16,
+    "porcentaje de avance": 16,
+}
+
+
+def _columna_excel_con_ajuste(nombre: str) -> bool:
+    """Descripción y listas de materiales se parten dentro de la celda."""
+    clave = _clave_columna_bitacora(nombre)
+    return "descripcion" in clave or clave.startswith("materiales suministrados")
+
+
 def _alineacion_excel_filtrado(nombre: str) -> str:
     clave = _clave_columna_bitacora(nombre)
-    if (
-        "descripcion" in clave
-        or "comentario" in clave
-        or clave in {"tipo de actividad", "actividad corta", "observacion revision"}
-    ):
+    if _columna_excel_con_ajuste(nombre) or "comentario" in clave or clave in {
+        "tipo de actividad",
+        "actividad corta",
+        "observacion revision",
+    }:
         return "left"
-    if clave in {"fecha", "secuencia", "avance", "avance %", "horas de ejecucion"} or _columna_insumo_numerica(nombre):
+    if clave in {
+        "fecha",
+        "secuencia",
+        "secuencia de actividad",
+        "avance",
+        "avance %",
+        "porcentaje de avance",
+        "horas de ejecucion",
+        "tiempo empleado",
+    } or _columna_insumo_numerica(nombre):
         return "center"
-    if clave in {"cuadrilla", "personal", "ubicacion", "equipo", "revision", "evidencia"}:
+    if clave in {
+        "cuadrilla",
+        "personal",
+        "nombre del personal",
+        "ubicacion",
+        "equipo",
+        "revision",
+        "evidencia",
+    }:
         return "center"
     return "left"
 
@@ -7660,37 +7709,39 @@ def _aplicar_formato_excel_filtrado(ws) -> None:
     anchos: list[float] = []
     for col, titulo in enumerate(encabezados, start=1):
         horizontal = _alineacion_excel_filtrado(titulo)
-        ajusta = horizontal == "left"
+        ajusta = _columna_excel_con_ajuste(titulo)
+        clave = _clave_columna_bitacora(titulo)
         celda_titulo = ws.cell(1, col)
         celda_titulo.fill = azul
         celda_titulo.font = fuente_titulo
         celda_titulo.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         celda_titulo.border = borde
-        ancho = max(12, min(len(titulo) + 3, 28))
+        ancho = float(_ANCHOS_REPORTE_RESUMEN.get(clave, max(12, min(len(titulo) + 3, 28))))
         for fila in range(2, ws.max_row + 1):
             celda = ws.cell(fila, col)
             celda.font = fuente_dato
             celda.border = borde
-            celda.alignment = Alignment(horizontal=horizontal, vertical="center", wrap_text=ajusta)
+            celda.alignment = Alignment(
+                horizontal=horizontal,
+                vertical="top" if ajusta else "center",
+                wrap_text=ajusta,
+            )
             valor = celda.value
-            clave = _clave_columna_bitacora(titulo)
             if clave == "fecha" and isinstance(valor, datetime):
                 celda.number_format = "DD/MM/YYYY"
                 largo = 12
-            elif clave in {"avance", "avance %"} and isinstance(valor, (int, float)) and not isinstance(valor, bool):
+            elif clave in {"avance", "avance %", "porcentaje de avance"} and isinstance(valor, (int, float)) and not isinstance(valor, bool):
                 celda.number_format = "0%" if 0 <= float(valor) <= 1 else "0"
                 largo = 8
-            elif clave == "secuencia" and isinstance(valor, (int, float)) and not isinstance(valor, bool):
+            elif clave in {"secuencia", "secuencia de actividad"} and isinstance(valor, (int, float)) and not isinstance(valor, bool):
                 celda.number_format = "0"
                 largo = 8
-            elif clave == "horas de ejecucion" and isinstance(valor, (int, float)) and not isinstance(valor, bool):
+            elif clave in {"horas de ejecucion", "tiempo empleado"} and isinstance(valor, (int, float)) and not isinstance(valor, bool):
                 celda.number_format = "0.0"
                 largo = 8
             else:
                 largo = len(str(valor)) if valor not in (None, "") else 0
-            if ajusta:
-                ancho = max(ancho, min(largo + 2, 48))
-            else:
+            if not ajusta:
                 ancho = max(ancho, min(largo + 2, 32))
         ws.column_dimensions[get_column_letter(col)].width = ancho
         anchos.append(ancho)
@@ -7698,28 +7749,349 @@ def _aplicar_formato_excel_filtrado(ws) -> None:
     for fila in range(2, ws.max_row + 1):
         lineas = 1
         for col, ancho in enumerate(anchos, start=1):
-            if _alineacion_excel_filtrado(encabezados[col - 1]) != "left":
+            if not _columna_excel_con_ajuste(encabezados[col - 1]):
                 continue
             texto = str(ws.cell(fila, col).value or "")
             if not texto:
                 continue
-            lineas = max(lineas, (len(texto) + max(int(ancho), 8) - 1) // max(int(ancho), 8))
-        ws.row_dimensions[fila].height = min(18 * lineas, 120)
+            ancho_chars = max(int(ancho), 8)
+            ocupadas = 0
+            for linea in texto.split("\n"):
+                ocupadas += max(1, (len(linea) + ancho_chars - 1) // ancho_chars)
+            lineas = max(lineas, ocupadas)
+        ws.row_dimensions[fila].height = min(16 * lineas + 6, 240)
     ws.auto_filter.ref = ws.dimensions
 
 
-def excel_bitacora_filtrada(df: pd.DataFrame) -> bytes:
-    """Excel con las columnas oficiales y solo las filas que se ven en pantalla."""
-    origen = pd.DataFrame() if df is None else df.drop(columns=["_fecha"], errors="ignore")
-    columnas = columnas_oficiales_exportacion_bitacora(origen)
-    salida = pd.DataFrame(index=origen.index)
-    for col in columnas:
-        if col in origen.columns:
-            salida[col] = origen[col]
+def _origen_suministro_material(nombre: str) -> str:
+    """PJP4 u OPS según el nombre de la columna o el mapa histórico de la bitácora."""
+    clave = _clave_columna_bitacora(nombre)
+    if re.search(r"\bops\b", clave):
+        return "OPS"
+    if "pjp4" in clave:
+        return "PJP4"
+    espejo = _ESPEJO_INSUMO_BITACORA.get(str(nombre or "").strip())
+    if espejo:
+        return _origen_suministro_material(espejo)
+    if any(token in clave for token in ("grasa", "refriger", "anticongel")):
+        return "OPS"
+    return "PJP4"
+
+
+def _origen_exclusivo_bandas(valor) -> str:
+    texto = texto_visible(valor, "")
+    if not texto:
+        return ""
+    clave = _clave_columna_bitacora(texto)
+    tiene_ops = bool(re.search(r"\bops\b", clave))
+    tiene_pjp4 = "pjp4" in clave
+    if tiene_ops and not tiene_pjp4:
+        return "OPS"
+    if tiene_pjp4 and not tiene_ops:
+        return "PJP4"
+    return ""
+
+
+def _nombre_material_limpio(etiqueta: str) -> str:
+    texto = re.sub(
+        r"\s*\((?:kg|kilos?|l|lts|litros?|pzas?|piezas?)\)\s*$",
+        "",
+        str(etiqueta or "").strip(),
+        flags=re.IGNORECASE,
+    )
+    texto = re.sub(r"\s*[\(\[]?(?:PJP4|OPS)[\)\]]?\s*$", "", texto, flags=re.IGNORECASE)
+    return " ".join(texto.split())
+
+
+def _plural_material(nombre: str, cantidad: float) -> str:
+    if abs(float(cantidad) - 1) < 1e-9:
+        return nombre
+    partes = nombre.split(" ", 1)
+    cabeza = partes[0]
+    resto = f" {partes[1]}" if len(partes) > 1 else ""
+    if _sin_acentos(cabeza).casefold().endswith("s"):
+        return nombre
+    if cabeza.endswith("z"):
+        cabeza = cabeza[:-1] + "ces"
+    elif cabeza.endswith("ía"):
+        cabeza = cabeza[:-2] + "ías"
+    else:
+        cabeza += "s"
+    return cabeza + resto
+
+
+def _normalizar_nombre_banda(nombre: str) -> str:
+    texto = " ".join(str(nombre or "").split())
+
+    def _reemplazo(coincidencia: re.Match) -> str:
+        return f"Banda C-{coincidencia.group(1)}"
+
+    return re.sub(r"(?i)\bbandas?\s+c\s*[-]?\s*(\d{2,4})\b", _reemplazo, texto)
+
+
+def _texto_material_exportacion(cantidad: float, etiqueta: str, unidad: str) -> str:
+    """Arma «3 Bandas C-125» o «5L de aceite SAE 50»."""
+    cant = _texto_cantidad_insumo(cantidad)
+    nombre = _normalizar_nombre_banda(_nombre_material_limpio(etiqueta))
+    if not nombre:
+        return cant
+    if re.match(r"^\d", nombre):
+        return nombre
+    unidad_clave = _sin_acentos(unidad or "").casefold()
+    if unidad_clave in {"l", "lts", "litro", "litros"}:
+        visible = nombre[:1].lower() + nombre[1:]
+        return f"{cant}L de {visible}"
+    if unidad_clave in {"kg", "kilo", "kilos", "kilogramo", "kilogramos"}:
+        visible = nombre[:1].lower() + nombre[1:]
+        return f"{cant}Kg de {visible}"
+    return f"{cant} {_plural_material(nombre, float(cantidad))}".strip()
+
+
+def _clave_material_exportacion(texto: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", _sin_acentos(str(texto or "")).casefold()).strip()
+
+
+def _lineas_bandas_descripcion(cantidad_total: float, descripcion) -> list[tuple[str, float]]:
+    texto = texto_visible(descripcion, "")
+    if not texto:
+        return [("Bandas", float(cantidad_total))]
+    partes = [parte.strip() for parte in re.split(r"[,;/|]+", texto) if parte.strip()]
+    if not partes:
+        return [("Bandas", float(cantidad_total))]
+    lineas: list[tuple[str, float]] = []
+    for parte in partes:
+        hallado = re.search(r"\bx\s*(\d+(?:[.,]\d+)?)\s*$", parte, flags=re.IGNORECASE)
+        if hallado:
+            try:
+                cantidad = float(hallado.group(1).replace(",", "."))
+            except ValueError:
+                cantidad = 1.0
+            nombre = parte[: hallado.start()].strip(" -:")
         else:
-            salida[col] = ""
-    if "FECHA" in salida.columns:
-        salida["FECHA"] = salida["FECHA"].map(_valor_fecha_exportacion)
+            cantidad = float(cantidad_total) if len(partes) == 1 else 1.0
+            nombre = parte
+        nombre = _normalizar_nombre_banda(nombre)
+        if nombre and not re.match(r"(?i)^bandas?\b", nombre):
+            nombre = f"Banda {nombre}"
+        if nombre:
+            nombre = etiqueta_refaccion(nombre)
+        if nombre and cantidad > 0:
+            lineas.append((nombre, cantidad))
+    return lineas or [("Bandas", float(cantidad_total))]
+
+
+def _lista_materiales_celda(lineas: list[str]) -> str:
+    limpios: list[str] = []
+    vistos: set[str] = set()
+    for linea in lineas:
+        texto = " ".join(str(linea or "").split())
+        clave = texto.casefold()
+        if not texto or clave in vistos:
+            continue
+        vistos.add(clave)
+        limpios.append(texto)
+    return "\n".join(f"{indice}.- {texto}" for indice, texto in enumerate(limpios, start=1))
+
+
+def _agregar_material_exportacion(
+    grupos: dict[str, list[str]],
+    claves: set[str],
+    origen: str,
+    cantidad: float,
+    etiqueta: str,
+    unidad: str,
+) -> None:
+    etiqueta = _normalizar_nombre_banda(_nombre_material_limpio(etiqueta))
+    if cantidad <= 0 or not etiqueta:
+        return
+    destino = "OPS" if origen == "OPS" else "PJP4"
+    clave = f"{destino}|{_clave_material_exportacion(etiqueta)}"
+    if clave in claves:
+        return
+    claves.add(clave)
+    grupos[destino].append(_texto_material_exportacion(cantidad, etiqueta, unidad))
+
+
+def materiales_resumen_fila(fila) -> tuple[str, str]:
+    """Agrupa los insumos de la actividad en dos listas, PJP4 y OPS."""
+    indice = [str(col) for col in getattr(fila, "index", [])]
+    grupos = {"PJP4": [], "OPS": []}
+    claves: set[str] = set()
+    origen_bandas = _origen_exclusivo_bandas(fila.get("BANDAS PROPORCIONADO POR"))
+    descripcion_bandas = texto_visible(fila.get("BANDAS DESCRIPCIÓN"), "")
+    hay_banda_detalle = False
+    for nombre in indice:
+        if not _es_columna_cantidad_refaccion(nombre):
+            continue
+        if _clave_columna_bitacora(nombre) == "bandas cantidad":
+            continue
+        if "banda" not in _clave_columna_bitacora(nombre):
+            continue
+        if _numero_insumo(fila.get(nombre)) > 0:
+            hay_banda_detalle = True
+            break
+    if descripcion_bandas:
+        total_bandas = 0.0
+        origen_columna = ""
+        for nombre in indice:
+            if not _es_columna_cantidad_refaccion(nombre):
+                continue
+            espejo = _ESPEJO_INSUMO_BITACORA.get(nombre)
+            if espejo and espejo in indice:
+                continue
+            clave_col = _clave_columna_bitacora(nombre)
+            if "banda" not in clave_col:
+                continue
+            if clave_col == "bandas cantidad" and hay_banda_detalle:
+                continue
+            cantidad = _numero_insumo(fila.get(nombre))
+            if cantidad <= 0:
+                continue
+            total_bandas += cantidad
+            origen_columna = origen_columna or _origen_suministro_material(nombre)
+        origen = origen_bandas or origen_columna or "PJP4"
+        for etiqueta, cant_banda in _lineas_bandas_descripcion(total_bandas, descripcion_bandas):
+            _agregar_material_exportacion(grupos, claves, origen, cant_banda, etiqueta, "Pzas")
+    for nombre in indice:
+        if not _es_columna_cantidad_refaccion(nombre):
+            continue
+        espejo = _ESPEJO_INSUMO_BITACORA.get(nombre)
+        if espejo and espejo in indice:
+            continue
+        clave_col = _clave_columna_bitacora(nombre)
+        if "banda" in clave_col and (descripcion_bandas or (clave_col == "bandas cantidad" and hay_banda_detalle)):
+            continue
+        bruto = fila.get(nombre)
+        cantidad = cantidad_grasa_kg(bruto) if _es_grasa(nombre) else _numero_insumo(bruto)
+        if cantidad <= 0:
+            continue
+        origen = _origen_suministro_material(nombre)
+        if "banda" in clave_col and origen_bandas:
+            origen = origen_bandas
+        _agregar_material_exportacion(
+            grupos,
+            claves,
+            origen,
+            cantidad,
+            etiqueta_refaccion(nombre),
+            _unidad_editor_insumo(nombre),
+        )
+    for nombre, cantidad in _consumibles_en_comentario(fila.get("COMENTARIOS") if hasattr(fila, "get") else ""):
+        columna = _columna_destino_insumo(nombre, indice)
+        _agregar_material_exportacion(
+            grupos,
+            claves,
+            _origen_suministro_material(columna or nombre),
+            float(cantidad),
+            etiqueta_refaccion(columna or nombre),
+            _unidad_editor_insumo(columna or nombre),
+        )
+    for etiqueta, cantidad in _partes_otros_insumos(fila.get("OTROS INSUMOS") if hasattr(fila, "get") else ""):
+        _agregar_material_exportacion(
+            grupos,
+            claves,
+            _origen_suministro_material(etiqueta),
+            float(cantidad),
+            etiqueta,
+            _unidad_editor_insumo(etiqueta),
+        )
+    piezas = texto_visible(fila.get("PIEZAS ROTATIVAS") if hasattr(fila, "get") else "", "")
+    for parte in re.split(r"\s*\|\s*", piezas) if piezas else []:
+        hallado = re.match(r"(.+?)\s+x\s*(\d+(?:[.,]\d+)?)", parte.strip(), flags=re.IGNORECASE)
+        if not hallado:
+            continue
+        try:
+            cantidad = float(hallado.group(2).replace(",", "."))
+        except ValueError:
+            continue
+        etiqueta = hallado.group(1).strip()
+        _agregar_material_exportacion(
+            grupos,
+            claves,
+            _origen_suministro_material(etiqueta),
+            cantidad,
+            etiqueta_refaccion(etiqueta),
+            "Pzas",
+        )
+    return _lista_materiales_celda(grupos["PJP4"]), _lista_materiales_celda(grupos["OPS"])
+
+
+def _personal_exportacion(fila) -> str:
+    personal = texto_visible(fila.get("PERSONAL") if hasattr(fila, "get") else "", "")
+    if personal:
+        return personal
+    mecanico = texto_visible(fila.get("MECANICO EN TURNO"), "") or texto_visible(fila.get("MECANICO TITULAR"), "")
+    ayudante = texto_visible(fila.get("AYUDANTE EN TURNO"), "") or texto_visible(fila.get("AYUDANTE TITULAR"), "")
+    return " · ".join(parte for parte in (mecanico, ayudante) if parte)
+
+
+def _descripcion_exportacion(fila) -> str:
+    for clave in ("DESCRIPCIÓN DE LA ACTIVIDAD", "DESCRIPCION DE LA ACTIVIDAD"):
+        texto = texto_visible(fila.get(clave), "")
+        if texto:
+            return texto
+    return texto_visible(fila.get("ACTIVIDAD CORTA"), "") or texto_visible(fila.get("TIPO DE ACTIVIDAD"), "")
+
+
+def _secuencia_exportacion(fila):
+    numero = numero_secuencia_actividad(fila.get("SECUENCIA"))
+    if numero is not None:
+        return numero
+    return texto_secuencia_limpio(fila.get("SECUENCIA"))
+
+
+def _tiempo_exportacion(fila) -> str:
+    for clave in ("HORAS DE EJECUCION", "TIEMPO EMPLEADO"):
+        if hasattr(fila, "index") and clave not in fila.index:
+            continue
+        return horas_texto(fila.get(clave))
+    return ""
+
+
+def _porcentaje_exportacion(fila):
+    for clave in ("AVANCE %", "AVANCE", "PORCENTAJE DE AVANCE"):
+        valor = fila.get(clave) if hasattr(fila, "get") else None
+        if texto_visible(valor, "") == "":
+            continue
+        texto = str(valor).strip()
+        try:
+            numero = float(texto.replace("%", "").replace(",", "."))
+        except ValueError:
+            return texto
+        if "%" in texto or numero > 1:
+            numero = numero / 100.0
+        return max(0.0, min(1.0, numero))
+    return ""
+
+
+def _ubicacion_exportacion(fila) -> str:
+    ubicacion = etiqueta_ubicacion_fila(fila) or str(
+        fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or fila.get("POZO") or fila.get("SECTOR") or ""
+    ).strip()
+    return texto_visible(ubicacion, "")
+
+
+def _fila_reporte_resumen(fila) -> dict:
+    pjp4, ops = materiales_resumen_fila(fila)
+    return {
+        "FECHA": _valor_fecha_exportacion(fila.get("FECHA")),
+        "UBICACIÓN": _ubicacion_exportacion(fila),
+        "CUADRILLA": texto_visible(fila.get("CUADRILLA"), ""),
+        "NOMBRE DEL PERSONAL": _personal_exportacion(fila),
+        "SECUENCIA DE ACTIVIDAD": _secuencia_exportacion(fila),
+        "DESCRIPCIÓN DE LA ACTIVIDAD": _descripcion_exportacion(fila),
+        "MATERIALES SUMINISTRADOS POR PJP4": pjp4,
+        "MATERIALES SUMINISTRADOS POR OPS": ops,
+        "TIEMPO EMPLEADO": _tiempo_exportacion(fila),
+        "PORCENTAJE DE AVANCE": _porcentaje_exportacion(fila),
+    }
+
+
+def excel_bitacora_filtrada(df: pd.DataFrame) -> bytes:
+    """Excel resumido de 10 columnas con los registros que se ven en pantalla."""
+    origen = pd.DataFrame() if df is None else df.drop(columns=["_fecha"], errors="ignore")
+    filas = [_fila_reporte_resumen(fila) for _, fila in origen.iterrows()] if not origen.empty else []
+    salida = pd.DataFrame(filas, columns=COLUMNAS_REPORTE_RESUMEN)
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         salida.to_excel(writer, sheet_name=SHEET_NAME, index=False)
@@ -12205,7 +12577,7 @@ def render_revision_bitacoras() -> None:
         )
     with col_exp_info:
         st.caption(
-            f"{len(filtrado)} registro(s) visibles. El archivo usa las columnas de `{EXCEL_FILE}`."
+            f"{len(filtrado)} registro(s) visibles. El Excel resume cada actividad en 10 columnas."
         )
 
     m1, m2, m3, m4 = st.columns(4)
