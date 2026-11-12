@@ -170,6 +170,15 @@
       "tipo": "Consumible",
       "precargado": false,
       "activo": true
+    },
+    {
+      "id": "balero-de-carga-para-toma-de-fuerza-modelo-sp111hp3",
+      "nombre": "BALERO DE CARGA PARA TOMA DE FUERZA MODELO SP111HP3",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Consumible",
+      "precargado": false,
+      "activo": true
     }
   ],
   "movimientos": [
