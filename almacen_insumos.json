@@ -2281,6 +2281,40 @@
       "tipo_insumo": "Consumible",
       "id": "c8a865b2e3",
       "registrado": "2026-11-12 15:58"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-11",
+      "secuencia": "Act. 6",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PC",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 10.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "cc1d17d6ad",
+      "registrado": "2026-11-12 15:59"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-11",
+      "secuencia": "Act. 6",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PC",
+      "insumo_id": "bomba-de-agua",
+      "insumo": "Bomba de agua",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Componente Rotativo / Reparable",
+      "condicion_instalada": "Nuevo",
+      "destino_retirada": "Enviada a Taller de Reparación",
+      "id": "f04ee7fc32",
+      "registrado": "2026-11-12 15:59"
     }
   ]
 }
