@@ -8087,9 +8087,76 @@ def _fila_reporte_resumen(fila) -> dict:
     }
 
 
+_RE_MECANICO_EXPORTACION = re.compile(r"^mecanicos?(?:[\s._-]*)(\d+)?$")
+
+
+def _rango_cuadrilla_exportacion(nombre: str) -> tuple[int, int, str]:
+    """Eléctricos, Instrumentos, mecánicos por número, Montaje y Soldadura. El resto va al final."""
+    clave = clave_cuadrilla_oficial(nombre)
+    if clave in {"electrico", "electricos"}:
+        return (0, 0, clave)
+    if clave in {"instrumento", "instrumentos"}:
+        return (1, 0, clave)
+    mecanico = _RE_MECANICO_EXPORTACION.fullmatch(clave)
+    if mecanico:
+        numero = int(mecanico.group(1)) if mecanico.group(1) else 10**6
+        return (2, numero, clave)
+    if clave == "montaje":
+        return (3, 0, clave)
+    if clave == "soldadura":
+        return (4, 0, clave)
+    return (5, 0, clave)
+
+
+def _fecha_orden_exportacion(fila) -> tuple[int, int]:
+    dia = None
+    if hasattr(fila, "index") and "_fecha" in fila.index:
+        valor = fila.get("_fecha")
+        dia = valor if isinstance(valor, date) and not isinstance(valor, datetime) else parsear_fecha_valor(valor)
+    if dia is None:
+        dia = parsear_fecha_valor(fila.get("FECHA") if hasattr(fila, "get") else None)
+    if dia is None:
+        return (1, 0)
+    return (0, dia.toordinal())
+
+
+def _secuencia_orden_exportacion(fila) -> tuple[int, int]:
+    numero = numero_secuencia_actividad(fila.get("SECUENCIA") if hasattr(fila, "get") else None)
+    if numero is None:
+        return (1, 0)
+    return (0, numero)
+
+
+def ordenar_bitacora_exportacion(df: pd.DataFrame) -> pd.DataFrame:
+    """Fecha, luego la jerarquía fija de cuadrillas y, dentro de cada una, la secuencia ascendente.
+
+    Una cuadrilla ausente en el filtro no ocupa lugar: solo se ordenan las filas que sí existen.
+    """
+    if df is None or df.empty:
+        return df
+
+    def _clave(posicion: int):
+        fila = df.iloc[posicion]
+        grupo, numero, nombre = _rango_cuadrilla_exportacion(fila.get("CUADRILLA"))
+        return (
+            _fecha_orden_exportacion(fila),
+            grupo,
+            numero,
+            nombre,
+            _secuencia_orden_exportacion(fila),
+            posicion,
+        )
+
+    orden = sorted(range(len(df)), key=_clave)
+    return df.iloc[orden]
+
+
 def excel_bitacora_filtrada(df: pd.DataFrame) -> bytes:
     """Excel resumido de 10 columnas con los registros que se ven en pantalla."""
-    origen = pd.DataFrame() if df is None else df.drop(columns=["_fecha"], errors="ignore")
+    origen = pd.DataFrame() if df is None else df
+    if not origen.empty:
+        origen = ordenar_bitacora_exportacion(origen)
+    origen = origen.drop(columns=["_fecha"], errors="ignore")
     filas = [_fila_reporte_resumen(fila) for _, fila in origen.iterrows()] if not origen.empty else []
     salida = pd.DataFrame(filas, columns=COLUMNAS_REPORTE_RESUMEN)
     buffer = io.BytesIO()
