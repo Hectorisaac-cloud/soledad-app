@@ -2623,6 +2623,22 @@
       "tipo_insumo": "Consumible",
       "id": "f81a75eac9",
       "registrado": "2026-11-13 15:55"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-12",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "grasa",
+      "insumo": "Grasa",
+      "cantidad": 2.0,
+      "unidad": "Kg",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "248635a363",
+      "registrado": "2026-11-13 16:07"
     }
   ]
 }
