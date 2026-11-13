@@ -2815,6 +2815,22 @@
       "tipo_insumo": "Consumible",
       "id": "c10514c326",
       "registrado": "2026-11-13 16:52"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-12",
+      "secuencia": "Act. 7",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PSN",
+      "insumo_id": "banda-c-112",
+      "insumo": "Banda C-112",
+      "cantidad": 2.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "e502ab35af",
+      "registrado": "2026-11-13 17:02"
     }
   ]
 }
