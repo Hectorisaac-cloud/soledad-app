@@ -3710,6 +3710,38 @@
       "tipo_insumo": "Consumible",
       "id": "40ea69459a",
       "registrado": "2026-11-18 17:13"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-17",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 4",
+      "sector": "PC",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 4.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "5a75ba12b7",
+      "registrado": "2026-11-18 17:17"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-17",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 4",
+      "sector": "PC",
+      "insumo_id": "bandas-c-125",
+      "insumo": "Bandas C-125",
+      "cantidad": 2.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "a41e75765a",
+      "registrado": "2026-11-18 17:17"
     }
   ]
 }
