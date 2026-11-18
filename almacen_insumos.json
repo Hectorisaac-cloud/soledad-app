@@ -3822,6 +3822,22 @@
       "tipo_insumo": "Consumible",
       "id": "162f555430",
       "registrado": "2026-11-18 17:29"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-17",
+      "secuencia": "Act. 6",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PS Soledad",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 4.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "3a4560c0ac",
+      "registrado": "2026-11-18 18:08"
     }
   ]
 }
