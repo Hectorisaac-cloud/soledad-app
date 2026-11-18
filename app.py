@@ -25467,6 +25467,42 @@ _EXTENSIONES_ENTRADA_OTRO = _EXTENSIONES_ENTRADA + (".pdf",)
 _TOPE_ACTIVIDADES_ENTRADA = 20000
 
 
+def _base_slot_entrada(slot: str) -> str:
+    return str(slot or "").split("__", 1)[0]
+
+
+def _slug_ubicacion_entrada(ubicacion: str) -> str:
+    texto = unicodedata.normalize("NFKD", str(ubicacion or ""))
+    texto = "".join(caracter for caracter in texto if not unicodedata.combining(caracter))
+    texto = re.sub(r"[^a-zA-Z0-9]+", "_", texto).strip("_").casefold()
+    return texto or "ubicacion"
+
+
+def _slot_ubicacion_entrada(especialidad: str, ubicacion: str) -> str:
+    return f"{especialidad}__{_slug_ubicacion_entrada(ubicacion)}"
+
+
+def _ubicaciones_instalaciones_entrada() -> list[str]:
+    """Instalaciones del bloque INS, tomadas del catálogo vigente."""
+    return opciones_items_macro_captura(etiqueta_macro_zona_oficial("instalaciones"))
+
+
+def _ubicaciones_cargadas_entrada(mes_clave: str, especialidad: str, ubicaciones: list[str]) -> list[str]:
+    bloque = _leer_indice_entrada().get(mes_clave, {})
+    if not isinstance(bloque, dict):
+        return []
+    cargadas = []
+    for ubicacion in ubicaciones:
+        registro = bloque.get(_slot_ubicacion_entrada(especialidad, ubicacion), {})
+        archivos = registro.get("archivos") if isinstance(registro, dict) else None
+        if any(
+            isinstance(item, dict) and os.path.isfile(str(item.get("ruta") or ""))
+            for item in archivos or []
+        ):
+            cargadas.append(ubicacion)
+    return cargadas
+
+
 def _leer_indice_entrada() -> dict:
     datos = leer_json(ENTRADA_DATOS_INDICE, {})
     return datos if isinstance(datos, dict) else {}
@@ -25510,12 +25546,22 @@ def _archivos_slot_entrada(mes_clave: str, slot: str) -> list[dict]:
     return vigentes
 
 
-def _registrar_archivos_entrada(mes_clave: str, slot: str, archivos: list[dict]) -> None:
+def _registrar_archivos_entrada(
+    mes_clave: str,
+    slot: str,
+    archivos: list[dict],
+    *,
+    ubicacion: str = "",
+) -> None:
     indice = _leer_indice_entrada()
     bloque = indice.get(mes_clave)
     if not isinstance(bloque, dict):
         bloque = {}
-    bloque[slot] = {"archivos": archivos}
+    registro = {"archivos": archivos}
+    if ubicacion:
+        registro["ubicacion"] = ubicacion
+        registro["especialidad"] = _base_slot_entrada(slot)
+    bloque[slot] = registro
     indice[mes_clave] = bloque
     _guardar_indice_entrada(indice)
 
@@ -25574,9 +25620,10 @@ def _html_estado_entrada(archivos: list[dict], *, multiple: bool) -> str:
     return f'<div class="entrada-estado ok">{"".join(f"<div>{linea}</div>" for linea in lineas)}</div>'
 
 
-def _filas_de_la_tarjeta(filas: list[dict], slot: str) -> list[dict]:
-    esperada = _ESPECIALIDAD_TARJETA.get(slot)
-    zona = _ZONA_TARJETA.get(slot, "")
+def _filas_de_la_tarjeta(filas: list[dict], slot: str, ubicacion: str = "") -> list[dict]:
+    base = _base_slot_entrada(slot)
+    esperada = _ESPECIALIDAD_TARJETA.get(base) or _ESPECIALIDAD_TARJETA.get(slot)
+    zona = _ZONA_TARJETA.get(base) or _ZONA_TARJETA.get(slot, "")
     propias = []
     for fila in filas:
         if not isinstance(fila, dict):
@@ -25589,6 +25636,8 @@ def _filas_de_la_tarjeta(filas: list[dict], slot: str) -> list[dict]:
             continue
         copia = dict(fila)
         copia["slot"] = slot
+        if ubicacion:
+            copia["ubicacion_programa"] = ubicacion
         propias.append(copia)
         if len(propias) >= _TOPE_ACTIVIDADES_ENTRADA:
             break
@@ -25608,7 +25657,14 @@ def _filas_programa_del_mes(filas: list[dict], anio: int, mes: int) -> list[dict
     return seleccion
 
 
-def _resumen_archivo_entrada(ruta: str, nombre: str, anio: int, mes: int, slot: str) -> dict:
+def _resumen_archivo_entrada(
+    ruta: str,
+    nombre: str,
+    anio: int,
+    mes: int,
+    slot: str,
+    ubicacion: str = "",
+) -> dict:
     etiqueta = f"{NOMBRES_MES[mes - 1]} {anio}"
     lower = nombre.casefold()
     filas: list[dict] = []
@@ -25640,13 +25696,14 @@ def _resumen_archivo_entrada(ruta: str, nombre: str, anio: int, mes: int, slot: 
                 "filas": [],
             }
         filas = _filas_programa_del_mes(interpretadas, anio, mes)
-    filas = _filas_de_la_tarjeta(filas, slot)
+    filas = _filas_de_la_tarjeta(filas, slot, ubicacion)
     for fila in filas:
         fila["mes_clave"] = clave_mes(anio, mes)
+    ambito = f" para {ubicacion}" if ubicacion else " en esta tarjeta"
     if filas:
-        nota = f"{len(filas)} actividad(es) de {etiqueta} listas en esta tarjeta."
+        nota = f"{len(filas)} actividad(es) de {etiqueta} listas{ambito}."
     elif lower.endswith(_EXTENSIONES_ENTRADA):
-        nota = f"Archivo guardado. No hay actividades de {etiqueta} para esta tarjeta."
+        nota = f"Archivo guardado. No hay actividades de {etiqueta}{ambito}."
     else:
         nota = "Archivo complementario guardado."
     return {"actividades": len(filas), "nota": nota, "filas": filas}
@@ -25676,7 +25733,7 @@ def _escribir_archivo_entrada(
     return destino
 
 
-def _asegurar_buffer_entrada(mes_clave: str, slot: str, anio: int, mes: int) -> None:
+def _asegurar_buffer_entrada(mes_clave: str, slot: str, anio: int, mes: int, ubicacion: str = "") -> None:
     archivos = _archivos_slot_entrada(mes_clave, slot)
     if not archivos:
         return
@@ -25686,7 +25743,14 @@ def _asegurar_buffer_entrada(mes_clave: str, slot: str, anio: int, mes: int) -> 
         return
     item = archivos[-1]
     with st.spinner(f"Leyendo {item.get('nombre') or 'programa'}…"):
-        resumen = _resumen_archivo_entrada(str(item.get("ruta") or ""), str(item.get("nombre") or ""), anio, mes, slot)
+        resumen = _resumen_archivo_entrada(
+            str(item.get("ruta") or ""),
+            str(item.get("nombre") or ""),
+            anio,
+            mes,
+            slot,
+            ubicacion,
+        )
     _guardar_buffer_entrada(
         mes_clave,
         slot,
@@ -25709,6 +25773,7 @@ def _cargar_programas_entrada(
     *,
     multiple: bool,
     procesar: bool,
+    ubicacion: str = "",
 ) -> None:
     if archivos is None:
         lista = []
@@ -25753,7 +25818,7 @@ def _cargar_programas_entrada(
         actividades = None
         filas: list[dict] = []
         if procesar:
-            resumen = _resumen_archivo_entrada(destino, nombre, anio, mes, slot)
+            resumen = _resumen_archivo_entrada(destino, nombre, anio, mes, slot, ubicacion)
             nota = resumen["nota"]
             actividades = resumen["actividades"]
             filas = resumen["filas"]
@@ -25765,6 +25830,7 @@ def _cargar_programas_entrada(
                 "actividades": actividades,
                 "nota": nota,
                 "filas": filas,
+                "ubicacion": ubicacion,
             }
         )
     if not nuevos:
@@ -25778,7 +25844,7 @@ def _cargar_programas_entrada(
         registrados = list(por_nombre.values())
     else:
         registrados = [{clave: valor for clave, valor in nuevos[-1].items() if clave != "filas"}]
-    _registrar_archivos_entrada(mes_clave, slot, registrados)
+    _registrar_archivos_entrada(mes_clave, slot, registrados, ubicacion=ubicacion)
     if procesar:
         elegido = nuevos[-1]
         firma = tuple((item.get("nombre"), item.get("actualizado")) for item in registrados)
@@ -25794,7 +25860,8 @@ def _cargar_programas_entrada(
             },
         )
     nombres = ", ".join(item["nombre"] for item in nuevos)
-    mensaje = f"Quedó cargado en {etiqueta_mes(mes_clave)}: {nombres}."
+    lugar = f" · {ubicacion}" if ubicacion else ""
+    mensaje = f"Quedó cargado en {etiqueta_mes(mes_clave)}{lugar}: {nombres}."
     if errores:
         mensaje = f"{mensaje} {' '.join(errores)}"
     _avisar_entrada(slot, "ok" if not errores else "aviso", mensaje)
@@ -25810,9 +25877,10 @@ def _panel_carga_entrada(
     *,
     multiple: bool = False,
     procesar: bool = True,
+    ubicacion: str = "",
 ) -> None:
     if procesar:
-        _asegurar_buffer_entrada(mes_clave, slot, anio, mes)
+        _asegurar_buffer_entrada(mes_clave, slot, anio, mes, ubicacion)
     archivos = _archivos_slot_entrada(mes_clave, slot)
     st.markdown(_html_estado_entrada(archivos, multiple=multiple), unsafe_allow_html=True)
     buffer = _buffer_entrada(mes_clave, slot) if procesar else None
@@ -25849,6 +25917,7 @@ def _panel_carga_entrada(
             mes,
             multiple=multiple,
             procesar=procesar,
+            ubicacion=ubicacion,
         )
 
 
@@ -25903,6 +25972,48 @@ def _tarjeta_programa_entrada(
         _panel_carga_entrada(slot, etiqueta_archivo, mes_clave, anio, mes)
 
 
+def _resumen_instalaciones_entrada(mes_clave: str, especialidad: str, ubicaciones: list[str]) -> None:
+    cargadas = _ubicaciones_cargadas_entrada(mes_clave, especialidad, ubicaciones)
+    st.caption(f"{len(cargadas)} de {len(ubicaciones)} instalaciones con archivo en este mes.")
+    if cargadas:
+        st.caption("Con archivo: " + ", ".join(cargadas))
+
+
+def _tarjeta_programa_por_instalacion(
+    titulo: str,
+    detalle: str,
+    especialidad: str,
+    etiqueta_archivo: str,
+    mes_clave: str,
+    anio: int,
+    mes: int,
+) -> None:
+    with st.container(border=True):
+        st.markdown(
+            f'<p class="entrada-tarjeta-titulo">{html.escape(titulo)}</p>',
+            unsafe_allow_html=True,
+        )
+        st.caption(detalle)
+        ubicaciones = _ubicaciones_instalaciones_entrada()
+        if not ubicaciones:
+            st.info("No hay instalaciones registradas en INS Instalaciones y baterías.")
+            return
+        ubicacion = st.selectbox(
+            "Selecciona la instalación / ubicación",
+            ubicaciones,
+            key=f"entrada_ubicacion_{especialidad}_{mes_clave}",
+        )
+        _panel_carga_entrada(
+            _slot_ubicacion_entrada(especialidad, ubicacion),
+            f"{etiqueta_archivo} · {ubicacion}",
+            mes_clave,
+            anio,
+            mes,
+            ubicacion=ubicacion,
+        )
+        _resumen_instalaciones_entrada(mes_clave, especialidad, ubicaciones)
+
+
 def render_entrada_datos_admin(jornada: date | None = None) -> None:
     if not isinstance(jornada, date):
         jornada = st.session_state.get("admin_jornada")
@@ -25912,14 +26023,14 @@ def render_entrada_datos_admin(jornada: date | None = None) -> None:
     _estilo_entrada_datos()
     st.caption(
         f"Mes seleccionado: {etiqueta_mes(mes_clave)}. "
-        "El archivo de cada tarjeta se guarda y se procesa por separado."
+        "Cada programa se guarda por separado. En eléctricos e instrumentos, cada instalación conserva el suyo."
     )
     arriba = st.columns(2)
     abajo = st.columns(2)
     with arriba[0]:
-        _tarjeta_programa_entrada(
+        _tarjeta_programa_por_instalacion(
             "ELÉCTRICOS",
-            "Programa de mantenimiento eléctrico.",
+            "Programa de mantenimiento eléctrico por instalación.",
             "electricos",
             "Programa eléctrico",
             mes_clave,
@@ -25927,9 +26038,9 @@ def render_entrada_datos_admin(jornada: date | None = None) -> None:
             jornada.month,
         )
     with arriba[1]:
-        _tarjeta_programa_entrada(
+        _tarjeta_programa_por_instalacion(
             "INSTRUMENTOS",
-            "Programa de mantenimiento de instrumentación.",
+            "Programa de mantenimiento de instrumentación por instalación.",
             "instrumentos",
             "Programa de instrumentación",
             mes_clave,
