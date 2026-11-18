@@ -25448,36 +25448,528 @@ def _boton_descarga_respaldo_admin() -> None:
     )
 
 
-def render_entrada_datos_admin() -> None:
-    if st.button(
-        "Registrar o editar actividad de bitácora",
-        use_container_width=True,
-        key="adm_m_registro",
-    ):
-        abrir_modulo_admin("registro_bitacora")
-    archivo_programa = st.file_uploader(
-        "Excel de mantenimientos programados",
-        type=["xlsx", "xls", "xlsm"],
-        key="adm_m_excel_prog",
-    )
-    if st.button("Cargar Excel al programa", use_container_width=True, key="adm_m_cargar_excel"):
-        _guardar_excel_programa_admin(archivo_programa)
-    if st.button("Mantenimientos programados", use_container_width=True, key="adm_m_programa_anual"):
-        abrir_modulo_admin("mantenimientos_programados")
-    alta_ubic, alta_eq, alta_ins = st.columns(3)
-    with alta_ubic:
-        if st.button("Ubicación", use_container_width=True, key="adm_m_alta_ub"):
-            abrir_modulo_admin(
-                "auditoria",
-                admin_sub_auditoria="catalogos",
-                admin_sub_catalogos="ubicaciones",
+ENTRADA_DATOS_DIR = os.path.join(DATABASE_DIR, "entrada_datos")
+ENTRADA_DATOS_INDICE = os.path.join(ENTRADA_DATOS_DIR, "indice.json")
+ENTRADA_DATOS_BUFFER = "entrada_datos_buffer"
+ENTRADA_DATOS_AVISOS = "entrada_datos_avisos"
+_ESPECIALIDAD_TARJETA = {
+    "electricos": "Eléctrico",
+    "instrumentos": "Instrumentación",
+    "ubm_norte": "UBM",
+    "ubm_sur": "UBM",
+}
+_ZONA_TARJETA = {
+    "ubm_norte": "Norte",
+    "ubm_sur": "Sur",
+}
+_EXTENSIONES_ENTRADA = (".xlsx", ".xls", ".xlsm", ".csv")
+_EXTENSIONES_ENTRADA_OTRO = _EXTENSIONES_ENTRADA + (".pdf",)
+_TOPE_ACTIVIDADES_ENTRADA = 20000
+
+
+def _leer_indice_entrada() -> dict:
+    datos = leer_json(ENTRADA_DATOS_INDICE, {})
+    return datos if isinstance(datos, dict) else {}
+
+
+def _guardar_indice_entrada(datos: dict) -> None:
+    os.makedirs(ENTRADA_DATOS_DIR, exist_ok=True)
+    escribir_json(ENTRADA_DATOS_INDICE, datos)
+
+
+def _carpeta_slot_entrada(mes_clave: str, slot: str) -> str:
+    anio, mes = str(mes_clave).split("-", 1)
+    return os.path.join(ENTRADA_DATOS_DIR, anio, mes, slot)
+
+
+def _nombre_archivo_entrada(nombre: str, extensiones: tuple[str, ...]) -> str:
+    base = os.path.basename(str(nombre or "").replace("\\", "/")).strip()
+    if not base or base.startswith("~$") or ".." in base:
+        return ""
+    if any(caracter in base for caracter in '<>:"|?*'):
+        return ""
+    if not base.casefold().endswith(tuple(ext.casefold() for ext in extensiones)):
+        return ""
+    return base
+
+
+def _archivos_slot_entrada(mes_clave: str, slot: str) -> list[dict]:
+    bloque = _leer_indice_entrada().get(mes_clave, {})
+    if not isinstance(bloque, dict):
+        return []
+    registro = bloque.get(slot, {})
+    if not isinstance(registro, dict):
+        return []
+    vigentes = []
+    for item in registro.get("archivos") or []:
+        if not isinstance(item, dict):
+            continue
+        ruta = str(item.get("ruta") or "")
+        if ruta and os.path.isfile(ruta):
+            vigentes.append(item)
+    return vigentes
+
+
+def _registrar_archivos_entrada(mes_clave: str, slot: str, archivos: list[dict]) -> None:
+    indice = _leer_indice_entrada()
+    bloque = indice.get(mes_clave)
+    if not isinstance(bloque, dict):
+        bloque = {}
+    bloque[slot] = {"archivos": archivos}
+    indice[mes_clave] = bloque
+    _guardar_indice_entrada(indice)
+
+
+def _buffer_entrada(mes_clave: str, slot: str) -> dict | None:
+    buffer = st.session_state.get(ENTRADA_DATOS_BUFFER)
+    if not isinstance(buffer, dict):
+        return None
+    item = buffer.get(f"{mes_clave}|{slot}")
+    return item if isinstance(item, dict) else None
+
+
+def _guardar_buffer_entrada(mes_clave: str, slot: str, payload: dict) -> None:
+    buffer = st.session_state.get(ENTRADA_DATOS_BUFFER)
+    if not isinstance(buffer, dict):
+        buffer = {}
+    buffer[f"{mes_clave}|{slot}"] = payload
+    st.session_state[ENTRADA_DATOS_BUFFER] = buffer
+
+
+def _avisar_entrada(slot: str, tipo: str, texto: str) -> None:
+    avisos = st.session_state.get(ENTRADA_DATOS_AVISOS)
+    if not isinstance(avisos, dict):
+        avisos = {}
+    avisos[slot] = {"tipo": tipo, "texto": texto}
+    st.session_state[ENTRADA_DATOS_AVISOS] = avisos
+
+
+def _tomar_aviso_entrada(slot: str) -> dict | None:
+    avisos = st.session_state.get(ENTRADA_DATOS_AVISOS)
+    if not isinstance(avisos, dict):
+        return None
+    aviso = avisos.pop(slot, None)
+    st.session_state[ENTRADA_DATOS_AVISOS] = avisos
+    return aviso if isinstance(aviso, dict) else None
+
+
+def _marca_corta_entrada(valor: str) -> str:
+    try:
+        momento = datetime.fromisoformat(str(valor))
+    except ValueError:
+        return ""
+    return momento.strftime("%d/%m/%Y %H:%M")
+
+
+def _html_estado_entrada(archivos: list[dict], *, multiple: bool) -> str:
+    if not archivos:
+        texto = "Sin archivos en este mes" if multiple else "Sin archivo en este mes"
+        return f'<div class="entrada-estado vacio">Pendiente · {texto}</div>'
+    lineas = []
+    for item in archivos:
+        nombre = html.escape(str(item.get("nombre") or "Archivo"))
+        marca = _marca_corta_entrada(str(item.get("actualizado") or ""))
+        detalle = f" · {html.escape(marca)}" if marca else ""
+        lineas.append(f"<b>Cargado</b> · {nombre}{detalle}")
+    return f'<div class="entrada-estado ok">{"".join(f"<div>{linea}</div>" for linea in lineas)}</div>'
+
+
+def _filas_de_la_tarjeta(filas: list[dict], slot: str) -> list[dict]:
+    esperada = _ESPECIALIDAD_TARJETA.get(slot)
+    zona = _ZONA_TARJETA.get(slot, "")
+    propias = []
+    for fila in filas:
+        if not isinstance(fila, dict):
+            continue
+        especialidad = str(fila.get("especialidad") or "").strip()
+        if esperada and especialidad and especialidad not in {esperada, "General"}:
+            continue
+        zona_fila = str(fila.get("ZONA") or "").strip()
+        if zona and zona_fila and zona_fila.casefold() != zona.casefold():
+            continue
+        copia = dict(fila)
+        copia["slot"] = slot
+        propias.append(copia)
+        if len(propias) >= _TOPE_ACTIVIDADES_ENTRADA:
+            break
+    return propias
+
+
+def _filas_programa_del_mes(filas: list[dict], anio: int, mes: int) -> list[dict]:
+    seleccion = []
+    for fila in filas:
+        cuando = None
+        if fila.get("fecha"):
+            cuando = _fecha_actividad(fila.get("fecha"))
+        if cuando is None and fila.get("FECHA PROGRAMADA"):
+            cuando = _fecha_programada(fila.get("FECHA PROGRAMADA"), anio)
+        if cuando and cuando.year == anio and cuando.month == mes:
+            seleccion.append(fila)
+    return seleccion
+
+
+def _resumen_archivo_entrada(ruta: str, nombre: str, anio: int, mes: int, slot: str) -> dict:
+    etiqueta = f"{NOMBRES_MES[mes - 1]} {anio}"
+    lower = nombre.casefold()
+    filas: list[dict] = []
+    if lower.endswith(EXTENSIONES_PROGRAMA_EXCEL):
+        try:
+            hojas = hojas_programa_excel(ruta)
+        except Exception:
+            hojas = []
+        for hoja in hojas:
+            if _norm_encabezado(hoja) in HOJAS_PROGRAMA_IGNORADAS:
+                continue
+            try:
+                filas.extend(_actividades_de_hoja(ruta, hoja, nombre, anio, mes))
+            except Exception:
+                continue
+    if not filas and lower.endswith(_EXTENSIONES_ENTRADA):
+        try:
+            with open(ruta, "rb") as archivo:
+                contenido = archivo.read()
+            interpretadas = interpretar_programa_mantenimiento(
+                contenido,
+                nombre,
+                _ZONA_TARJETA.get(slot, ""),
             )
-    with alta_eq:
-        if st.button("Equipo", use_container_width=True, key="adm_m_alta_eq"):
-            abrir_modulo_admin("auditoria", admin_sub_auditoria="catalogos")
-    with alta_ins:
-        if st.button("Insumos", use_container_width=True, key="adm_m_alta_ins"):
-            abrir_modulo_admin("almacen", admin_sub_almacen="gestion")
+        except Exception as exc:
+            return {
+                "actividades": 0,
+                "nota": f"Archivo guardado. No se pudo leer el programa: {exc}",
+                "filas": [],
+            }
+        filas = _filas_programa_del_mes(interpretadas, anio, mes)
+    filas = _filas_de_la_tarjeta(filas, slot)
+    for fila in filas:
+        fila["mes_clave"] = clave_mes(anio, mes)
+    if filas:
+        nota = f"{len(filas)} actividad(es) de {etiqueta} listas en esta tarjeta."
+    elif lower.endswith(_EXTENSIONES_ENTRADA):
+        nota = f"Archivo guardado. No hay actividades de {etiqueta} para esta tarjeta."
+    else:
+        nota = "Archivo complementario guardado."
+    return {"actividades": len(filas), "nota": nota, "filas": filas}
+
+
+def _escribir_archivo_entrada(
+    mes_clave: str,
+    slot: str,
+    nombre: str,
+    contenido: bytes,
+    *,
+    reemplazar_slot: bool,
+) -> str:
+    carpeta = _carpeta_slot_entrada(mes_clave, slot)
+    os.makedirs(carpeta, exist_ok=True)
+    destino = os.path.join(carpeta, nombre)
+    with open(destino, "wb") as salida:
+        salida.write(contenido)
+    if reemplazar_slot:
+        for existente in os.listdir(carpeta):
+            ruta = os.path.join(carpeta, existente)
+            if os.path.isfile(ruta) and os.path.abspath(ruta) != os.path.abspath(destino):
+                try:
+                    os.remove(ruta)
+                except OSError:
+                    pass
+    return destino
+
+
+def _asegurar_buffer_entrada(mes_clave: str, slot: str, anio: int, mes: int) -> None:
+    archivos = _archivos_slot_entrada(mes_clave, slot)
+    if not archivos:
+        return
+    firma = tuple((item.get("nombre"), item.get("actualizado")) for item in archivos)
+    actual = _buffer_entrada(mes_clave, slot)
+    if actual and actual.get("firma") == firma:
+        return
+    item = archivos[-1]
+    with st.spinner(f"Leyendo {item.get('nombre') or 'programa'}…"):
+        resumen = _resumen_archivo_entrada(str(item.get("ruta") or ""), str(item.get("nombre") or ""), anio, mes, slot)
+    _guardar_buffer_entrada(
+        mes_clave,
+        slot,
+        {
+            "firma": firma,
+            "nombre": item.get("nombre") or "",
+            "filas": resumen["filas"],
+            "nota": resumen["nota"],
+            "actividades": resumen["actividades"],
+        },
+    )
+
+
+def _cargar_programas_entrada(
+    mes_clave: str,
+    slot: str,
+    archivos,
+    anio: int,
+    mes: int,
+    *,
+    multiple: bool,
+    procesar: bool,
+) -> None:
+    if archivos is None:
+        lista = []
+    elif multiple:
+        lista = [item for item in archivos]
+    else:
+        lista = [archivos]
+    if not lista:
+        st.warning("Elige un archivo para esta tarjeta.")
+        return
+    extensiones = _EXTENSIONES_ENTRADA_OTRO if multiple else _EXTENSIONES_ENTRADA
+    nuevos = []
+    errores = []
+    for archivo in lista:
+        nombre = _nombre_archivo_entrada(getattr(archivo, "name", ""), extensiones)
+        if not nombre:
+            errores.append(f"{getattr(archivo, 'name', 'Archivo')}: el formato no corresponde a esta tarjeta.")
+            continue
+        try:
+            contenido = archivo.getvalue()
+        except Exception as exc:
+            errores.append(f"{nombre}: {exc}")
+            continue
+        if not contenido:
+            errores.append(f"{nombre}: el archivo está vacío.")
+            continue
+        if len(contenido) > 20 * 1024 * 1024:
+            errores.append(f"{nombre}: supera 20 MB.")
+            continue
+        try:
+            destino = _escribir_archivo_entrada(
+                mes_clave,
+                slot,
+                nombre,
+                contenido,
+                reemplazar_slot=not multiple,
+            )
+        except OSError as exc:
+            errores.append(f"{nombre}: {exc}")
+            continue
+        nota = "Archivo complementario guardado."
+        actividades = None
+        filas: list[dict] = []
+        if procesar:
+            resumen = _resumen_archivo_entrada(destino, nombre, anio, mes, slot)
+            nota = resumen["nota"]
+            actividades = resumen["actividades"]
+            filas = resumen["filas"]
+        nuevos.append(
+            {
+                "nombre": nombre,
+                "ruta": destino,
+                "actualizado": datetime.now().isoformat(timespec="seconds"),
+                "actividades": actividades,
+                "nota": nota,
+                "filas": filas,
+            }
+        )
+    if not nuevos:
+        for error in errores:
+            st.warning(error)
+        return
+    if multiple:
+        por_nombre = {item["nombre"]: item for item in _archivos_slot_entrada(mes_clave, slot)}
+        for item in nuevos:
+            por_nombre[item["nombre"]] = {clave: valor for clave, valor in item.items() if clave != "filas"}
+        registrados = list(por_nombre.values())
+    else:
+        registrados = [{clave: valor for clave, valor in nuevos[-1].items() if clave != "filas"}]
+    _registrar_archivos_entrada(mes_clave, slot, registrados)
+    if procesar:
+        elegido = nuevos[-1]
+        firma = tuple((item.get("nombre"), item.get("actualizado")) for item in registrados)
+        _guardar_buffer_entrada(
+            mes_clave,
+            slot,
+            {
+                "firma": firma,
+                "nombre": elegido["nombre"],
+                "filas": elegido["filas"],
+                "nota": elegido["nota"],
+                "actividades": elegido["actividades"],
+            },
+        )
+    nombres = ", ".join(item["nombre"] for item in nuevos)
+    mensaje = f"Quedó cargado en {etiqueta_mes(mes_clave)}: {nombres}."
+    if errores:
+        mensaje = f"{mensaje} {' '.join(errores)}"
+    _avisar_entrada(slot, "ok" if not errores else "aviso", mensaje)
+    st.rerun()
+
+
+def _panel_carga_entrada(
+    slot: str,
+    etiqueta_archivo: str,
+    mes_clave: str,
+    anio: int,
+    mes: int,
+    *,
+    multiple: bool = False,
+    procesar: bool = True,
+) -> None:
+    if procesar:
+        _asegurar_buffer_entrada(mes_clave, slot, anio, mes)
+    archivos = _archivos_slot_entrada(mes_clave, slot)
+    st.markdown(_html_estado_entrada(archivos, multiple=multiple), unsafe_allow_html=True)
+    buffer = _buffer_entrada(mes_clave, slot) if procesar else None
+    nota = ""
+    if buffer and buffer.get("nota"):
+        nota = str(buffer["nota"])
+    elif archivos:
+        nota = str(archivos[-1].get("nota") or "")
+    if nota:
+        st.caption(nota)
+    aviso = _tomar_aviso_entrada(slot)
+    if aviso:
+        if aviso.get("tipo") == "ok":
+            st.success(str(aviso.get("texto") or "Archivo cargado."))
+        else:
+            st.warning(str(aviso.get("texto") or "No se pudo cargar el archivo."))
+    tipos = ["xlsx", "xls", "xlsm", "csv", "pdf"] if multiple else ["xlsx", "xls", "xlsm", "csv"]
+    archivo = st.file_uploader(
+        etiqueta_archivo,
+        type=tipos,
+        accept_multiple_files=multiple,
+        key=f"entrada_up_{slot}_{mes_clave}",
+    )
+    if st.button(
+        "Cargar archivos" if multiple else "Cargar programa",
+        use_container_width=True,
+        key=f"entrada_btn_{slot}_{mes_clave}",
+    ):
+        _cargar_programas_entrada(
+            mes_clave,
+            slot,
+            archivo,
+            anio,
+            mes,
+            multiple=multiple,
+            procesar=procesar,
+        )
+
+
+def _estilo_entrada_datos() -> None:
+    st.markdown(
+        """
+        <style>
+            .entrada-tarjeta-titulo {
+                margin: 0 0 0.15rem;
+                color: #f8fafc;
+                font-weight: 800;
+                letter-spacing: 0.08em;
+            }
+            .entrada-estado {
+                border-radius: 10px;
+                padding: 0.5rem 0.7rem;
+                margin: 0.35rem 0 0.45rem;
+                font-size: 0.9rem;
+                line-height: 1.4;
+            }
+            .entrada-estado.ok {
+                background: #14532d;
+                color: #dcfce7;
+                border: 1px solid #22c55e;
+            }
+            .entrada-estado.vacio {
+                background: #1e293b;
+                color: #cbd5e1;
+                border: 1px solid #475569;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _tarjeta_programa_entrada(
+    titulo: str,
+    detalle: str,
+    slot: str,
+    etiqueta_archivo: str,
+    mes_clave: str,
+    anio: int,
+    mes: int,
+) -> None:
+    with st.container(border=True):
+        st.markdown(
+            f'<p class="entrada-tarjeta-titulo">{html.escape(titulo)}</p>',
+            unsafe_allow_html=True,
+        )
+        st.caption(detalle)
+        _panel_carga_entrada(slot, etiqueta_archivo, mes_clave, anio, mes)
+
+
+def render_entrada_datos_admin(jornada: date | None = None) -> None:
+    if not isinstance(jornada, date):
+        jornada = st.session_state.get("admin_jornada")
+    if not isinstance(jornada, date):
+        jornada = date.today()
+    mes_clave = clave_mes(jornada.year, jornada.month)
+    _estilo_entrada_datos()
+    st.caption(
+        f"Mes seleccionado: {etiqueta_mes(mes_clave)}. "
+        "El archivo de cada tarjeta se guarda y se procesa por separado."
+    )
+    arriba = st.columns(2)
+    abajo = st.columns(2)
+    with arriba[0]:
+        _tarjeta_programa_entrada(
+            "ELÉCTRICOS",
+            "Programa de mantenimiento eléctrico.",
+            "electricos",
+            "Programa eléctrico",
+            mes_clave,
+            jornada.year,
+            jornada.month,
+        )
+    with arriba[1]:
+        _tarjeta_programa_entrada(
+            "INSTRUMENTOS",
+            "Programa de mantenimiento de instrumentación.",
+            "instrumentos",
+            "Programa de instrumentación",
+            mes_clave,
+            jornada.year,
+            jornada.month,
+        )
+    with abajo[0]:
+        with st.container(border=True):
+            st.markdown('<p class="entrada-tarjeta-titulo">UBM</p>', unsafe_allow_html=True)
+            st.caption("Programas de mantenimiento UBM para motores y unidades de bombeo.")
+            norte, sur = st.tabs(["NORTE", "SUR"])
+            with norte:
+                _panel_carga_entrada(
+                    "ubm_norte",
+                    "Programa UBM Norte",
+                    mes_clave,
+                    jornada.year,
+                    jornada.month,
+                )
+            with sur:
+                _panel_carga_entrada(
+                    "ubm_sur",
+                    "Programa UBM Sur",
+                    mes_clave,
+                    jornada.year,
+                    jornada.month,
+                )
+    with abajo[1]:
+        with st.container(border=True):
+            st.markdown('<p class="entrada-tarjeta-titulo">OTRO</p>', unsafe_allow_html=True)
+            st.caption("Archivos complementarios o adendas enviadas por OPS.")
+            _panel_carga_entrada(
+                "otro",
+                "Adendas u otros archivos",
+                mes_clave,
+                jornada.year,
+                jornada.month,
+                multiple=True,
+                procesar=False,
+            )
 
 
 def render_edicion_captura_admin(jornada: date) -> None:
@@ -27074,7 +27566,7 @@ def render_seccion_completa_admin(vista: str, jornada: date) -> None:
         unsafe_allow_html=True,
     )
     if vista == "entrada":
-        render_entrada_datos_admin()
+        render_entrada_datos_admin(jornada)
     elif vista == "edicion":
         render_edicion_captura_admin(jornada)
     elif vista == "previa":
