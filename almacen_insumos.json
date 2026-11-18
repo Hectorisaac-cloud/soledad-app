@@ -3518,6 +3518,22 @@
       "tipo_insumo": "Consumible",
       "id": "9102b397f9",
       "registrado": "2026-11-18 15:51"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-17",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "polea-loca-o-tensora-para-motor-vortec-v8-5-7l-o-v6-4-3l",
+      "insumo": "POLEA LOCA  O TENSORA PARA MOTOR VORTEC V8 5.7L O V6 4.3L",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "f48ac4910c",
+      "registrado": "2026-11-18 15:57"
     }
   ]
 }
