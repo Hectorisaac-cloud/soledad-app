@@ -47,6 +47,7 @@ ARCHIVOS_DATOS = (
     "ubicaciones_equipos.json",
     "control_programa_octubre.json",
     "programados_ops.json",
+    "database/conciliacion_programados.json",
     "actividades_cuadrillas.json",
     "personal_cuadrillas.json",
     "vehiculos_ot.json",

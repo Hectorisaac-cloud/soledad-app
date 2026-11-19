@@ -10125,6 +10125,7 @@ def cruce_cumplimiento_programa(programa: pd.DataFrame, bitacora: pd.DataFrame) 
                 "FECHA REALIZADA": fecha_realizada,
             }
         )
+    _aplicar_conciliacion_al_programa(salida)
     return pd.DataFrame(salida, columns=columnas)
 
 
@@ -26559,6 +26560,111 @@ def _texto_delta_conciliacion(delta) -> str:
     return f"{delta} días de diferencia"
 
 
+def _firma_actividad_conciliacion(actividad: dict) -> str:
+    return "|".join(
+        [
+            str(actividad.get("slot") or ""),
+            str(actividad.get("codigo") or ""),
+            str(actividad.get("equipo") or ""),
+            str(actividad.get("fecha") or ""),
+            str(actividad.get("actividad") or "")[:120],
+            str(actividad.get("tipo") or "")[:80],
+            str(actividad.get("nro") or ""),
+        ]
+    )
+
+
+def _guardado_actividad_conciliacion(confirmados: dict, actividad: dict) -> dict | None:
+    directo = confirmados.get(actividad.get("id"))
+    if isinstance(directo, dict):
+        return directo
+    firma = _firma_actividad_conciliacion(actividad)
+    for guardado in confirmados.values():
+        if isinstance(guardado, dict) and guardado.get("firma") == firma:
+            return guardado
+    return None
+
+
+def _clave_guardado_conciliacion(datos: dict, item: dict) -> str:
+    identificador = str(item.get("id") or "")
+    if identificador and identificador in datos:
+        return identificador
+    firma = _firma_actividad_conciliacion(item)
+    for clave, guardado in datos.items():
+        if isinstance(guardado, dict) and guardado.get("firma") == firma:
+            return str(clave)
+    return identificador
+
+
+def _codigo_homologado_conciliacion(item: dict) -> str:
+    codigo_original = str(item.get("codigo") or "")
+    if item.get("calidad") == "parcial" and item.get("nota_codigo"):
+        return str(item.get("nota_codigo") or "")
+    return str(item.get("canon") or codigo_original)
+
+
+def _ot_conciliacion(registro: dict) -> str:
+    secuencia = registro.get("secuencia")
+    if secuencia in (None, ""):
+        return ""
+    return f"OT {secuencia}"
+
+
+def _persistir_conciliacion_programados(datos: dict, motivo: str) -> None:
+    _guardar_conciliacion_programados(datos)
+    try:
+        persistencia.respaldar_cambios(motivo)
+    except Exception:
+        pass
+
+
+def _aplicar_conciliacion_al_programa(filas: list[dict]) -> None:
+    """Muestra como realizado el enlace confirmado, sin reescribir la bitácora."""
+    try:
+        datos = _leer_conciliacion_programados()
+    except Exception:
+        return
+    realizados = [
+        item
+        for item in datos.values()
+        if isinstance(item, dict) and item.get("estatus") == "Realizado"
+    ]
+    if not realizados:
+        return
+    for fila in filas:
+        if fila.get("ESTATUS") == "Realizado":
+            continue
+        cuando = fila.get("FECHA")
+        if not isinstance(cuando, date):
+            continue
+        claves = _claves_pozo_programa(str(fila.get("UBICACION") or ""), str(fila.get("CODIGO") or ""))
+        tipo = str(fila.get("TIPO DE MANTENIMIENTO") or "")
+        for guardado in realizados:
+            dia = _dia_conciliacion(guardado.get("fecha_programada"))
+            if dia != cuando:
+                continue
+            claves_guardado = _claves_pozo_programa(
+                str(guardado.get("codigo") or ""),
+                str(guardado.get("canon") or ""),
+                str(guardado.get("equipo") or ""),
+            )
+            if not claves or not claves_guardado or not (claves & claves_guardado):
+                continue
+            actividad = str(guardado.get("actividad") or guardado.get("tipo") or "")
+            if (
+                actividad
+                and tipo
+                and _sin_acentos(actividad).casefold() != _sin_acentos(tipo).casefold()
+                and not actividades_programadas_coinciden(actividad, tipo)
+            ):
+                continue
+            fila["ESTATUS"] = "Realizado"
+            fecha_ejec = _dia_conciliacion(guardado.get("fecha_ejecucion"))
+            if fecha_ejec and not fila.get("FECHA REALIZADA"):
+                fila["FECHA REALIZADA"] = fecha_ejec.strftime("%d/%m/%Y")
+            break
+
+
 def _cruzar_conciliacion_programados(
     actividades: list[dict],
     registros: list[dict],
@@ -26574,7 +26680,7 @@ def _cruzar_conciliacion_programados(
     equivalencias = _indice_equivalencia_conciliacion()
     candidatos: dict[str, list[dict]] = {}
     for actividad in actividades:
-        guardado = confirmados.get(actividad["id"])
+        guardado = _guardado_actividad_conciliacion(confirmados, actividad)
         if isinstance(guardado, dict) and guardado.get("estatus") == "Realizado":
             continue
         descartados = set()
@@ -26623,8 +26729,7 @@ def _cruzar_conciliacion_programados(
     salida = []
     for actividad in actividades:
         cuando = _dia_conciliacion(actividad.get("fecha"))
-        guardado = confirmados.get(actividad["id"])
-        guardado = guardado if isinstance(guardado, dict) else None
+        guardado = _guardado_actividad_conciliacion(confirmados, actividad)
         if guardado and guardado.get("estatus") == "Realizado":
             vivo = por_bitacora.get(str(guardado.get("bitacora_id") or ""))
             delta = guardado.get("delta_dias")
@@ -26678,51 +26783,80 @@ def _cruzar_conciliacion_programados(
 
 
 def _confirmar_enlace_conciliacion(item: dict, mes_clave: str) -> str | None:
+    """Guarda el enlace en la conciliación. No modifica la bitácora."""
     registro = item.get("bitacora") if isinstance(item.get("bitacora"), dict) else None
     if not registro or not registro.get("id"):
         return "Esa coincidencia ya no tiene un registro de bitácora para vincular."
     datos = _leer_conciliacion_programados()
-    for clave, guardado in datos.items():
-        if clave == item["id"] or not isinstance(guardado, dict):
+    clave = _clave_guardado_conciliacion(datos, item)
+    identificador = str(registro["id"])
+    for otra, guardado in datos.items():
+        if otra == clave or not isinstance(guardado, dict):
             continue
-        if guardado.get("estatus") == "Realizado" and guardado.get("bitacora_id") == registro["id"]:
+        if guardado.get("estatus") == "Realizado" and str(guardado.get("bitacora_id") or "") == identificador:
             return "Ese registro de bitácora ya está vinculado a otra actividad."
-    datos[item["id"]] = {
+    fecha_registro = registro.get("fecha")
+    datos[clave] = {
         "estatus": "Realizado",
-        "bitacora_id": registro["id"],
-        "fecha_ejecucion": registro["fecha"].isoformat() if isinstance(registro.get("fecha"), date) else "",
+        "firma": _firma_actividad_conciliacion(item),
+        "bitacora_id": identificador,
+        "ot": _ot_conciliacion(registro),
+        "fecha_ejecucion": fecha_registro.isoformat() if isinstance(fecha_registro, date) else "",
+        "codigo": str(item.get("codigo") or ""),
+        "codigo_homologado": _codigo_homologado_conciliacion(item),
+        "canon": str(item.get("canon") or ""),
+        "equipo": str(item.get("equipo") or ""),
+        "actividad": str(item.get("actividad") or ""),
+        "tipo": str(item.get("tipo") or ""),
+        "fecha_programada": str(item.get("fecha") or ""),
         "resumen": item.get("resumen") or _resumen_bitacora_conciliacion(registro),
         "delta_dias": item.get("delta") if isinstance(item.get("delta"), int) else None,
         "mes_clave": mes_clave,
-        "codigo": item.get("codigo") or "",
-        "actividad": item.get("actividad") or "",
+        "especialidad": _especialidad_conciliacion(item),
+        "slot": str(item.get("slot") or ""),
+        "nro": str(item.get("nro") or ""),
         "confirmado": datetime.now().isoformat(timespec="seconds"),
     }
-    _guardar_conciliacion_programados(datos)
+    _persistir_conciliacion_programados(datos, "Conciliación confirmada de mantenimiento programado")
     return None
 
 
 def _descartar_sugerencia_conciliacion(item: dict, mes_clave: str) -> str | None:
+    """Descarta esta sugerencia para la actividad. No modifica la bitácora."""
     registro = item.get("bitacora") if isinstance(item.get("bitacora"), dict) else None
     if not registro or not registro.get("id"):
         return "No hay una sugerencia para descartar."
     datos = _leer_conciliacion_programados()
-    previo = datos.get(item["id"]) if isinstance(datos.get(item["id"]), dict) else {}
+    clave = _clave_guardado_conciliacion(datos, item)
+    previo = datos.get(clave) if isinstance(datos.get(clave), dict) else {}
     if previo.get("estatus") == "Realizado":
         return "Esa actividad ya está conciliada."
     descartados = [str(valor) for valor in (previo.get("descartados") or []) if str(valor or "").strip()]
     identificador = str(registro["id"])
     if identificador not in descartados:
         descartados.append(identificador)
-    datos[item["id"]] = {
+    fecha_registro = registro.get("fecha")
+    datos[clave] = {
         "estatus": "Descartado",
+        "firma": _firma_actividad_conciliacion(item),
         "descartados": descartados,
+        "bitacora_id": identificador,
+        "ot": _ot_conciliacion(registro),
+        "fecha_ejecucion": fecha_registro.isoformat() if isinstance(fecha_registro, date) else "",
         "mes_clave": mes_clave,
-        "codigo": item.get("codigo") or "",
-        "actividad": item.get("actividad") or "",
+        "especialidad": _especialidad_conciliacion(item),
+        "slot": str(item.get("slot") or ""),
+        "codigo": str(item.get("codigo") or ""),
+        "codigo_homologado": _codigo_homologado_conciliacion(item),
+        "canon": str(item.get("canon") or ""),
+        "equipo": str(item.get("equipo") or ""),
+        "actividad": str(item.get("actividad") or ""),
+        "tipo": str(item.get("tipo") or ""),
+        "fecha_programada": str(item.get("fecha") or ""),
+        "nro": str(item.get("nro") or ""),
         "descartado": datetime.now().isoformat(timespec="seconds"),
     }
-    _guardar_conciliacion_programados(datos)
+    _persistir_conciliacion_programados(datos, "Sugerencia de conciliación descartada")
     return None
 
 
@@ -26850,10 +26984,7 @@ def _fila_revision_verificacion(item: dict, mes_clave: str) -> None:
     ot = f"OT {registro['secuencia']}" if registro.get("secuencia") else "Sin OT"
     fecha_real = registro["fecha"].strftime("%d/%m/%Y") if isinstance(registro.get("fecha"), date) else ""
     codigo_original = str(item.get("codigo") or "")
-    if item.get("calidad") == "parcial" and item.get("nota_codigo"):
-        codigo_homologado = str(item.get("nota_codigo") or "")
-    else:
-        codigo_homologado = str(item.get("canon") or codigo_original)
+    codigo_homologado = _codigo_homologado_conciliacion(item)
     with st.container(border=True):
         registrada, programada, acciones = st.columns(3)
         with registrada:
@@ -26921,7 +27052,7 @@ def _fila_revision_verificacion(item: dict, mes_clave: str) -> None:
                         error
                         or (
                             f"{item.get('equipo') or 'Actividad'}: enlace confirmado. "
-                            "La actividad quedó como realizada."
+                            "La actividad programada quedó conciliada y la bitácora no se modificó."
                         ),
                     )
                     st.rerun()
