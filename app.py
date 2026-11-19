@@ -25968,6 +25968,51 @@ def _estilo_entrada_datos() -> None:
                 color: #86efac;
                 font-weight: 700;
             }
+            .verif-bloque-titulo {
+                margin: 0 0 0.4rem;
+                color: #f8fafc;
+                font-weight: 800;
+                letter-spacing: 0.06em;
+                text-align: center;
+            }
+            .verif-cuenta {
+                background: #0f172a;
+                border: 1px solid #38bdf8;
+                border-radius: 12px;
+                padding: 0.7rem 0.4rem 0.6rem;
+                margin: 0 0 0.45rem;
+                text-align: center;
+            }
+            .verif-cuenta b {
+                display: block;
+                color: #f8fafc;
+                font-size: 1.7rem;
+                line-height: 1.1;
+            }
+            .verif-cuenta span {
+                color: #cbd5e1;
+                font-size: 0.78rem;
+            }
+            .verif-caja-titulo {
+                margin: 0 0 0.45rem;
+                font-size: 0.78rem;
+                font-weight: 800;
+                letter-spacing: 0.05em;
+            }
+            .verif-caja-titulo.registrada { color: #7dd3fc; }
+            .verif-caja-titulo.programada { color: #fcd34d; }
+            .verif-caja-titulo.confirmada { color: #86efac; }
+            .verif-dato {
+                margin: 0.28rem 0;
+                color: #e2e8f0;
+                font-size: 0.92rem;
+                line-height: 1.35;
+            }
+            .verif-dato b {
+                color: #94a3b8;
+                font-size: 0.75rem;
+                letter-spacing: 0.03em;
+            }
         </style>
         """,
         unsafe_allow_html=True,
@@ -26470,6 +26515,12 @@ def _registros_bitacora_conciliacion(anio: int, mes: int) -> list[dict]:
                     fila.get("POZO") or fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or fila.get("EQUIPO")
                 ),
                 "cuadrilla": etiqueta_cuadrilla_historial(str(fila.get("CUADRILLA") or "")),
+                "mecanico": _texto_actividad(
+                    fila.get("MECANICO EN TURNO") or fila.get("MECANICO TITULAR") or fila.get("PERSONAL")
+                ),
+                "descripcion": _texto_actividad(
+                    fila.get("DESCRIPCIÓN DE LA ACTIVIDAD") or fila.get("DESCRIPCION DE LA ACTIVIDAD")
+                ),
                 "secuencia": secuencia,
             }
         )
@@ -26508,27 +26559,6 @@ def _texto_delta_conciliacion(delta) -> str:
     return f"{delta} días de diferencia"
 
 
-def _nota_cruce_conciliacion(item: dict) -> str:
-    partes = []
-    nota = str(item.get("nota_codigo") or "").strip()
-    if nota:
-        partes.append(nota)
-    otras = [alternativa for alternativa in (item.get("alternativas") or []) if isinstance(alternativa, dict)]
-    if otras:
-        textos = []
-        for alternativa in otras[:3]:
-            resumen = str(alternativa.get("resumen") or "").strip()
-            delta = _texto_delta_conciliacion(alternativa.get("delta"))
-            marca = "parcial" if alternativa.get("calidad") == "parcial" else ""
-            textos.append(" · ".join(parte for parte in (resumen, delta, marca) if parte))
-        sobran = len(otras) - len(textos)
-        linea = "Otras posibles: " + "; ".join(texto for texto in textos if texto)
-        if sobran > 0:
-            linea += f"; y {sobran} más"
-        partes.append(linea)
-    return " · ".join(parte for parte in partes if parte)
-
-
 def _cruzar_conciliacion_programados(
     actividades: list[dict],
     registros: list[dict],
@@ -26547,6 +26577,13 @@ def _cruzar_conciliacion_programados(
         guardado = confirmados.get(actividad["id"])
         if isinstance(guardado, dict) and guardado.get("estatus") == "Realizado":
             continue
+        descartados = set()
+        if isinstance(guardado, dict):
+            descartados = {
+                str(valor)
+                for valor in (guardado.get("descartados") or [])
+                if str(valor or "").strip()
+            }
         cuando = _dia_conciliacion(actividad.get("fecha"))
         perfil = _perfil_equipo_conciliacion(
             str(actividad.get("codigo") or ""),
@@ -26557,7 +26594,7 @@ def _cruzar_conciliacion_programados(
             continue
         hallados = []
         for registro in registros:
-            if registro["id"] in reservados:
+            if registro["id"] in reservados or registro["id"] in descartados:
                 continue
             perfil_bitacora = registro.get("perfil") if isinstance(registro.get("perfil"), dict) else {}
             calidad = _calidad_cruce_equipo(perfil, perfil_bitacora)
@@ -26566,6 +26603,7 @@ def _cruzar_conciliacion_programados(
             delta = abs((registro["fecha"] - cuando).days)
             if delta > _DIAS_PROXIMIDAD_CONCILIACION:
                 continue
+            comun = (perfil.get("canon") or set()) & (perfil_bitacora.get("canon") or set())
             hallados.append(
                 {
                     "id": registro["id"],
@@ -26573,6 +26611,7 @@ def _cruzar_conciliacion_programados(
                     "fecha": registro["fecha"].isoformat(),
                     "rango": _rango_cruce_equipo(perfil, perfil_bitacora, calidad),
                     "calidad": calidad,
+                    "canon": min(comun, key=len) if comun else "",
                     "resumen": _resumen_bitacora_conciliacion(registro),
                     "nota_codigo": _nota_codigo_conciliacion(actividad, perfil, perfil_bitacora, calidad),
                     "registro": registro,
@@ -26611,6 +26650,7 @@ def _cruzar_conciliacion_programados(
                     "estado": "pendiente",
                     "delta": elegido["delta"],
                     "calidad": elegido["calidad"],
+                    "canon": elegido.get("canon") or "",
                     "nota_codigo": elegido["nota_codigo"],
                     "resumen": elegido["resumen"],
                     "bitacora": elegido["registro"],
@@ -26662,6 +26702,30 @@ def _confirmar_enlace_conciliacion(item: dict, mes_clave: str) -> str | None:
     return None
 
 
+def _descartar_sugerencia_conciliacion(item: dict, mes_clave: str) -> str | None:
+    registro = item.get("bitacora") if isinstance(item.get("bitacora"), dict) else None
+    if not registro or not registro.get("id"):
+        return "No hay una sugerencia para descartar."
+    datos = _leer_conciliacion_programados()
+    previo = datos.get(item["id"]) if isinstance(datos.get(item["id"]), dict) else {}
+    if previo.get("estatus") == "Realizado":
+        return "Esa actividad ya está conciliada."
+    descartados = [str(valor) for valor in (previo.get("descartados") or []) if str(valor or "").strip()]
+    identificador = str(registro["id"])
+    if identificador not in descartados:
+        descartados.append(identificador)
+    datos[item["id"]] = {
+        "estatus": "Descartado",
+        "descartados": descartados,
+        "mes_clave": mes_clave,
+        "codigo": item.get("codigo") or "",
+        "actividad": item.get("actividad") or "",
+        "descartado": datetime.now().isoformat(timespec="seconds"),
+    }
+    _guardar_conciliacion_programados(datos)
+    return None
+
+
 def _texto_fuentes_conciliacion(actividades: list[dict]) -> str:
     grupos: dict[tuple[str, str], int] = {}
     for actividad in actividades:
@@ -26673,130 +26737,249 @@ def _texto_fuentes_conciliacion(actividades: list[dict]) -> str:
     )
 
 
-def render_panel_conciliacion_programados(mes_clave: str, anio: int, mes: int) -> None:
+_ESPECIALIDADES_VERIFICACION = (
+    ("electricos", "ELÉCTRICOS"),
+    ("instrumentos", "INSTRUMENTOS"),
+    ("ubm", "UBM"),
+)
+
+
+def _especialidad_conciliacion(item: dict) -> str:
+    base = _base_slot_entrada(str(item.get("slot") or ""))
+    if base in {"ubm", "ubm_norte", "ubm_sur"}:
+        return "ubm"
+    if base in {"electricos", "instrumentos"}:
+        return base
+    origen = _sin_acentos(str(item.get("origen") or "")).casefold()
+    if origen.startswith("ubm"):
+        return "ubm"
+    if origen.startswith("elect"):
+        return "electricos"
+    if origen.startswith("instrument"):
+        return "instrumentos"
+    return ""
+
+
+def _titulo_especialidad_verificacion(clave: str) -> str:
+    for codigo, titulo in _ESPECIALIDADES_VERIFICACION:
+        if codigo == clave:
+            return titulo
+    return clave
+
+
+def _cruce_verificacion(mes_clave: str, anio: int, mes: int) -> tuple[list[dict], list[str]]:
+    actividades, avisos = _actividades_historial_mes_entrada(mes_clave, anio, mes)
+    if not actividades:
+        return [], avisos
+    return (
+        _cruzar_conciliacion_programados(
+            actividades,
+            _registros_bitacora_conciliacion(anio, mes),
+            _leer_conciliacion_programados(),
+        ),
+        avisos,
+    )
+
+
+def _html_dato_verificacion(etiqueta: str, valor: str) -> str:
+    return (
+        f'<p class="verif-dato"><b>{html.escape(etiqueta)}</b><br>'
+        f'{html.escape(valor or "—")}</p>'
+    )
+
+
+def _texto_mecanico_verificacion(registro: dict) -> str:
+    cuadrilla = str(registro.get("cuadrilla") or "").strip()
+    mecanico = str(registro.get("mecanico") or "").strip()
+    if mecanico and cuadrilla and mecanico.casefold() not in cuadrilla.casefold():
+        return f"{mecanico} · {cuadrilla}"
+    return mecanico or cuadrilla or "—"
+
+
+def _avisar_verificacion(mes_clave: str, tipo: str, texto: str) -> None:
+    st.session_state["conciliacion_aviso"] = {"mes": mes_clave, "tipo": tipo, "texto": texto}
+
+
+def render_tarjeta_verificacion(mes_clave: str, anio: int, mes: int) -> None:
+    cruce, avisos = _cruce_verificacion(mes_clave, anio, mes)
+    for texto in avisos:
+        st.warning(texto)
+    columnas = st.columns(3)
+    for columna, (clave, titulo) in zip(columnas, _ESPECIALIDADES_VERIFICACION):
+        with columna:
+            pendientes = sum(
+                1
+                for item in cruce
+                if item.get("estado") == "pendiente" and _especialidad_conciliacion(item) == clave
+            )
+            etiqueta = "pendiente de confirmar" if pendientes == 1 else "pendientes de confirmar"
+            st.markdown(
+                f'<p class="verif-bloque-titulo">{html.escape(titulo)}</p>'
+                f'<div class="verif-cuenta"><b>{pendientes}</b>'
+                f"<span>{etiqueta}</span></div>",
+                unsafe_allow_html=True,
+            )
+            if st.button(
+                "Verificar coincidencias",
+                key=f"verif_abrir_{clave}_{mes_clave}",
+                use_container_width=True,
+            ):
+                st.session_state.entrada_verificacion = clave
+                st.rerun()
+
+
+def _otras_posibles_verificacion(item: dict) -> str:
+    textos = []
+    for alternativa in (item.get("alternativas") or [])[:3]:
+        if not isinstance(alternativa, dict):
+            continue
+        resumen = str(alternativa.get("resumen") or "").strip()
+        delta = _texto_delta_conciliacion(alternativa.get("delta"))
+        marca = "parcial" if alternativa.get("calidad") == "parcial" else ""
+        textos.append(" · ".join(parte for parte in (resumen, delta, marca) if parte))
+    sobran = len(item.get("alternativas") or []) - len(textos)
+    linea = "; ".join(textos)
+    if sobran > 0:
+        linea += f"; y {sobran} más"
+    return linea
+
+
+def _fila_revision_verificacion(item: dict, mes_clave: str) -> None:
+    registro = item.get("bitacora") if isinstance(item.get("bitacora"), dict) else {}
+    actividad_real = str(registro.get("descripcion") or registro.get("corta") or registro.get("tipo") or "")
+    ot = f"OT {registro['secuencia']}" if registro.get("secuencia") else "Sin OT"
+    fecha_real = registro["fecha"].strftime("%d/%m/%Y") if isinstance(registro.get("fecha"), date) else ""
+    codigo_original = str(item.get("codigo") or "")
+    if item.get("calidad") == "parcial" and item.get("nota_codigo"):
+        codigo_homologado = str(item.get("nota_codigo") or "")
+    else:
+        codigo_homologado = str(item.get("canon") or codigo_original)
+    with st.container(border=True):
+        registrada, programada, acciones = st.columns(3)
+        with registrada:
+            with st.container(border=True):
+                st.markdown(
+                    '<p class="verif-caja-titulo registrada">ACTIVIDAD REGISTRADA</p>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(_html_dato_verificacion("Fecha de ejecución", fecha_real), unsafe_allow_html=True)
+                st.markdown(_html_dato_verificacion("OT", ot), unsafe_allow_html=True)
+                st.markdown(
+                    _html_dato_verificacion("Ubicación / código", str(registro.get("pozo") or "")),
+                    unsafe_allow_html=True,
+                )
+                st.markdown(_html_dato_verificacion("Actividad realizada", actividad_real), unsafe_allow_html=True)
+                st.markdown(
+                    _html_dato_verificacion("Mecánico / cuadrilla", _texto_mecanico_verificacion(registro)),
+                    unsafe_allow_html=True,
+                )
+        with programada:
+            with st.container(border=True):
+                st.markdown(
+                    '<p class="verif-caja-titulo programada">ACTIVIDAD PROGRAMADA</p>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(_html_dato_verificacion("Código original", codigo_original), unsafe_allow_html=True)
+                st.markdown(_html_dato_verificacion("Código homologado", codigo_homologado), unsafe_allow_html=True)
+                st.markdown(_html_dato_verificacion("Equipo", str(item.get("equipo") or "")), unsafe_allow_html=True)
+                st.markdown(
+                    _html_dato_verificacion("Actividad programada", str(item.get("actividad") or "")),
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    _html_dato_verificacion("Tipo de mantenimiento", str(item.get("tipo") or "")),
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    _html_dato_verificacion("Fecha programada", _fecha_visible_conciliacion(item.get("fecha"))),
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    _html_dato_verificacion("Diferencia de días", _texto_delta_conciliacion(item.get("delta"))),
+                    unsafe_allow_html=True,
+                )
+                otras = _otras_posibles_verificacion(item)
+                if otras:
+                    st.markdown(_html_dato_verificacion("Otras posibles", otras), unsafe_allow_html=True)
+        with acciones:
+            with st.container(border=True):
+                st.markdown(
+                    '<p class="verif-caja-titulo confirmada">ACTIVIDAD CONFIRMADA</p>',
+                    unsafe_allow_html=True,
+                )
+                st.caption("Confirma el enlace o descarta esta sugerencia.")
+                if st.button(
+                    "CONFIRMAR",
+                    key=f"conc_ok_{item['id']}",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    error = _confirmar_enlace_conciliacion(item, mes_clave)
+                    _avisar_verificacion(
+                        mes_clave,
+                        "aviso" if error else "ok",
+                        error
+                        or (
+                            f"{item.get('equipo') or 'Actividad'}: enlace confirmado. "
+                            "La actividad quedó como realizada."
+                        ),
+                    )
+                    st.rerun()
+                if st.button(
+                    "DESCARTAR",
+                    key=f"conc_no_{item['id']}",
+                    use_container_width=True,
+                ):
+                    error = _descartar_sugerencia_conciliacion(item, mes_clave)
+                    _avisar_verificacion(
+                        mes_clave,
+                        "aviso" if error else "ok",
+                        error or "Sugerencia descartada. Ya no aparece como pendiente.",
+                    )
+                    st.rerun()
+
+
+def render_revision_verificacion(mes_clave: str, anio: int, mes: int, especialidad: str) -> None:
+    titulo = _titulo_especialidad_verificacion(especialidad)
+    if st.button(
+        "← Volver a ENTRADA DE DATOS",
+        key="verif_volver_entrada",
+        use_container_width=True,
+    ):
+        st.session_state.entrada_verificacion = None
+        st.rerun()
+    st.caption(f"Mes seleccionado: {etiqueta_mes(mes_clave)}.")
     aviso = st.session_state.pop("conciliacion_aviso", None)
     if isinstance(aviso, dict) and aviso.get("mes") == mes_clave:
         if aviso.get("tipo") == "ok":
-            st.success(str(aviso.get("texto") or "Enlace confirmado."))
+            st.success(str(aviso.get("texto") or "Cambio guardado."))
         else:
-            st.warning(str(aviso.get("texto") or "No se pudo confirmar el enlace."))
-    actividades, avisos = _actividades_historial_mes_entrada(mes_clave, anio, mes)
+            st.warning(str(aviso.get("texto") or "No se pudo guardar el cambio."))
+    st.markdown(
+        f'<p class="entrada-tarjeta-titulo">{html.escape(titulo)}</p>',
+        unsafe_allow_html=True,
+    )
+    cruce, avisos = _cruce_verificacion(mes_clave, anio, mes)
     for texto in avisos:
         st.warning(texto)
-    if not actividades:
-        st.info(
-            "No hay actividades de la hoja Historial para este mes. "
-            "Carga el programa en UBM, eléctricos o instrumentos."
-        )
-        return
-    cruce = _cruzar_conciliacion_programados(
-        actividades,
-        _registros_bitacora_conciliacion(anio, mes),
-        _leer_conciliacion_programados(),
-    )
-    total = len(cruce)
-    confirmadas = [item for item in cruce if item["estado"] == "confirmada"]
-    pendientes = [item for item in cruce if item["estado"] == "pendiente"]
-    sin_coincidencia = [item for item in cruce if item["estado"] == "sin_coincidencia"]
+    propios = [item for item in cruce if _especialidad_conciliacion(item) == especialidad]
+    confirmadas = [item for item in propios if item.get("estado") == "confirmada"]
+    pendientes = [item for item in propios if item.get("estado") == "pendiente"]
+    total = len(propios)
     st.markdown(
         f'<p class="conc-avance">{len(confirmadas)} de {total} conciliados y confirmados</p>',
         unsafe_allow_html=True,
     )
     st.progress(len(confirmadas) / total if total else 0.0)
-    st.caption(
-        f"{_texto_fuentes_conciliacion(actividades)}. "
-        f"Cruce por código de equipo, tipo de mantenimiento y hasta {_DIAS_PROXIMIDAD_CONCILIACION} días "
-        "entre la fecha programada y la ejecución en bitácora."
-    )
-    origenes = sorted({item["origen"] for item in cruce})
-    if len(origenes) > 1:
-        opciones = ["Todos", *origenes]
-        clave_filtro = f"conc_origen_{mes_clave}"
-        if st.session_state.get(clave_filtro) not in opciones:
-            st.session_state[clave_filtro] = "Todos"
-        origen = st.selectbox("Programa", opciones, key=clave_filtro)
-        if origen != "Todos":
-            confirmadas = [item for item in confirmadas if item["origen"] == origen]
-            pendientes = [item for item in pendientes if item["origen"] == origen]
-            sin_coincidencia = [item for item in sin_coincidencia if item["origen"] == origen]
-            st.caption("El indicador de avance cuenta el mes completo.")
-    st.markdown(
-        f'<p class="conc-kicker">Coincidencias detectadas / pendientes de confirmar · {len(pendientes)}</p>',
-        unsafe_allow_html=True,
-    )
+    if not propios:
+        st.info(f"No hay actividades de {titulo} en la hoja Historial de este mes.")
+        return
     if not pendientes:
-        st.caption("No quedan coincidencias pendientes de confirmar en esta vista.")
+        st.caption("No quedan coincidencias pendientes de confirmar en esta especialidad.")
+        return
     for item in pendientes:
-        with st.container(border=True):
-            codigo = f" · Cód {html.escape(str(item.get('codigo') or ''))}" if item.get("codigo") else ""
-            st.markdown(
-                f"<b>{html.escape(str(item.get('equipo') or 'Sin equipo'))}</b>{codigo}",
-                unsafe_allow_html=True,
-            )
-            st.write(str(item.get("actividad") or "Sin actividad"))
-            tipo = str(item.get("tipo") or "")
-            if tipo and tipo.casefold() != str(item.get("actividad") or "").casefold():
-                st.caption(f"Tipo de mantenimiento: {tipo}")
-            delta = _texto_delta_conciliacion(item.get("delta"))
-            st.caption(
-                f"{item.get('origen') or ''} · Programada {_fecha_visible_conciliacion(item.get('fecha'))}"
-                + (f" · {delta}" if delta else "")
-            )
-            detalle = _nota_cruce_conciliacion(item)
-            bitacora = item.get("resumen") or "Sin resumen"
-            if detalle:
-                bitacora = f"{bitacora} · {detalle}"
-            st.caption(f"Bitácora: {bitacora}")
-            if st.button(
-                "Confirmar enlace",
-                key=f"conc_ok_{item['id']}",
-                type="primary",
-                use_container_width=True,
-            ):
-                error = _confirmar_enlace_conciliacion(item, mes_clave)
-                st.session_state["conciliacion_aviso"] = {
-                    "mes": mes_clave,
-                    "tipo": "aviso" if error else "ok",
-                    "texto": error
-                    or (
-                        f"{item.get('equipo') or 'Actividad'}: enlace confirmado. "
-                        "La actividad quedó como realizada."
-                    ),
-                }
-                st.rerun()
-    with st.expander(f"Ya conciliados · {len(confirmadas)}", expanded=False):
-        if not confirmadas:
-            st.caption("Todavía no hay enlaces confirmados en esta vista.")
-        for item in confirmadas:
-            st.markdown('<p class="conc-realizada">Realizada</p>', unsafe_allow_html=True)
-            st.write(
-                f"{item.get('equipo') or 'Sin equipo'} · {item.get('actividad') or 'Sin actividad'}"
-            )
-            st.caption(
-                "Programada "
-                + _fecha_visible_conciliacion(item.get("fecha"))
-                + " · "
-                + str(item.get("resumen") or "Registro vinculado")
-            )
-    with st.expander(f"Sin coincidencia en bitácora · {len(sin_coincidencia)}", expanded=False):
-        if not sin_coincidencia:
-            st.caption("Todas las actividades de esta vista tienen una coincidencia o ya fueron confirmadas.")
-        else:
-            st.dataframe(
-                pd.DataFrame(
-                    [
-                        {
-                            "Equipo": item.get("equipo") or "",
-                            "Actividad": item.get("actividad") or "",
-                            "Fecha programada": _fecha_visible_conciliacion(item.get("fecha")),
-                            "Programa": item.get("origen") or "",
-                        }
-                        for item in sin_coincidencia
-                    ]
-                ),
-                hide_index=True,
-                use_container_width=True,
-            )
+        _fila_revision_verificacion(item, mes_clave)
+
 
 
 def render_entrada_datos_admin(jornada: date | None = None) -> None:
@@ -26806,6 +26989,10 @@ def render_entrada_datos_admin(jornada: date | None = None) -> None:
         jornada = date.today()
     mes_clave = clave_mes(jornada.year, jornada.month)
     _estilo_entrada_datos()
+    especialidad = st.session_state.get("entrada_verificacion")
+    if especialidad in {codigo for codigo, _titulo in _ESPECIALIDADES_VERIFICACION}:
+        render_revision_verificacion(mes_clave, jornada.year, jornada.month, especialidad)
+        return
     st.caption(
         f"Mes seleccionado: {etiqueta_mes(mes_clave)}. "
         "Cada programa se guarda por separado. En eléctricos e instrumentos, cada instalación conserva el suyo."
@@ -26855,19 +27042,9 @@ def render_entrada_datos_admin(jornada: date | None = None) -> None:
                 )
     with abajo[1]:
         with st.container(border=True):
-            st.markdown('<p class="entrada-tarjeta-titulo">OTRO</p>', unsafe_allow_html=True)
-            st.caption("Panel de verificación y conciliación de mantenimientos programados.")
-            render_panel_conciliacion_programados(mes_clave, jornada.year, jornada.month)
-            with st.expander("Archivos complementarios", expanded=False):
-                _panel_carga_entrada(
-                    "otro",
-                    "Adendas u otros archivos",
-                    mes_clave,
-                    jornada.year,
-                    jornada.month,
-                    multiple=True,
-                    procesar=False,
-                )
+            st.markdown('<p class="entrada-tarjeta-titulo">VERIFICACIÓN</p>', unsafe_allow_html=True)
+            st.caption("Coincidencias del Historial con la bitácora, por especialidad.")
+            render_tarjeta_verificacion(mes_clave, jornada.year, jornada.month)
 
 
 def render_edicion_captura_admin(jornada: date) -> None:
@@ -28458,6 +28635,7 @@ def render_seccion_completa_admin(vista: str, jornada: date) -> None:
         key="adm_volver_menu",
     ):
         st.session_state.admin_vista = None
+        st.session_state.entrada_verificacion = None
         st.rerun()
     st.markdown(
         f'<h2 class="adm-seccion-titulo">{html.escape(titulos.get(vista, vista))}</h2>',
