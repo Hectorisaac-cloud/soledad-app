@@ -25465,6 +25465,9 @@ _ZONA_TARJETA = {
 _EXTENSIONES_ENTRADA = (".xlsx", ".xls", ".xlsm", ".csv")
 _EXTENSIONES_ENTRADA_OTRO = _EXTENSIONES_ENTRADA + (".pdf",)
 _TOPE_ACTIVIDADES_ENTRADA = 20000
+CONCILIACION_PROGRAMADOS_FILE = os.path.join(DATABASE_DIR, "conciliacion_programados.json")
+_DIAS_PROXIMIDAD_CONCILIACION = 14
+_CLAVES_EQUIPO_GENERICAS = {"UBM", "MCI", "ICI", "MOTOR", "EQUIPO", "GENERAL", "NORTE", "SUR"}
 
 
 def _base_slot_entrada(slot: str) -> str:
@@ -25948,6 +25951,23 @@ def _estilo_entrada_datos() -> None:
                 color: #cbd5e1;
                 border: 1px solid #475569;
             }
+            .conc-kicker {
+                margin: 0.15rem 0 0.35rem;
+                color: #93c5fd;
+                font-size: 0.78rem;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+            }
+            .conc-avance {
+                margin: 0.35rem 0 0.2rem;
+                color: #e2e8f0;
+                font-weight: 700;
+            }
+            .conc-realizada {
+                margin: 0;
+                color: #86efac;
+                font-weight: 700;
+            }
         </style>
         """,
         unsafe_allow_html=True,
@@ -26014,6 +26034,771 @@ def _tarjeta_programa_por_instalacion(
         _resumen_instalaciones_entrada(mes_clave, especialidad, ubicaciones)
 
 
+def _leer_conciliacion_programados() -> dict:
+    datos = leer_json(CONCILIACION_PROGRAMADOS_FILE, {})
+    return datos if isinstance(datos, dict) else {}
+
+
+def _guardar_conciliacion_programados(datos: dict) -> None:
+    os.makedirs(os.path.dirname(CONCILIACION_PROGRAMADOS_FILE) or DATABASE_DIR, exist_ok=True)
+    escribir_json(CONCILIACION_PROGRAMADOS_FILE, datos)
+
+
+def _dia_conciliacion(valor) -> date | None:
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    if valor is None:
+        return None
+    texto = str(valor).strip()
+    if not texto or texto.casefold() in {"nan", "none", "nat", "<na>"}:
+        return None
+    try:
+        return date.fromisoformat(texto[:10])
+    except ValueError:
+        return _fecha_actividad(valor) or _fecha_programada(valor)
+
+
+def _fecha_visible_conciliacion(valor) -> str:
+    dia = _dia_conciliacion(valor)
+    return dia.strftime("%d/%m/%Y") if dia else ""
+
+
+def _clave_actividad_conciliacion(actividad: dict) -> str:
+    base = "|".join(
+        [
+            str(actividad.get("slot") or ""),
+            str(actividad.get("codigo") or ""),
+            str(actividad.get("equipo") or ""),
+            str(actividad.get("fecha") or ""),
+            str(actividad.get("actividad") or "")[:120],
+            str(actividad.get("tipo") or "")[:80],
+            str(actividad.get("nro") or ""),
+        ]
+    )
+    return hashlib.sha1(base.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+
+def _etiqueta_origen_conciliacion(slot: str, ubicacion: str) -> str:
+    nombres = {
+        "ubm_norte": "UBM Norte",
+        "ubm_sur": "UBM Sur",
+        "electricos": "Eléctricos",
+        "instrumentos": "Instrumentos",
+    }
+    base = _base_slot_entrada(slot)
+    nombre = nombres.get(base) or base.replace("_", " ").strip() or "Programa"
+    lugar = str(ubicacion or "").strip()
+    if lugar:
+        return f"{nombre} · {lugar}"
+    return nombre
+
+
+_PREFIJOS_CONCILIACION = tuple(sorted(_PREFIJOS_CODIGO_PROGRAMA, key=lambda item: len(item[0]), reverse=True))
+_ZONAS_CONCILIACION = (
+    ("SOLEDAD NORTE", "PSN"),
+    ("PALO BLANCO", "PPB"),
+    ("COYOTES", "PC"),
+    ("COYOTE", "PC"),
+    ("ARAGON", "PA"),
+    ("GALLO", "PGA"),
+    ("SOLEDAD", "PS"),
+)
+_PREFIJOS_NO_POZO = {"UBM", "MCI", "ICI", "MOTOR", "EQUIPO", "OT", "TAG"}
+_RE_SIGLAS_CONCILIACION = re.compile(r"\b(?:[A-Z][.\s]+){1,3}[A-Z](?=[.\s-]*\d)")
+_RE_PREFIJO_NUMERO_CONCILIACION = re.compile(r"\b([A-Z]{1,4})\s*[-]?\s*(\d{1,4}[A-Z]?)\b")
+
+
+def _numero_flexible_conciliacion(numero: str) -> str:
+    token = str(numero or "").strip().upper()
+    sufijo = ""
+    if token and token[-1].isalpha():
+        sufijo = token[-1]
+        token = token[:-1]
+    if not token.isdigit():
+        return ""
+    return f"{int(token)}{sufijo}"
+
+
+def _expansiones_prefijo_conciliacion(prefijo: str) -> set[str]:
+    destino = ""
+    for origen, canon in _PREFIJOS_CONCILIACION:
+        if prefijo == origen:
+            destino = canon
+            break
+    prefijos = {destino or prefijo}
+    if destino:
+        prefijos.add(destino)
+    for corto, largo in (("PB", "PPB"), ("PPB", "PB"), ("PG", "PGA"), ("PGA", "PG")):
+        if corto in prefijos:
+            prefijos.add(largo)
+    return {item for item in prefijos if item}
+
+
+def _agregar_codigo_conciliacion(canon: set[str], numeros: set[str], prefijo: str, numero: str) -> None:
+    token = _numero_flexible_conciliacion(numero)
+    prefijo = str(prefijo or "").upper()
+    if not token or not prefijo or prefijo in _PREFIJOS_NO_POZO:
+        if prefijo == "POZO" and token:
+            numeros.add(token)
+        return
+    for alias in _expansiones_prefijo_conciliacion(prefijo):
+        canon.add(f"{alias}{token}")
+    numeros.add(token)
+
+
+def _compactar_siglas_conciliacion(texto: str) -> str:
+    return _RE_SIGLAS_CONCILIACION.sub(lambda hallado: re.sub(r"[^A-Z]", "", hallado.group(0)), texto)
+
+
+def _absorber_codigos_conciliacion(texto: str, canon: set[str], numeros: set[str], clases: set[str]) -> None:
+    plano = _compactar_siglas_conciliacion(_sin_acentos(str(texto or "")).upper())
+    if not plano:
+        return
+    if re.search(r"\bUBM\b", plano):
+        clases.add("UBM")
+    if re.search(r"\b(?:MOTOR|MCI)\b", plano):
+        clases.add("MCI")
+    if re.search(r"\bICI\b", plano):
+        clases.add("ICI")
+    for zona, prefijo in _ZONAS_CONCILIACION:
+        for hallado in re.finditer(rf"\b{re.escape(zona)}\b\s*[-]?\s*(\d{{1,4}}[A-Z]?)", plano):
+            _agregar_codigo_conciliacion(canon, numeros, prefijo, hallado.group(1))
+    for hallado in _RE_PREFIJO_NUMERO_CONCILIACION.finditer(plano):
+        _agregar_codigo_conciliacion(canon, numeros, hallado.group(1), hallado.group(2))
+    corto, _equipo = _pozo_desde_codigo_programa(texto)
+    compacto = clave_pozo_plana(corto)
+    separado = re.fullmatch(r"([A-Z]{1,4})(\d{1,4}[A-Z]?)", compacto or "")
+    if separado:
+        _agregar_codigo_conciliacion(canon, numeros, separado.group(1), separado.group(2))
+    for variante in _variantes_clave_ubicacion(texto):
+        separado = re.fullmatch(r"([A-Z]{1,4})(\d{1,4}[A-Z]?)", variante)
+        if separado:
+            _agregar_codigo_conciliacion(canon, numeros, separado.group(1), separado.group(2))
+
+
+def _indice_equivalencia_conciliacion() -> dict[str, set[str]]:
+    try:
+        mapa = diccionario_equivalencias_pozo()
+    except Exception:
+        return {}
+    if not isinstance(mapa, dict):
+        return {}
+    indice: dict[str, set[str]] = {}
+    for corto, largo in mapa.items():
+        corto_txt = str(corto or "").strip()
+        largo_txt = str(largo or "").strip()
+        if not corto_txt or not largo_txt:
+            continue
+        indice.setdefault(clave_pozo_plana(corto_txt), set()).add(corto_txt)
+        indice.setdefault(clave_pozo_plana(corto_txt), set()).add(largo_txt)
+        indice.setdefault(clave_pozo_plana(largo_txt), set()).add(corto_txt)
+    return indice
+
+
+def _perfil_equipo_conciliacion(*textos: str, equivalencias: dict[str, set[str]] | None = None) -> dict:
+    """CY-125 (UBM), PC-125 y Coyote 125 quedan en el mismo código PC125."""
+    canon: set[str] = set()
+    numeros: set[str] = set()
+    clases: set[str] = set()
+    pendientes = [str(texto) for texto in textos if str(texto or "").strip()]
+    vistos: set[str] = set()
+    while pendientes:
+        texto = pendientes.pop()
+        firma = _sin_acentos(texto).upper()
+        if not firma or firma in vistos:
+            continue
+        vistos.add(firma)
+        antes = set(canon)
+        _absorber_codigos_conciliacion(texto, canon, numeros, clases)
+        if not equivalencias:
+            continue
+        relacionados = set(equivalencias.get(clave_pozo_plana(texto), set()))
+        for codigo in canon - antes:
+            relacionados.update(equivalencias.get(codigo, set()))
+        for relacionado in relacionados:
+            if _sin_acentos(relacionado).upper() not in vistos:
+                pendientes.append(relacionado)
+    return {"canon": canon, "numeros": numeros, "clases": clases}
+
+
+def _clases_compatibles_conciliacion(izquierda: set[str], derecha: set[str]) -> bool:
+    if not izquierda or not derecha:
+        return True
+    return bool(izquierda & derecha)
+
+
+def _calidad_cruce_equipo(perfil_a: dict, perfil_b: dict) -> str:
+    if (perfil_a.get("canon") or set()) & (perfil_b.get("canon") or set()):
+        return "exacta"
+    if (perfil_a.get("numeros") or set()) & (perfil_b.get("numeros") or set()):
+        return "parcial"
+    return ""
+
+
+def _rango_cruce_equipo(perfil_a: dict, perfil_b: dict, calidad: str) -> int:
+    """El mismo código homologado va antes que el número suelto. La clase solo desempatan."""
+    if calidad == "exacta":
+        base = 0
+    elif calidad == "parcial":
+        base = 3
+    else:
+        return 9
+    clases_a = perfil_a.get("clases") or set()
+    clases_b = perfil_b.get("clases") or set()
+    if clases_a and clases_b and (clases_a & clases_b):
+        return base
+    if clases_a and clases_b and not _clases_compatibles_conciliacion(clases_a, clases_b):
+        return base + 2
+    return base + 1
+
+
+def _nota_codigo_conciliacion(actividad: dict, perfil_a: dict, perfil_b: dict, calidad: str) -> str:
+    if calidad == "parcial":
+        numeros = sorted((perfil_a.get("numeros") or set()) & (perfil_b.get("numeros") or set()))
+        numero = numeros[0] if numeros else ""
+        return f"Coincidencia parcial por número {numero}".rstrip()
+    comun = (perfil_a.get("canon") or set()) & (perfil_b.get("canon") or set())
+    if not comun:
+        return ""
+    origen = str(actividad.get("codigo") or actividad.get("equipo") or "").strip()
+    compacto = clave_pozo_plana(origen)
+    canon = min(comun, key=len)
+    if compacto and canon not in compacto:
+        return f"Código homologado {origen} → {canon}"
+    return ""
+
+
+def _normalizar_actividad_conciliacion(
+    fila: dict,
+    slot: str,
+    ubicacion: str,
+    fuente: str,
+    anio: int,
+    mes: int,
+) -> dict | None:
+    if not isinstance(fila, dict):
+        return None
+    if any(clave in fila for clave in ("actividad", "codigo", "equipo")) and "TIPO DE MANTENIMIENTO" not in fila:
+        codigo = _texto_actividad(fila.get("codigo"))
+        equipo = _texto_actividad(fila.get("equipo"))
+        actividad = _texto_actividad(fila.get("actividad"))
+        tipo = _texto_actividad(fila.get("tipo"))
+        nro = _texto_actividad(fila.get("nro"))
+        cuando = _dia_conciliacion(fila.get("fecha"))
+    else:
+        codigo = _texto_actividad(fila.get("CODIGO"))
+        equipo = _texto_actividad(fila.get("UBICACION") or fila.get("equipo"))
+        actividad = _texto_actividad(fila.get("TIPO DE MANTENIMIENTO") or fila.get("actividad"))
+        tipo = actividad
+        nro = _texto_actividad(fila.get("nro") or fila.get("ID"))
+        cuando = _dia_conciliacion(fila.get("FECHA PROGRAMADA") or fila.get("fecha") or fila.get("FECHA"))
+    if cuando is None or cuando.year != anio or cuando.month != mes:
+        return None
+    if not (codigo or equipo or actividad or tipo):
+        return None
+    item = {
+        "slot": slot,
+        "origen": _etiqueta_origen_conciliacion(slot, ubicacion or str(fila.get("ubicacion_programa") or "")),
+        "fuente": fuente,
+        "codigo": codigo,
+        "equipo": equipo or codigo,
+        "actividad": actividad or tipo,
+        "tipo": tipo or actividad,
+        "nro": nro,
+        "fecha": cuando.isoformat(),
+    }
+    item["id"] = _clave_actividad_conciliacion(item)
+    return item
+
+
+def _filas_historial_de_archivo(
+    ruta: str,
+    nombre: str,
+    anio: int,
+    mes: int,
+    slot: str,
+    ubicacion: str,
+) -> tuple[list[dict], str]:
+    """Lee solo la hoja Historial. El segundo valor queda vacío si el libro no trae esa hoja."""
+    if not str(nombre or "").casefold().endswith(EXTENSIONES_PROGRAMA_EXCEL):
+        return [], ""
+    try:
+        hojas = hojas_programa_excel(ruta)
+    except Exception:
+        return [], ""
+    hojas_historial = [hoja for hoja in hojas if _norm_encabezado(hoja) == "historial"]
+    if not hojas_historial:
+        return [], ""
+    filas: list[dict] = []
+    for hoja in hojas_historial:
+        try:
+            filas.extend(_actividades_de_hoja(ruta, hoja, nombre, anio, mes))
+        except Exception:
+            continue
+    if not filas:
+        try:
+            with open(ruta, "rb") as archivo:
+                contenido = archivo.read()
+            zona = _ZONA_TARJETA.get(_base_slot_entrada(slot), "")
+            interpretadas = interpretar_programa_mantenimiento(contenido, nombre, zona)
+        except Exception:
+            interpretadas = []
+        filas = _filas_programa_del_mes(interpretadas, anio, mes)
+    return _filas_de_la_tarjeta(filas, slot, ubicacion), "Historial"
+
+
+def _firma_conciliacion_entrada(mes_clave: str) -> tuple:
+    bloque = _leer_indice_entrada().get(mes_clave, {})
+    if not isinstance(bloque, dict):
+        return tuple()
+    firma = []
+    for slot, registro in bloque.items():
+        if _base_slot_entrada(slot) == "otro" or not isinstance(registro, dict):
+            continue
+        for item in registro.get("archivos") or []:
+            if not isinstance(item, dict):
+                continue
+            ruta = str(item.get("ruta") or "")
+            if not ruta or not os.path.isfile(ruta):
+                continue
+            stat = os.stat(ruta)
+            firma.append((slot, os.path.abspath(ruta), stat.st_mtime_ns, stat.st_size))
+    firma.sort()
+    return tuple(firma)
+
+
+def _actividades_historial_mes_entrada(mes_clave: str, anio: int, mes: int) -> tuple[list[dict], list[str]]:
+    firma = _firma_conciliacion_entrada(mes_clave)
+    cache = st.session_state.get("conciliacion_historial_cache")
+    if isinstance(cache, dict) and cache.get("firma") == firma and cache.get("mes") == mes_clave:
+        actividades = cache.get("actividades") if isinstance(cache.get("actividades"), list) else []
+        avisos = cache.get("avisos") if isinstance(cache.get("avisos"), list) else []
+        return actividades, avisos
+    bloque = _leer_indice_entrada().get(mes_clave, {})
+    actividades: list[dict] = []
+    avisos: list[str] = []
+    vistos: set[str] = set()
+    if isinstance(bloque, dict):
+        with st.spinner("Leyendo la hoja Historial del mes…"):
+            for slot, registro in bloque.items():
+                if _base_slot_entrada(slot) == "otro" or not isinstance(registro, dict):
+                    continue
+                ubicacion = str(registro.get("ubicacion") or "")
+                archivos = [
+                    item
+                    for item in (registro.get("archivos") or [])
+                    if isinstance(item, dict) and os.path.isfile(str(item.get("ruta") or ""))
+                ]
+                filas_slot: list[dict] = []
+                uso_historial = False
+                for item in archivos:
+                    ruta = str(item.get("ruta") or "")
+                    nombre = str(item.get("nombre") or os.path.basename(ruta))
+                    try:
+                        filas, fuente = _filas_historial_de_archivo(ruta, nombre, anio, mes, slot, ubicacion)
+                    except Exception as exc:
+                        avisos.append(f"{nombre}: {exc}")
+                        continue
+                    if fuente == "Historial":
+                        uso_historial = True
+                        filas_slot.extend(filas)
+                fuente_slot = "Historial"
+                if not uso_historial and archivos:
+                    try:
+                        _asegurar_buffer_entrada(mes_clave, slot, anio, mes, ubicacion)
+                    except Exception as exc:
+                        avisos.append(f"{_etiqueta_origen_conciliacion(slot, ubicacion)}: {exc}")
+                    buffer = _buffer_entrada(mes_clave, slot) or {}
+                    filas_slot = [fila for fila in (buffer.get("filas") or []) if isinstance(fila, dict)]
+                    fuente_slot = "Programa"
+                for fila in filas_slot:
+                    normal = _normalizar_actividad_conciliacion(fila, slot, ubicacion, fuente_slot, anio, mes)
+                    if not normal or normal["id"] in vistos:
+                        continue
+                    vistos.add(normal["id"])
+                    actividades.append(normal)
+    actividades.sort(key=lambda item: (item["fecha"], item["origen"], item["equipo"], item["actividad"]))
+    st.session_state["conciliacion_historial_cache"] = {
+        "firma": firma,
+        "mes": mes_clave,
+        "actividades": actividades,
+        "avisos": avisos,
+    }
+    return actividades, avisos
+
+
+def _registros_bitacora_conciliacion(anio: int, mes: int) -> list[dict]:
+    inicio = date(anio, mes, 1) - timedelta(days=_DIAS_PROXIMIDAD_CONCILIACION)
+    fin = date(anio, mes, calendar.monthrange(anio, mes)[1]) + timedelta(days=_DIAS_PROXIMIDAD_CONCILIACION)
+    base = bitacora_con_fechas(cargar_bitacora())
+    if base is None or base.empty:
+        return []
+    equivalencias = _indice_equivalencia_conciliacion()
+    registros = []
+    vistos: set[str] = set()
+    for _, fila in base.iterrows():
+        dia = _dia_conciliacion(fila.get("_fecha"))
+        if dia is None or dia < inicio or dia > fin:
+            continue
+        textos = [
+            fila.get("POZO"),
+            fila.get("UBICACIÓN"),
+            fila.get("UBICACION"),
+            fila.get("EQUIPO/UBICACIÓN"),
+            fila.get("EQUIPO/UBICACION"),
+            fila.get("EQUIPO"),
+            fila.get("SECTOR"),
+        ]
+        perfil = _perfil_equipo_conciliacion(*[str(texto or "") for texto in textos], equivalencias=equivalencias)
+        if not perfil["canon"] and not perfil["numeros"]:
+            continue
+        identificador = id_registro_fila(fila)
+        if identificador in vistos:
+            continue
+        vistos.add(identificador)
+        secuencia = numero_secuencia_actividad(fila.get("SECUENCIA"))
+        registros.append(
+            {
+                "id": identificador,
+                "fecha": dia,
+                "perfil": perfil,
+                "tipo": _texto_actividad(fila.get("TIPO DE ACTIVIDAD")),
+                "corta": _texto_actividad(fila.get("ACTIVIDAD CORTA")),
+                "pozo": _texto_actividad(
+                    fila.get("POZO") or fila.get("UBICACIÓN") or fila.get("EQUIPO/UBICACIÓN") or fila.get("EQUIPO")
+                ),
+                "cuadrilla": etiqueta_cuadrilla_historial(str(fila.get("CUADRILLA") or "")),
+                "secuencia": secuencia,
+            }
+        )
+    return registros
+
+
+def _tipo_conciliacion_coincide(actividad: dict, registro: dict) -> bool:
+    referencia = str(actividad.get("tipo") or actividad.get("actividad") or "").strip()
+    if not referencia:
+        return False
+    return any(
+        actividades_programadas_coinciden(referencia, texto)
+        for texto in (registro.get("tipo") or "", registro.get("corta") or "")
+        if texto
+    )
+
+
+def _resumen_bitacora_conciliacion(registro: dict | None) -> str:
+    if not isinstance(registro, dict) or not registro:
+        return ""
+    fecha = registro["fecha"].strftime("%d/%m/%Y") if isinstance(registro.get("fecha"), date) else ""
+    ot = f"OT {registro['secuencia']}" if registro.get("secuencia") else ""
+    lugar = str(registro.get("pozo") or "")
+    tipo = str(registro.get("corta") or registro.get("tipo") or "")
+    cuadrilla = str(registro.get("cuadrilla") or "")
+    return " · ".join(parte for parte in (fecha, ot, lugar, tipo, cuadrilla) if parte)
+
+
+def _texto_delta_conciliacion(delta) -> str:
+    if not isinstance(delta, int):
+        return ""
+    if delta == 0:
+        return "Mismo día"
+    if delta == 1:
+        return "1 día de diferencia"
+    return f"{delta} días de diferencia"
+
+
+def _nota_cruce_conciliacion(item: dict) -> str:
+    partes = []
+    nota = str(item.get("nota_codigo") or "").strip()
+    if nota:
+        partes.append(nota)
+    otras = [alternativa for alternativa in (item.get("alternativas") or []) if isinstance(alternativa, dict)]
+    if otras:
+        textos = []
+        for alternativa in otras[:3]:
+            resumen = str(alternativa.get("resumen") or "").strip()
+            delta = _texto_delta_conciliacion(alternativa.get("delta"))
+            marca = "parcial" if alternativa.get("calidad") == "parcial" else ""
+            textos.append(" · ".join(parte for parte in (resumen, delta, marca) if parte))
+        sobran = len(otras) - len(textos)
+        linea = "Otras posibles: " + "; ".join(texto for texto in textos if texto)
+        if sobran > 0:
+            linea += f"; y {sobran} más"
+        partes.append(linea)
+    return " · ".join(parte for parte in partes if parte)
+
+
+def _cruzar_conciliacion_programados(
+    actividades: list[dict],
+    registros: list[dict],
+    confirmados: dict,
+) -> list[dict]:
+    """Homologa el código maestro con el de Soledad y deja visible el cruce parcial."""
+    por_bitacora = {registro["id"]: registro for registro in registros}
+    reservados = {
+        str(guardado.get("bitacora_id"))
+        for guardado in confirmados.values()
+        if isinstance(guardado, dict) and guardado.get("estatus") == "Realizado" and guardado.get("bitacora_id")
+    }
+    equivalencias = _indice_equivalencia_conciliacion()
+    candidatos: dict[str, list[dict]] = {}
+    for actividad in actividades:
+        guardado = confirmados.get(actividad["id"])
+        if isinstance(guardado, dict) and guardado.get("estatus") == "Realizado":
+            continue
+        cuando = _dia_conciliacion(actividad.get("fecha"))
+        perfil = _perfil_equipo_conciliacion(
+            str(actividad.get("codigo") or ""),
+            str(actividad.get("equipo") or ""),
+            equivalencias=equivalencias,
+        )
+        if cuando is None or (not perfil["canon"] and not perfil["numeros"]):
+            continue
+        hallados = []
+        for registro in registros:
+            if registro["id"] in reservados:
+                continue
+            perfil_bitacora = registro.get("perfil") if isinstance(registro.get("perfil"), dict) else {}
+            calidad = _calidad_cruce_equipo(perfil, perfil_bitacora)
+            if not calidad or not _tipo_conciliacion_coincide(actividad, registro):
+                continue
+            delta = abs((registro["fecha"] - cuando).days)
+            if delta > _DIAS_PROXIMIDAD_CONCILIACION:
+                continue
+            hallados.append(
+                {
+                    "id": registro["id"],
+                    "delta": delta,
+                    "fecha": registro["fecha"].isoformat(),
+                    "rango": _rango_cruce_equipo(perfil, perfil_bitacora, calidad),
+                    "calidad": calidad,
+                    "resumen": _resumen_bitacora_conciliacion(registro),
+                    "nota_codigo": _nota_codigo_conciliacion(actividad, perfil, perfil_bitacora, calidad),
+                    "registro": registro,
+                }
+            )
+        hallados.sort(key=lambda item: (item["rango"], item["delta"], item["fecha"], item["id"]))
+        if hallados:
+            candidatos[actividad["id"]] = hallados
+    salida = []
+    for actividad in actividades:
+        cuando = _dia_conciliacion(actividad.get("fecha"))
+        guardado = confirmados.get(actividad["id"])
+        guardado = guardado if isinstance(guardado, dict) else None
+        if guardado and guardado.get("estatus") == "Realizado":
+            vivo = por_bitacora.get(str(guardado.get("bitacora_id") or ""))
+            delta = guardado.get("delta_dias")
+            if not isinstance(delta, int) and vivo and cuando:
+                delta = abs((vivo["fecha"] - cuando).days)
+            resumen = _resumen_bitacora_conciliacion(vivo) if vivo else str(guardado.get("resumen") or "Registro vinculado")
+            salida.append(
+                {
+                    **actividad,
+                    "estado": "confirmada",
+                    "delta": delta if isinstance(delta, int) else None,
+                    "resumen": resumen,
+                    "bitacora": vivo,
+                }
+            )
+            continue
+        hallados = candidatos.get(actividad["id"]) or []
+        if hallados:
+            elegido = hallados[0]
+            salida.append(
+                {
+                    **actividad,
+                    "estado": "pendiente",
+                    "delta": elegido["delta"],
+                    "calidad": elegido["calidad"],
+                    "nota_codigo": elegido["nota_codigo"],
+                    "resumen": elegido["resumen"],
+                    "bitacora": elegido["registro"],
+                    "alternativas": [
+                        {
+                            "resumen": item["resumen"],
+                            "delta": item["delta"],
+                            "calidad": item["calidad"],
+                        }
+                        for item in hallados[1:]
+                    ],
+                }
+            )
+        else:
+            salida.append(
+                {
+                    **actividad,
+                    "estado": "sin_coincidencia",
+                    "delta": None,
+                    "resumen": "",
+                    "bitacora": None,
+                }
+            )
+    return salida
+
+
+def _confirmar_enlace_conciliacion(item: dict, mes_clave: str) -> str | None:
+    registro = item.get("bitacora") if isinstance(item.get("bitacora"), dict) else None
+    if not registro or not registro.get("id"):
+        return "Esa coincidencia ya no tiene un registro de bitácora para vincular."
+    datos = _leer_conciliacion_programados()
+    for clave, guardado in datos.items():
+        if clave == item["id"] or not isinstance(guardado, dict):
+            continue
+        if guardado.get("estatus") == "Realizado" and guardado.get("bitacora_id") == registro["id"]:
+            return "Ese registro de bitácora ya está vinculado a otra actividad."
+    datos[item["id"]] = {
+        "estatus": "Realizado",
+        "bitacora_id": registro["id"],
+        "fecha_ejecucion": registro["fecha"].isoformat() if isinstance(registro.get("fecha"), date) else "",
+        "resumen": item.get("resumen") or _resumen_bitacora_conciliacion(registro),
+        "delta_dias": item.get("delta") if isinstance(item.get("delta"), int) else None,
+        "mes_clave": mes_clave,
+        "codigo": item.get("codigo") or "",
+        "actividad": item.get("actividad") or "",
+        "confirmado": datetime.now().isoformat(timespec="seconds"),
+    }
+    _guardar_conciliacion_programados(datos)
+    return None
+
+
+def _texto_fuentes_conciliacion(actividades: list[dict]) -> str:
+    grupos: dict[tuple[str, str], int] = {}
+    for actividad in actividades:
+        clave = (str(actividad.get("origen") or "Programa"), str(actividad.get("fuente") or "Programa"))
+        grupos[clave] = grupos.get(clave, 0) + 1
+    return " · ".join(
+        f"{origen}: {cantidad} ({fuente})"
+        for (origen, fuente), cantidad in sorted(grupos.items())
+    )
+
+
+def render_panel_conciliacion_programados(mes_clave: str, anio: int, mes: int) -> None:
+    aviso = st.session_state.pop("conciliacion_aviso", None)
+    if isinstance(aviso, dict) and aviso.get("mes") == mes_clave:
+        if aviso.get("tipo") == "ok":
+            st.success(str(aviso.get("texto") or "Enlace confirmado."))
+        else:
+            st.warning(str(aviso.get("texto") or "No se pudo confirmar el enlace."))
+    actividades, avisos = _actividades_historial_mes_entrada(mes_clave, anio, mes)
+    for texto in avisos:
+        st.warning(texto)
+    if not actividades:
+        st.info(
+            "No hay actividades de la hoja Historial para este mes. "
+            "Carga el programa en UBM, eléctricos o instrumentos."
+        )
+        return
+    cruce = _cruzar_conciliacion_programados(
+        actividades,
+        _registros_bitacora_conciliacion(anio, mes),
+        _leer_conciliacion_programados(),
+    )
+    total = len(cruce)
+    confirmadas = [item for item in cruce if item["estado"] == "confirmada"]
+    pendientes = [item for item in cruce if item["estado"] == "pendiente"]
+    sin_coincidencia = [item for item in cruce if item["estado"] == "sin_coincidencia"]
+    st.markdown(
+        f'<p class="conc-avance">{len(confirmadas)} de {total} conciliados y confirmados</p>',
+        unsafe_allow_html=True,
+    )
+    st.progress(len(confirmadas) / total if total else 0.0)
+    st.caption(
+        f"{_texto_fuentes_conciliacion(actividades)}. "
+        f"Cruce por código de equipo, tipo de mantenimiento y hasta {_DIAS_PROXIMIDAD_CONCILIACION} días "
+        "entre la fecha programada y la ejecución en bitácora."
+    )
+    origenes = sorted({item["origen"] for item in cruce})
+    if len(origenes) > 1:
+        opciones = ["Todos", *origenes]
+        clave_filtro = f"conc_origen_{mes_clave}"
+        if st.session_state.get(clave_filtro) not in opciones:
+            st.session_state[clave_filtro] = "Todos"
+        origen = st.selectbox("Programa", opciones, key=clave_filtro)
+        if origen != "Todos":
+            confirmadas = [item for item in confirmadas if item["origen"] == origen]
+            pendientes = [item for item in pendientes if item["origen"] == origen]
+            sin_coincidencia = [item for item in sin_coincidencia if item["origen"] == origen]
+            st.caption("El indicador de avance cuenta el mes completo.")
+    st.markdown(
+        f'<p class="conc-kicker">Coincidencias detectadas / pendientes de confirmar · {len(pendientes)}</p>',
+        unsafe_allow_html=True,
+    )
+    if not pendientes:
+        st.caption("No quedan coincidencias pendientes de confirmar en esta vista.")
+    for item in pendientes:
+        with st.container(border=True):
+            codigo = f" · Cód {html.escape(str(item.get('codigo') or ''))}" if item.get("codigo") else ""
+            st.markdown(
+                f"<b>{html.escape(str(item.get('equipo') or 'Sin equipo'))}</b>{codigo}",
+                unsafe_allow_html=True,
+            )
+            st.write(str(item.get("actividad") or "Sin actividad"))
+            tipo = str(item.get("tipo") or "")
+            if tipo and tipo.casefold() != str(item.get("actividad") or "").casefold():
+                st.caption(f"Tipo de mantenimiento: {tipo}")
+            delta = _texto_delta_conciliacion(item.get("delta"))
+            st.caption(
+                f"{item.get('origen') or ''} · Programada {_fecha_visible_conciliacion(item.get('fecha'))}"
+                + (f" · {delta}" if delta else "")
+            )
+            detalle = _nota_cruce_conciliacion(item)
+            bitacora = item.get("resumen") or "Sin resumen"
+            if detalle:
+                bitacora = f"{bitacora} · {detalle}"
+            st.caption(f"Bitácora: {bitacora}")
+            if st.button(
+                "Confirmar enlace",
+                key=f"conc_ok_{item['id']}",
+                type="primary",
+                use_container_width=True,
+            ):
+                error = _confirmar_enlace_conciliacion(item, mes_clave)
+                st.session_state["conciliacion_aviso"] = {
+                    "mes": mes_clave,
+                    "tipo": "aviso" if error else "ok",
+                    "texto": error
+                    or (
+                        f"{item.get('equipo') or 'Actividad'}: enlace confirmado. "
+                        "La actividad quedó como realizada."
+                    ),
+                }
+                st.rerun()
+    with st.expander(f"Ya conciliados · {len(confirmadas)}", expanded=False):
+        if not confirmadas:
+            st.caption("Todavía no hay enlaces confirmados en esta vista.")
+        for item in confirmadas:
+            st.markdown('<p class="conc-realizada">Realizada</p>', unsafe_allow_html=True)
+            st.write(
+                f"{item.get('equipo') or 'Sin equipo'} · {item.get('actividad') or 'Sin actividad'}"
+            )
+            st.caption(
+                "Programada "
+                + _fecha_visible_conciliacion(item.get("fecha"))
+                + " · "
+                + str(item.get("resumen") or "Registro vinculado")
+            )
+    with st.expander(f"Sin coincidencia en bitácora · {len(sin_coincidencia)}", expanded=False):
+        if not sin_coincidencia:
+            st.caption("Todas las actividades de esta vista tienen una coincidencia o ya fueron confirmadas.")
+        else:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "Equipo": item.get("equipo") or "",
+                            "Actividad": item.get("actividad") or "",
+                            "Fecha programada": _fecha_visible_conciliacion(item.get("fecha")),
+                            "Programa": item.get("origen") or "",
+                        }
+                        for item in sin_coincidencia
+                    ]
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
+
+
 def render_entrada_datos_admin(jornada: date | None = None) -> None:
     if not isinstance(jornada, date):
         jornada = st.session_state.get("admin_jornada")
@@ -26071,16 +26856,18 @@ def render_entrada_datos_admin(jornada: date | None = None) -> None:
     with abajo[1]:
         with st.container(border=True):
             st.markdown('<p class="entrada-tarjeta-titulo">OTRO</p>', unsafe_allow_html=True)
-            st.caption("Archivos complementarios o adendas enviadas por OPS.")
-            _panel_carga_entrada(
-                "otro",
-                "Adendas u otros archivos",
-                mes_clave,
-                jornada.year,
-                jornada.month,
-                multiple=True,
-                procesar=False,
-            )
+            st.caption("Panel de verificación y conciliación de mantenimientos programados.")
+            render_panel_conciliacion_programados(mes_clave, jornada.year, jornada.month)
+            with st.expander("Archivos complementarios", expanded=False):
+                _panel_carga_entrada(
+                    "otro",
+                    "Adendas u otros archivos",
+                    mes_clave,
+                    jornada.year,
+                    jornada.month,
+                    multiple=True,
+                    procesar=False,
+                )
 
 
 def render_edicion_captura_admin(jornada: date) -> None:
