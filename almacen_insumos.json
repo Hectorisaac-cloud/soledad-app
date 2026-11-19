@@ -3982,6 +3982,22 @@
       "tipo_insumo": "Consumible",
       "id": "7571ed9cdf",
       "registrado": "2026-11-19 16:01"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-18",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 4",
+      "sector": "PS Soledad",
+      "insumo_id": "banda-c-112",
+      "insumo": "Banda C-112",
+      "cantidad": 2.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "85b8491349",
+      "registrado": "2026-11-19 16:06"
     }
   ]
 }
