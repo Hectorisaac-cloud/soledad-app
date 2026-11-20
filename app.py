@@ -4678,6 +4678,25 @@ def _fecha_ya_es_dia(valor) -> bool:
     return type(valor) is date or valor is None or (isinstance(valor, float) and pd.isna(valor))
 
 
+def _dia_calendario(valor) -> date | None:
+    """Día de calendario de una celda, sea date, datetime o texto."""
+    if valor is None or isinstance(valor, bool):
+        return None
+    try:
+        if pd.isna(valor):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(valor, datetime):
+        try:
+            return valor.date()
+        except (ValueError, OSError):
+            return None
+    if type(valor) is date:
+        return valor
+    return parsear_fecha_valor(valor)
+
+
 def bitacora_con_fechas(df: pd.DataFrame) -> pd.DataFrame:
     """Deja _fecha como datetime.date, aunque el Excel traiga texto o datetime."""
     if df is None or df.empty:
@@ -23347,7 +23366,11 @@ def _clasificar_texto_actividad_insumo(texto: str) -> str:
 
 
 def _categoria_actividad_insumo(fila) -> str:
-    """La actividad oficial manda. La descripción solo cubre el registro sin categoría."""
+    """La actividad oficial manda. La descripción solo cubre el registro sin actividad.
+
+    Si el tipo o la actividad corta existen y no coinciden con una rebanada,
+    el litro se queda en Otras. No se descarta el registro.
+    """
     principal = " ".join(
         parte
         for parte in (
@@ -23356,14 +23379,49 @@ def _categoria_actividad_insumo(fila) -> str:
         )
         if parte
     )
-    categoria = _clasificar_texto_actividad_insumo(principal)
-    if categoria != _OTRAS_ACTIVIDADES_INSUMO:
-        return categoria
+    if principal.strip():
+        return _clasificar_texto_actividad_insumo(principal)
     descripcion = texto_visible(
         fila.get("DESCRIPCIÓN DE LA ACTIVIDAD") or fila.get("DESCRIPCION DE LA ACTIVIDAD"),
         "",
     )
     return _clasificar_texto_actividad_insumo(descripcion)
+
+
+def _cantidad_columna_insumo(fila, columna: str) -> float:
+    bruto = fila.get(columna) if hasattr(fila, "get") else None
+    if _es_grasa(columna):
+        return cantidad_grasa_kg(bruto)
+    return _numero_insumo(bruto)
+
+
+def _columnas_cantidad_insumo(base: pd.DataFrame) -> list[str]:
+    """Columnas de cantidad. La columna vieja no se recorre sola si ya existe la nueva."""
+    presentes = set(base.columns)
+    columnas = []
+    for columna in base.columns:
+        if not _es_columna_cantidad_refaccion(columna):
+            continue
+        canonico = _ESPEJO_INSUMO_BITACORA.get(columna)
+        if canonico and canonico in presentes:
+            continue
+        columnas.append(columna)
+    return columnas
+
+
+def _cantidad_insumo_sin_duplicar(fila, columna: str, presentes: set[str]) -> float:
+    """Una sola cantidad por insumo: la nueva, o la vieja si la nueva viene vacía.
+
+    Si ambas traen valor, se conserva la mayor y no se suman. Así no se pierden
+    litros de un registro que solo llenó la columna anterior, ni se cuentan dos veces.
+    """
+    cantidad = _cantidad_columna_insumo(fila, columna)
+    for legacy, canonico in _ESPEJO_INSUMO_BITACORA.items():
+        if canonico != columna or legacy not in presentes:
+            continue
+        cantidad = max(cantidad, _cantidad_columna_insumo(fila, legacy))
+        break
+    return cantidad
 
 
 def detalle_insumos_suministrados(df: pd.DataFrame | None, con_actividad: bool = False) -> pd.DataFrame:
@@ -23374,18 +23432,14 @@ def detalle_insumos_suministrados(df: pd.DataFrame | None, con_actividad: bool =
     if df is None or df.empty:
         return vacio
     base = df if "_fecha" in df.columns else bitacora_con_fechas(df)
-    columnas = []
-    for columna in base.columns:
-        if not _es_columna_cantidad_refaccion(columna):
-            continue
-        origen = _ESPEJO_INSUMO_BITACORA.get(columna)
-        if origen and origen in base.columns:
-            continue
-        columnas.append(columna)
+    columnas = _columnas_cantidad_insumo(base)
+    presentes = set(base.columns)
     filas = []
     for _, fila in base.iterrows():
-        dia = fila.get("_fecha")
-        if not isinstance(dia, date):
+        dia = _dia_calendario(fila.get("_fecha"))
+        if dia is None:
+            dia = _dia_calendario(fila.get("FECHA"))
+        if dia is None:
             continue
         ubicacion = _ubicacion_fila_refaccion(fila)
         categoria = _categoria_actividad_insumo(fila) if con_actividad else ""
@@ -23404,11 +23458,13 @@ def detalle_insumos_suministrados(df: pd.DataFrame | None, con_actividad: bool =
             filas.append(registro)
 
         for columna in columnas:
-            bruto = fila.get(columna)
-            cantidad = cantidad_grasa_kg(bruto) if _es_grasa(columna) else _numero_insumo(bruto)
+            cantidad = _cantidad_insumo_sin_duplicar(fila, columna, presentes)
             if cantidad <= 0:
                 continue
             claves_fila.add(_clave_columna_bitacora(columna))
+            for legacy, canonico in _ESPEJO_INSUMO_BITACORA.items():
+                if canonico == columna:
+                    claves_fila.add(_clave_columna_bitacora(legacy))
             _registrar(etiqueta_refaccion(columna), cantidad, clasificar_rubro_refaccion(columna))
         for nombre, cantidad in _partes_otros_insumos(fila.get("OTROS INSUMOS")):
             claves_fila.add(_clave_columna_bitacora(nombre))
@@ -25156,9 +25212,12 @@ def _bitacora_rango_admin(inicio: date, fin: date) -> pd.DataFrame:
         return base.iloc[0:0] if base is not None else pd.DataFrame()
     if not isinstance(inicio, date) or not isinstance(fin, date) or inicio > fin:
         return base.iloc[0:0]
-    return base.loc[
-        base["_fecha"].map(lambda dia: isinstance(dia, date) and not isinstance(dia, datetime) and inicio <= dia <= fin)
-    ].copy()
+
+    def _cae_en_periodo(valor) -> bool:
+        dia = _dia_calendario(valor)
+        return dia is not None and inicio <= dia <= fin
+
+    return base.loc[base["_fecha"].map(_cae_en_periodo)].copy()
 
 
 def _bitacora_mes_admin(jornada: date) -> pd.DataFrame:
@@ -25390,24 +25449,32 @@ def _resumen_donas_insumos(detalle: pd.DataFrame) -> list[tuple[str, float, list
         .sort_values(["cantidad", "refaccion"], ascending=[False, True])
     )
     etiquetas = [etiqueta for etiqueta, _tokens in _CATEGORIAS_DONA_INSUMO]
+    conocidas = set(etiquetas)
     donas = []
     for _, fila in orden.iterrows():
         nombre = str(fila["refaccion"])
-        total = float(fila["cantidad"])
+        grupo = vista.loc[vista["refaccion"] == nombre]
+        total = float(grupo["cantidad"].sum())
         if total <= 0:
             continue
-        grupo = vista.loc[vista["refaccion"] == nombre]
-        por_categoria = grupo.groupby("categoria")["cantidad"].sum()
+        categorias = grupo["categoria"].map(lambda valor: valor if valor in conocidas else _OTRAS_ACTIVIDADES_INSUMO)
+        por_categoria = grupo.assign(_categoria_dona=categorias).groupby("_categoria_dona")["cantidad"].sum()
         partes_base: list[tuple[str, float]] = []
         acumulado = 0.0
         for etiqueta in etiquetas:
             cantidad = float(por_categoria.get(etiqueta, 0.0) or 0.0)
-            if cantidad > 0:
+            if cantidad > 1e-9:
                 partes_base.append((etiqueta, cantidad))
                 acumulado += cantidad
         otras = total - acumulado
         if otras > 1e-6:
             partes_base.append((_OTRAS_ACTIVIDADES_INSUMO, otras))
+        elif otras < -1e-6 and partes_base:
+            etiqueta, cantidad = partes_base[-1]
+            partes_base[-1] = (etiqueta, cantidad + otras)
+        if not partes_base:
+            partes_base.append((_OTRAS_ACTIVIDADES_INSUMO, total))
+        total = sum(cantidad for _etiqueta, cantidad in partes_base)
         porcentajes = _porcentajes_dona([cantidad for _etiqueta, cantidad in partes_base])
         partes = [
             (etiqueta, cantidad, porcentaje)
@@ -25423,6 +25490,7 @@ def _figura_dona_insumo(nombre: str, total: float, partes: list[tuple[str, float
         for etiqueta, cantidad, porcentaje in partes
     ]
     valores = [cantidad for _etiqueta, cantidad, _porcentaje in partes]
+    total = sum(valores)
     colores = [_COLORES_DONA_INSUMO.get(etiqueta, "#64748b") for etiqueta, _cantidad, _porcentaje in partes]
     figura = go.Figure(
         go.Pie(
@@ -29060,7 +29128,7 @@ def _insumos_rango_admin(desde: date, hasta: date) -> pd.DataFrame:
     if base.empty or "_fecha" not in base.columns:
         return pd.DataFrame(columns=["fecha", "ubicacion", "rubro", "refaccion", "cantidad"])
     periodo = base.loc[
-        base["_fecha"].map(lambda dia: isinstance(dia, date) and inicio <= dia <= fin)
+        base["_fecha"].map(lambda valor: (dia := _dia_calendario(valor)) is not None and inicio <= dia <= fin)
     ].copy()
     detalle = detalle_insumos_suministrados(periodo)
     if detalle.empty:
