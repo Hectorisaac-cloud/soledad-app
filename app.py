@@ -25194,6 +25194,49 @@ def _clase_avance_admin(fila, programadas: set[str]) -> str:
     return "No programado"
 
 
+def _ids_bitacora_confirmados() -> set[str]:
+    """Bitácoras vinculadas en una conciliación confirmada. Se lee en cada render."""
+    try:
+        datos = _leer_conciliacion_programados()
+    except Exception:
+        return set()
+    if not isinstance(datos, dict):
+        return set()
+    return {
+        str(item.get("bitacora_id") or "").strip()
+        for item in datos.values()
+        if isinstance(item, dict)
+        and item.get("estatus") == "Realizado"
+        and str(item.get("bitacora_id") or "").strip()
+    }
+
+
+def _clase_conciliacion_vista(fila, confirmados: set[str]) -> str:
+    if id_registro_fila(fila) in confirmados:
+        return "Programado"
+    return "No programado"
+
+
+def _filtrar_conciliacion_vista(df: pd.DataFrame, estatus: str, confirmados: set[str]) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df if df is not None else pd.DataFrame()
+    clave = _sin_acentos(estatus or "Todos").strip().casefold()
+    if clave in {"", "todos"}:
+        return df
+    if clave == "programados":
+        esperada = "Programado"
+    elif clave in {"no programados", "no programado"}:
+        esperada = "No programado"
+    else:
+        return df
+    conservar = [
+        posicion
+        for posicion, (_, fila) in enumerate(df.iterrows())
+        if _clase_conciliacion_vista(fila, confirmados) == esperada
+    ]
+    return df.iloc[conservar].copy()
+
+
 def _tipo_mantenimiento_admin(fila) -> str:
     for columna in ("TIPO DE ACTIVIDAD", "ACTIVIDAD CORTA"):
         texto = _texto_celda_admin(fila.get(columna))
@@ -25217,11 +25260,12 @@ COLUMNAS_AUDITORIA_PERIODO = [
 ]
 
 
-def _tabla_auditoria_periodo(df: pd.DataFrame) -> pd.DataFrame:
+def _tabla_auditoria_periodo(df: pd.DataFrame, confirmados: set[str] | None = None) -> pd.DataFrame:
     """Un renglón por actividad del filtro, con la misma clase que las tarjetas."""
     if df is None or df.empty:
         return pd.DataFrame(columns=COLUMNAS_AUDITORIA_PERIODO)
-    programadas = _actividades_programadas_suministros()
+    if confirmados is None:
+        confirmados = _ids_bitacora_confirmados()
     vista = df.sort_values("_fecha", kind="stable") if "_fecha" in df.columns else df
     filas = []
     for _, fila in vista.iterrows():
@@ -25234,7 +25278,7 @@ def _tabla_auditoria_periodo(df: pd.DataFrame) -> pd.DataFrame:
                 "Sector": _sector_fila_admin(fila),
                 "Cuadrilla": _cuadrilla_fila_admin(fila),
                 "Tipo de mantenimiento": _tipo_mantenimiento_admin(fila),
-                "Programado o no programado": _clase_avance_admin(fila, programadas),
+                "Programado o no programado": _clase_conciliacion_vista(fila, confirmados),
             }
         )
     return pd.DataFrame(filas, columns=COLUMNAS_AUDITORIA_PERIODO)
@@ -25281,9 +25325,9 @@ def _figura_insumos_vista_previa(detalle: pd.DataFrame):
 def _resumen_auditoria_periodo(tabla: pd.DataFrame) -> tuple[int, int, int]:
     if tabla is None or tabla.empty:
         return 0, 0, 0
+    total = len(tabla)
     programados = int((tabla["Programado o no programado"] == "Programado").sum())
-    no_programados = int((tabla["Programado o no programado"] == "No programado").sum())
-    return programados, no_programados, len(tabla)
+    return programados, total - programados, total
 
 
 def _contar_avance_admin(df: pd.DataFrame) -> tuple[int, int, int]:
@@ -27512,14 +27556,20 @@ def render_vista_previa_admin(jornada: date) -> None:
     with filtros[0]:
         ot = st.text_input("OT", key="adm_m_f_ot", placeholder="Secuencia")
         pozo = _elegir_filtro_admin("Pozo", _opciones_admin(periodo, _pozo_fila_admin), "adm_m_f_pozo")
-        estatus = _elegir_filtro_admin("Estatus", _opciones_admin(periodo, _estatus_fila_admin), "adm_m_f_estatus")
+        estatus = _elegir_filtro_admin(
+            "Estatus",
+            ["Todos", "Programados", "No programados"],
+            "adm_m_f_estatus",
+        )
     with filtros[1]:
         sector = _elegir_filtro_admin("Sector", _opciones_admin(periodo, _sector_fila_admin), "adm_m_f_sector")
         cuadrilla = _elegir_filtro_admin(
             "Cuadrilla", _opciones_admin(periodo, _cuadrilla_fila_admin), "adm_m_f_cuadrilla"
         )
-    filtrada = _filtrar_vista_admin(periodo, ot, sector, pozo, cuadrilla, estatus)
-    auditoria = _tabla_auditoria_periodo(filtrada)
+    confirmados = _ids_bitacora_confirmados()
+    filtrada = _filtrar_vista_admin(periodo, ot, sector, pozo, cuadrilla, "Todos")
+    filtrada = _filtrar_conciliacion_vista(filtrada, estatus, confirmados)
+    auditoria = _tabla_auditoria_periodo(filtrada, confirmados)
     programados, imprevistos, total = _resumen_auditoria_periodo(auditoria)
     m1, m2, m3 = st.columns(3)
     m1.metric("Programados", programados)
