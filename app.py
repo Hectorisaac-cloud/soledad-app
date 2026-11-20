@@ -23320,8 +23320,57 @@ def _ubicacion_fila_refaccion(fila) -> str:
     return etiqueta_ubicacion_fila(fila) or "Sin ubicación"
 
 
-def detalle_insumos_suministrados(df: pd.DataFrame | None) -> pd.DataFrame:
-    vacio = pd.DataFrame(columns=["fecha", "ubicacion", "rubro", "refaccion", "cantidad"])
+_CATEGORIAS_DONA_INSUMO = (
+    ("Inspección de niveles a MCI", ("inspeccion de niveles", "niveles a mci")),
+    ("Apoyo a puesta en marcha", ("puesta en marcha", "apoyo pm")),
+    ("Mantenimiento semestral / bimestral", ("bimestral", "semestral")),
+    ("Restablecimientos", ("restablec",)),
+)
+_OTRAS_ACTIVIDADES_INSUMO = "Otras actividades"
+_COLORES_DONA_INSUMO = {
+    "Inspección de niveles a MCI": "#38bdf8",
+    "Mantenimiento semestral / bimestral": "#86efac",
+    "Apoyo a puesta en marcha": "#fbbf24",
+    "Restablecimientos": "#fb7185",
+    "Otras actividades": "#94a3b8",
+}
+
+
+def _clasificar_texto_actividad_insumo(texto: str) -> str:
+    clave = _sin_acentos(texto).casefold()
+    if not clave.strip():
+        return _OTRAS_ACTIVIDADES_INSUMO
+    for etiqueta, tokens in _CATEGORIAS_DONA_INSUMO:
+        if any(token in clave for token in tokens):
+            return etiqueta
+    return _OTRAS_ACTIVIDADES_INSUMO
+
+
+def _categoria_actividad_insumo(fila) -> str:
+    """La actividad oficial manda. La descripción solo cubre el registro sin categoría."""
+    principal = " ".join(
+        parte
+        for parte in (
+            texto_visible(fila.get("TIPO DE ACTIVIDAD"), ""),
+            texto_visible(fila.get("ACTIVIDAD CORTA"), ""),
+        )
+        if parte
+    )
+    categoria = _clasificar_texto_actividad_insumo(principal)
+    if categoria != _OTRAS_ACTIVIDADES_INSUMO:
+        return categoria
+    descripcion = texto_visible(
+        fila.get("DESCRIPCIÓN DE LA ACTIVIDAD") or fila.get("DESCRIPCION DE LA ACTIVIDAD"),
+        "",
+    )
+    return _clasificar_texto_actividad_insumo(descripcion)
+
+
+def detalle_insumos_suministrados(df: pd.DataFrame | None, con_actividad: bool = False) -> pd.DataFrame:
+    columnas = ["fecha", "ubicacion", "rubro", "refaccion", "cantidad"]
+    if con_actividad:
+        columnas.append("categoria")
+    vacio = pd.DataFrame(columns=columnas)
     if df is None or df.empty:
         return vacio
     base = df if "_fecha" in df.columns else bitacora_con_fechas(df)
@@ -23339,33 +23388,31 @@ def detalle_insumos_suministrados(df: pd.DataFrame | None) -> pd.DataFrame:
         if not isinstance(dia, date):
             continue
         ubicacion = _ubicacion_fila_refaccion(fila)
+        categoria = _categoria_actividad_insumo(fila) if con_actividad else ""
         claves_fila: set[str] = set()
+
+        def _registrar(refaccion: str, cantidad: float, rubro: str) -> None:
+            registro = {
+                "fecha": dia,
+                "ubicacion": ubicacion,
+                "rubro": rubro,
+                "refaccion": refaccion,
+                "cantidad": cantidad,
+            }
+            if con_actividad:
+                registro["categoria"] = categoria
+            filas.append(registro)
+
         for columna in columnas:
             bruto = fila.get(columna)
             cantidad = cantidad_grasa_kg(bruto) if _es_grasa(columna) else _numero_insumo(bruto)
             if cantidad <= 0:
                 continue
             claves_fila.add(_clave_columna_bitacora(columna))
-            filas.append(
-                {
-                    "fecha": dia,
-                    "ubicacion": ubicacion,
-                    "rubro": clasificar_rubro_refaccion(columna),
-                    "refaccion": etiqueta_refaccion(columna),
-                    "cantidad": cantidad,
-                }
-            )
+            _registrar(etiqueta_refaccion(columna), cantidad, clasificar_rubro_refaccion(columna))
         for nombre, cantidad in _partes_otros_insumos(fila.get("OTROS INSUMOS")):
             claves_fila.add(_clave_columna_bitacora(nombre))
-            filas.append(
-                {
-                    "fecha": dia,
-                    "ubicacion": ubicacion,
-                    "rubro": clasificar_rubro_refaccion(nombre),
-                    "refaccion": nombre,
-                    "cantidad": cantidad,
-                }
-            )
+            _registrar(nombre, cantidad, clasificar_rubro_refaccion(nombre))
         indice = [str(col) for col in fila.index]
         for nombre, cantidad in _consumibles_en_comentario(fila.get("COMENTARIOS")):
             columna = _columna_destino_insumo(nombre, indice)
@@ -23373,15 +23420,7 @@ def detalle_insumos_suministrados(df: pd.DataFrame | None) -> pd.DataFrame:
             if not clave or clave in claves_fila:
                 continue
             claves_fila.add(clave)
-            filas.append(
-                {
-                    "fecha": dia,
-                    "ubicacion": ubicacion,
-                    "rubro": clasificar_rubro_refaccion(columna),
-                    "refaccion": etiqueta_refaccion(columna),
-                    "cantidad": cantidad,
-                }
-            )
+            _registrar(etiqueta_refaccion(columna), cantidad, clasificar_rubro_refaccion(columna))
     if not filas:
         return vacio
     return pd.DataFrame(filas)
@@ -25320,6 +25359,135 @@ def _figura_insumos_vista_previa(detalle: pd.DataFrame):
         yaxis=dict(rangemode="tozero", range=[0, tope] if tope else None),
     )
     return figura
+
+
+def _porcentajes_dona(valores: list[float]) -> list[int]:
+    total = sum(valores)
+    if total <= 0:
+        return [0 for _ in valores]
+    crudos = [100.0 * valor / total for valor in valores]
+    enteros = [int(round(valor)) for valor in crudos]
+    diferencia = 100 - sum(enteros)
+    if enteros and diferencia:
+        indice = max(range(len(crudos)), key=lambda i: (crudos[i] - enteros[i], valores[i]))
+        enteros[indice] += diferencia
+    return enteros
+
+
+def _resumen_donas_insumos(detalle: pd.DataFrame) -> list[tuple[str, float, list[tuple[str, float, int]]]]:
+    """Una dona por insumo. Las rebanadas suman el total y el residuo cae en Otras."""
+    if detalle is None or detalle.empty or "categoria" not in detalle.columns:
+        return []
+    vista = detalle
+    if "rubro" in vista.columns:
+        solo_insumos = vista.loc[vista["rubro"] == RUBRO_INSUMO]
+        vista = solo_insumos
+    if vista.empty:
+        return []
+    orden = (
+        vista.groupby("refaccion", as_index=False)["cantidad"]
+        .sum()
+        .sort_values(["cantidad", "refaccion"], ascending=[False, True])
+    )
+    etiquetas = [etiqueta for etiqueta, _tokens in _CATEGORIAS_DONA_INSUMO]
+    donas = []
+    for _, fila in orden.iterrows():
+        nombre = str(fila["refaccion"])
+        total = float(fila["cantidad"])
+        if total <= 0:
+            continue
+        grupo = vista.loc[vista["refaccion"] == nombre]
+        por_categoria = grupo.groupby("categoria")["cantidad"].sum()
+        partes_base: list[tuple[str, float]] = []
+        acumulado = 0.0
+        for etiqueta in etiquetas:
+            cantidad = float(por_categoria.get(etiqueta, 0.0) or 0.0)
+            if cantidad > 0:
+                partes_base.append((etiqueta, cantidad))
+                acumulado += cantidad
+        otras = total - acumulado
+        if otras > 1e-6:
+            partes_base.append((_OTRAS_ACTIVIDADES_INSUMO, otras))
+        porcentajes = _porcentajes_dona([cantidad for _etiqueta, cantidad in partes_base])
+        partes = [
+            (etiqueta, cantidad, porcentaje)
+            for (etiqueta, cantidad), porcentaje in zip(partes_base, porcentajes)
+        ]
+        donas.append((nombre, total, partes))
+    return donas
+
+
+def _figura_dona_insumo(nombre: str, total: float, partes: list[tuple[str, float, int]]):
+    etiquetas = [
+        f"{etiqueta} · {porcentaje}% · {_texto_cantidad_refaccion(nombre, cantidad)}"
+        for etiqueta, cantidad, porcentaje in partes
+    ]
+    valores = [cantidad for _etiqueta, cantidad, _porcentaje in partes]
+    colores = [_COLORES_DONA_INSUMO.get(etiqueta, "#64748b") for etiqueta, _cantidad, _porcentaje in partes]
+    figura = go.Figure(
+        go.Pie(
+            labels=etiquetas,
+            values=valores,
+            hole=0.68,
+            sort=False,
+            direction="clockwise",
+            marker=dict(colors=colores, line=dict(color="#0f172a", width=1)),
+            text=[f"{porcentaje}%" for _etiqueta, _cantidad, porcentaje in partes],
+            textinfo="text",
+            textposition="inside",
+            insidetextorientation="horizontal",
+            hovertemplate="%{label}<extra></extra>",
+        )
+    )
+    figura.update_layout(
+        height=390,
+        margin=dict(l=8, r=8, t=42, b=8),
+        paper_bgcolor="rgba(0,0,0,0)",
+        font_color="#e2e8f0",
+        title=dict(text=nombre, x=0.5, xanchor="center", font=dict(size=15, color="#f8fafc")),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="top", y=-0.02, x=0, font=dict(size=11, color="#e2e8f0")),
+        annotations=[
+            dict(
+                text=f"<b>{_texto_cantidad_refaccion(nombre, total)}</b>",
+                x=0.5,
+                y=0.58,
+                xref="paper",
+                yref="paper",
+                showarrow=False,
+                font=dict(size=18, color="#f8fafc"),
+            )
+        ],
+    )
+    figura.update_traces(textfont=dict(color="#0f172a", size=12))
+    return figura
+
+
+def render_insumos_suministrados_vista(df: pd.DataFrame) -> None:
+    st.markdown(
+        '<h3 style="margin:0.6rem 0 0.75rem;color:#f8fafc;letter-spacing:0.06em;font-size:1.05rem;">'
+        "INSUMOS SUMINISTRADOS</h3>",
+        unsafe_allow_html=True,
+    )
+    donas = _resumen_donas_insumos(detalle_insumos_suministrados(df, con_actividad=True))
+    if not donas:
+        st.caption("Sin insumos consumidos en el periodo seleccionado.")
+        return
+    por_fila = 3
+    vistos: dict[str, int] = {}
+    for inicio in range(0, len(donas), por_fila):
+        columnas = st.columns(por_fila)
+        for columna, (nombre, total, partes) in zip(columnas, donas[inicio : inicio + por_fila]):
+            base = re.sub(r"[^a-z0-9]+", "_", _sin_acentos(nombre).casefold()).strip("_") or "insumo"
+            vistos[base] = vistos.get(base, 0) + 1
+            sufijo = "" if vistos[base] == 1 else f"_{vistos[base]}"
+            with columna:
+                with st.container(border=True):
+                    st.plotly_chart(
+                        _figura_dona_insumo(nombre, total, partes),
+                        use_container_width=True,
+                        key=f"adm_m_dona_{base}{sufijo}",
+                    )
 
 
 def _resumen_auditoria_periodo(tabla: pd.DataFrame) -> tuple[int, int, int]:
@@ -27591,12 +27759,7 @@ def render_vista_previa_admin(jornada: date) -> None:
         title="Avance de mantenimientos",
     )
     st.plotly_chart(avance, use_container_width=True, key="adm_m_chart_avance")
-    detalle = detalle_insumos_suministrados(filtrada)
-    if detalle.empty:
-        st.caption("Sin insumos consumidos en el periodo seleccionado.")
-    else:
-        figura = _figura_insumos_vista_previa(detalle)
-        st.plotly_chart(figura, use_container_width=True, key="adm_m_chart_insumos")
+    render_insumos_suministrados_vista(filtrada)
     with st.expander("Verificar actividades del periodo"):
         st.caption(
             f"{programados} programadas · {imprevistos} no programadas · {total} en total."
