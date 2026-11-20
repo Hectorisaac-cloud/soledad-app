@@ -23339,37 +23339,131 @@ def _ubicacion_fila_refaccion(fila) -> str:
     return etiqueta_ubicacion_fila(fila) or "Sin ubicación"
 
 
-_CATEGORIAS_DONA_INSUMO = (
-    ("Inspección de niveles a MCI", ("inspeccion de niveles", "niveles a mci")),
-    ("Apoyo a puesta en marcha", ("puesta en marcha", "apoyo pm")),
-    ("Mantenimiento semestral / bimestral", ("bimestral", "semestral")),
-    ("Restablecimientos", ("restablec",)),
-)
 _OTRAS_ACTIVIDADES_INSUMO = "Otras actividades"
-_COLORES_DONA_INSUMO = {
-    "Inspección de niveles a MCI": "#38bdf8",
-    "Mantenimiento semestral / bimestral": "#86efac",
-    "Apoyo a puesta en marcha": "#fbbf24",
-    "Restablecimientos": "#fb7185",
-    "Otras actividades": "#94a3b8",
-}
+_PALETA_DONA_INSUMO = (
+    "#38bdf8",
+    "#86efac",
+    "#fbbf24",
+    "#fb7185",
+    "#c4b5fd",
+    "#67e8f9",
+    "#fdba74",
+    "#a3e635",
+    "#93c5fd",
+    "#f9a8d4",
+    "#5eead4",
+    "#fde68a",
+    "#bef264",
+    "#d8b4fe",
+    "#7dd3fc",
+)
+
+
+def _clave_actividad_catalogo(texto: str) -> str:
+    plano = _sin_acentos(str(texto or "")).casefold().replace("/", " ")
+    plano = re.sub(r"[^a-z0-9]+", " ", plano)
+    return " ".join(plano.split())
+
+
+def _variantes_nombre_catalogo(nombre: str) -> list[str]:
+    """El nombre oficial y cada alternativa escrita con barra (INSPECCION/REVISION)."""
+    bruto = _sin_acentos(str(nombre or ""))
+    opciones = [bruto]
+    grupos = list(re.finditer(r"[A-Za-z0-9]+(?:/[A-Za-z0-9]+)+", bruto))
+    for grupo in grupos:
+        alternativas = grupo.group(0).split("/")
+        nuevo = []
+        for base in opciones:
+            for alternativa in alternativas:
+                nuevo.append(base.replace(grupo.group(0), alternativa, 1))
+        opciones = nuevo
+    claves = []
+    vistos: set[str] = set()
+    opciones.append(_clave_actividad_catalogo(nombre))
+    for opcion in opciones:
+        clave = _clave_actividad_catalogo(opcion)
+        if len(clave) < 8 or clave in vistos:
+            continue
+        vistos.add(clave)
+        claves.append(clave)
+    return claves
+
+
+def _frase_actividad_contenida(frase: str, texto: str) -> bool:
+    return f" {frase} " in f" {texto} "
+
+
+def _nombres_catalogo_dona() -> list[str]:
+    """Actividades del catálogo de captura. El Excel oficial va primero."""
+    nombres: list[str] = []
+    vistos: set[str] = set()
+    excel = catalogo_actividades_desde_excel()
+    if any(excel.values()):
+        fuente = excel
+        extra = catalogo_actividades_default()
+    else:
+        fuente = catalogo_actividades_default()
+        extra = {}
+    for grupo in ("MECANICOS", "ELECTRICO", "INSTRUMENTOS", "MONTAJE", "SOLDADURA"):
+        items = list(fuente.get(grupo) or [])
+        items.extend(extra.get(grupo) or [])
+        for item in items:
+            nombre = " ".join(str((item or {}).get("nombre") or "").split())
+            if not nombre or _es_actividad_libre_excel(nombre):
+                continue
+            clave = _clave_actividad_catalogo(nombre)
+            if not clave or clave in vistos:
+                continue
+            vistos.add(clave)
+            nombres.append(nombre)
+    return nombres
+
+
+def _indice_actividades_dona() -> tuple[dict[str, str], tuple[tuple[str, str], ...]]:
+    """Clave normalizada → nombre oficial. La frase más larga gana si hay variantes."""
+    nombres = tuple(_nombres_catalogo_dona())
+    cache = getattr(_indice_actividades_dona, "_cache", None)
+    if cache and cache[0] == nombres:
+        return cache[1]
+    exactos: dict[str, str] = {}
+    frases: list[tuple[str, str]] = []
+    for nombre in nombres:
+        for clave in _variantes_nombre_catalogo(nombre):
+            if clave in exactos:
+                continue
+            etiqueta = nombre
+            for frase, previa in frases:
+                if _frase_actividad_contenida(clave, frase) or _frase_actividad_contenida(frase, clave):
+                    etiqueta = previa
+                    break
+            exactos[clave] = etiqueta
+            if etiqueta == nombre:
+                frases.append((clave, nombre))
+    frases.sort(key=lambda item: len(item[0]), reverse=True)
+    resultado = (exactos, tuple(frases))
+    _indice_actividades_dona._cache = (nombres, resultado)
+    return resultado
 
 
 def _clasificar_texto_actividad_insumo(texto: str) -> str:
-    clave = _sin_acentos(texto).casefold()
-    if not clave.strip():
+    """Devuelve el nombre del catálogo o, si no está, Otras actividades."""
+    clave = _clave_actividad_catalogo(texto)
+    if not clave or clave in {"otra", "otro", "nan", "none"}:
         return _OTRAS_ACTIVIDADES_INSUMO
-    for etiqueta, tokens in _CATEGORIAS_DONA_INSUMO:
-        if any(token in clave for token in tokens):
+    exactos, frases = _indice_actividades_dona()
+    if clave in exactos:
+        return exactos[clave]
+    for frase, etiqueta in frases:
+        if _frase_actividad_contenida(frase, clave) or _frase_actividad_contenida(clave, frase):
             return etiqueta
     return _OTRAS_ACTIVIDADES_INSUMO
 
 
 def _categoria_actividad_insumo(fila) -> str:
-    """La actividad oficial manda. La descripción solo cubre el registro sin actividad.
+    """La actividad de la captura manda. La descripción solo cubre el registro legado.
 
-    Si el tipo o la actividad corta existen y no coinciden con una rebanada,
-    el litro se queda en Otras. No se descarta el registro.
+    Lo que no está en el catálogo se conserva en Otras actividades, sin quitar
+    sus litros del total.
     """
     principal = " ".join(
         parte
@@ -23386,6 +23480,13 @@ def _categoria_actividad_insumo(fila) -> str:
         "",
     )
     return _clasificar_texto_actividad_insumo(descripcion)
+
+
+def _color_actividad_dona(etiqueta: str) -> str:
+    if _clave_actividad_catalogo(etiqueta) == _clave_actividad_catalogo(_OTRAS_ACTIVIDADES_INSUMO):
+        return "#94a3b8"
+    indice = sum(ord(caracter) for caracter in _clave_actividad_catalogo(etiqueta)) % len(_PALETA_DONA_INSUMO)
+    return _PALETA_DONA_INSUMO[indice]
 
 
 def _cantidad_columna_insumo(fila, columna: str) -> float:
@@ -25448,8 +25549,6 @@ def _resumen_donas_insumos(detalle: pd.DataFrame) -> list[tuple[str, float, list
         .sum()
         .sort_values(["cantidad", "refaccion"], ascending=[False, True])
     )
-    etiquetas = [etiqueta for etiqueta, _tokens in _CATEGORIAS_DONA_INSUMO]
-    conocidas = set(etiquetas)
     donas = []
     for _, fila in orden.iterrows():
         nombre = str(fila["refaccion"])
@@ -25457,14 +25556,23 @@ def _resumen_donas_insumos(detalle: pd.DataFrame) -> list[tuple[str, float, list
         total = float(grupo["cantidad"].sum())
         if total <= 0:
             continue
-        categorias = grupo["categoria"].map(lambda valor: valor if valor in conocidas else _OTRAS_ACTIVIDADES_INSUMO)
-        por_categoria = grupo.assign(_categoria_dona=categorias).groupby("_categoria_dona")["cantidad"].sum()
+        categorias = grupo["categoria"].map(
+            lambda valor: valor if str(valor or "").strip() else _OTRAS_ACTIVIDADES_INSUMO
+        )
+        por_categoria = (
+            grupo.assign(_categoria_dona=categorias)
+            .groupby("_categoria_dona")["cantidad"]
+            .sum()
+            .sort_values(ascending=False)
+        )
         partes_base: list[tuple[str, float]] = []
         acumulado = 0.0
-        for etiqueta in etiquetas:
-            cantidad = float(por_categoria.get(etiqueta, 0.0) or 0.0)
+        for etiqueta, bruto in por_categoria.items():
+            if etiqueta == _OTRAS_ACTIVIDADES_INSUMO:
+                continue
+            cantidad = float(bruto or 0.0)
             if cantidad > 1e-9:
-                partes_base.append((etiqueta, cantidad))
+                partes_base.append((str(etiqueta), cantidad))
                 acumulado += cantidad
         otras = total - acumulado
         if otras > 1e-6:
@@ -25491,7 +25599,7 @@ def _figura_dona_insumo(nombre: str, total: float, partes: list[tuple[str, float
     ]
     valores = [cantidad for _etiqueta, cantidad, _porcentaje in partes]
     total = sum(valores)
-    colores = [_COLORES_DONA_INSUMO.get(etiqueta, "#64748b") for etiqueta, _cantidad, _porcentaje in partes]
+    colores = [_color_actividad_dona(etiqueta) for etiqueta, _cantidad, _porcentaje in partes]
     figura = go.Figure(
         go.Pie(
             labels=etiquetas,
@@ -25508,8 +25616,8 @@ def _figura_dona_insumo(nombre: str, total: float, partes: list[tuple[str, float
         )
     )
     figura.update_layout(
-        height=390,
-        margin=dict(l=8, r=8, t=42, b=8),
+        height=min(760, 300 + 34 * len(partes)),
+        margin=dict(l=8, r=8, t=42, b=min(240, 24 + 18 * len(partes))),
         paper_bgcolor="rgba(0,0,0,0)",
         font_color="#e2e8f0",
         title=dict(text=nombre, x=0.5, xanchor="center", font=dict(size=15, color="#f8fafc")),
