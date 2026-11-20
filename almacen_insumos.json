@@ -4046,6 +4046,22 @@
       "tipo_insumo": "Consumible",
       "id": "247a268f90",
       "registrado": "2026-11-19 16:14"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-19",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Instrumentos",
+      "sector": "NTE Infraestructura Norte",
+      "insumo_id": "grasa",
+      "insumo": "Grasa",
+      "cantidad": 0.4,
+      "unidad": "Kg",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "aec9cb2bde",
+      "registrado": "2026-11-20 15:51"
     }
   ]
 }
