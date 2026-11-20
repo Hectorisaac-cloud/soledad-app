@@ -26014,6 +26014,89 @@ def _estilo_entrada_datos() -> None:
                 font-size: 0.75rem;
                 letter-spacing: 0.03em;
             }
+            .seg-par {
+                display: flex;
+                gap: 0.35rem;
+                margin: 0 0 0.45rem;
+            }
+            .seg-par .seg-cuenta {
+                flex: 1;
+                min-width: 0;
+                margin: 0;
+                padding: 0.45rem 0.2rem 0.4rem;
+            }
+            .seg-par .verif-cuenta b { font-size: 1.35rem; }
+            .seg-par .verif-cuenta span { font-size: 0.68rem; }
+            .seg-cuenta.realizados { border-color: #22c55e; }
+            .seg-cuenta.pendientes { border-color: #f59e0b; }
+            .seg-total {
+                width: min(100%, 16rem);
+                margin: 0.35rem auto 0.9rem;
+                background: #0f172a;
+                border: 1px solid #38bdf8;
+                border-radius: 12px;
+                padding: 0.8rem 0.6rem 0.7rem;
+                text-align: center;
+            }
+            .seg-total b {
+                display: block;
+                color: #f8fafc;
+                font-size: 2rem;
+                line-height: 1.1;
+            }
+            .seg-total span {
+                color: #cbd5e1;
+                font-size: 0.82rem;
+                letter-spacing: 0.04em;
+            }
+            .seg-col-titulo {
+                margin: 0 0 0.55rem;
+                text-align: center;
+                font-weight: 800;
+                letter-spacing: 0.06em;
+                color: #f8fafc;
+            }
+            .seg-col-titulo.realizados { color: #86efac; }
+            .seg-col-titulo.pendientes { color: #fcd34d; }
+            .seg-col-titulo b {
+                display: inline-block;
+                margin-left: 0.35rem;
+                font-size: 1.15rem;
+            }
+            .seg-lista {
+                max-height: 68vh;
+                overflow-y: auto;
+                padding-right: 0.25rem;
+            }
+            .seg-fila {
+                background: #0f172a;
+                border: 1px solid #334155;
+                border-radius: 10px;
+                padding: 0.55rem 0.7rem 0.45rem;
+                margin: 0 0 0.45rem;
+            }
+            .seg-fila.realizada { border-color: #166534; }
+            .seg-fila.pendiente { border-color: #92400e; }
+            .seg-id {
+                margin: 0;
+                color: #f8fafc;
+                font-weight: 800;
+            }
+            .seg-act {
+                margin: 0.15rem 0 0.25rem;
+                color: #e2e8f0;
+            }
+            .seg-meta {
+                margin: 0.2rem 0 0;
+                color: #e2e8f0;
+                font-size: 0.88rem;
+                line-height: 1.35;
+            }
+            .seg-meta b {
+                color: #94a3b8;
+                font-size: 0.72rem;
+                letter-spacing: 0.03em;
+            }
         </style>
         """,
         unsafe_allow_html=True,
@@ -26934,8 +27017,15 @@ def _avisar_verificacion(mes_clave: str, tipo: str, texto: str) -> None:
     st.session_state["conciliacion_aviso"] = {"mes": mes_clave, "tipo": tipo, "texto": texto}
 
 
-def render_tarjeta_verificacion(mes_clave: str, anio: int, mes: int) -> None:
-    cruce, avisos = _cruce_verificacion(mes_clave, anio, mes)
+def render_tarjeta_verificacion(
+    mes_clave: str,
+    anio: int,
+    mes: int,
+    cruce: list[dict] | None = None,
+    avisos: list[str] | None = None,
+) -> None:
+    if cruce is None or avisos is None:
+        cruce, avisos = _cruce_verificacion(mes_clave, anio, mes)
     for texto in avisos:
         st.warning(texto)
     columnas = st.columns(3)
@@ -26959,6 +27049,7 @@ def render_tarjeta_verificacion(mes_clave: str, anio: int, mes: int) -> None:
                 use_container_width=True,
             ):
                 st.session_state.entrada_verificacion = clave
+                st.session_state.entrada_seguimiento = None
                 st.rerun()
 
 
@@ -27112,6 +27203,122 @@ def render_revision_verificacion(mes_clave: str, anio: int, mes: int, especialid
         _fila_revision_verificacion(item, mes_clave)
 
 
+def _partes_seguimiento(cruce: list[dict], especialidad: str) -> tuple[list[dict], list[dict]]:
+    propios = [item for item in cruce if _especialidad_conciliacion(item) == especialidad]
+    realizados = [item for item in propios if item.get("estado") == "confirmada"]
+    por_realizar = [item for item in propios if item.get("estado") != "confirmada"]
+    return realizados, por_realizar
+
+
+def _texto_codigo_equipo_seguimiento(item: dict) -> str:
+    codigo = str(item.get("codigo") or "").strip()
+    equipo = str(item.get("equipo") or "").strip()
+    if codigo and equipo and codigo.casefold() != equipo.casefold():
+        return f"{codigo} · {equipo}"
+    return codigo or equipo or "—"
+
+
+def _referencia_bitacora_seguimiento(item: dict) -> str:
+    registro = item.get("bitacora") if isinstance(item.get("bitacora"), dict) else None
+    resumen = _resumen_bitacora_conciliacion(registro) if registro else ""
+    if not resumen:
+        resumen = str(item.get("resumen") or "").strip()
+    return resumen or "—"
+
+
+def _html_cuenta_seguimiento(numero: int, etiqueta: str, clase: str) -> str:
+    return (
+        f'<div class="verif-cuenta seg-cuenta {clase}">'
+        f"<b>{numero}</b><span>{html.escape(etiqueta)}</span></div>"
+    )
+
+
+def _html_fila_seguimiento(item: dict, realizado: bool) -> str:
+    clase = "realizada" if realizado else "pendiente"
+    referencia = ""
+    if realizado:
+        referencia = (
+            '<p class="seg-meta"><b>Bitácora</b><br>'
+            f"{html.escape(_referencia_bitacora_seguimiento(item))}</p>"
+        )
+    return (
+        f'<div class="seg-fila {clase}">'
+        f'<p class="seg-id">{html.escape(_texto_codigo_equipo_seguimiento(item))}</p>'
+        f'<p class="seg-act">{html.escape(str(item.get("actividad") or "—"))}</p>'
+        '<p class="seg-meta"><b>Fecha programada</b><br>'
+        f'{html.escape(_fecha_visible_conciliacion(item.get("fecha")) or "—")}</p>'
+        f"{referencia}</div>"
+    )
+
+
+def _columna_seguimiento(titulo: str, items: list[dict], realizado: bool) -> None:
+    clase = "realizados" if realizado else "pendientes"
+    st.markdown(
+        f'<p class="seg-col-titulo {clase}">{html.escape(titulo)} <b>{len(items)}</b></p>',
+        unsafe_allow_html=True,
+    )
+    if not items:
+        st.caption("Sin actividades en esta columna.")
+        return
+    filas = "".join(_html_fila_seguimiento(item, realizado) for item in items)
+    st.markdown(f'<div class="seg-lista">{filas}</div>', unsafe_allow_html=True)
+
+
+def render_tarjeta_seguimiento(cruce: list[dict], mes_clave: str) -> None:
+    with st.container(border=True):
+        st.markdown('<p class="entrada-tarjeta-titulo">SEGUIMIENTO</p>', unsafe_allow_html=True)
+        st.caption("Realizados ya conciliados y pendientes del programa, por especialidad.")
+        columnas = st.columns(3)
+        for columna, (clave, titulo) in zip(columnas, _ESPECIALIDADES_VERIFICACION):
+            with columna:
+                realizados, por_realizar = _partes_seguimiento(cruce, clave)
+                st.markdown(
+                    f'<p class="verif-bloque-titulo">{html.escape(titulo)}</p>'
+                    '<div class="seg-par">'
+                    f"{_html_cuenta_seguimiento(len(realizados), 'Realizados', 'realizados')}"
+                    f"{_html_cuenta_seguimiento(len(por_realizar), 'Por realizar', 'pendientes')}"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    "Ver seguimiento",
+                    key=f"seg_abrir_{clave}_{mes_clave}",
+                    use_container_width=True,
+                ):
+                    st.session_state.entrada_seguimiento = clave
+                    st.session_state.entrada_verificacion = None
+                    st.rerun()
+
+
+def render_detalle_seguimiento(mes_clave: str, anio: int, mes: int, especialidad: str) -> None:
+    titulo = _titulo_especialidad_verificacion(especialidad)
+    if st.button(
+        "← Volver a MANTENIMIENTOS PROGRAMADOS",
+        key="seg_volver_programados",
+        use_container_width=True,
+    ):
+        st.session_state.entrada_seguimiento = None
+        st.rerun()
+    st.caption(f"Mes seleccionado: {etiqueta_mes(mes_clave)}.")
+    st.markdown(
+        f'<p class="entrada-tarjeta-titulo">{html.escape(titulo)} - SEGUIMIENTO</p>',
+        unsafe_allow_html=True,
+    )
+    cruce, avisos = _cruce_verificacion(mes_clave, anio, mes)
+    for texto in avisos:
+        st.warning(texto)
+    realizados, por_realizar = _partes_seguimiento(cruce, especialidad)
+    total = len(realizados) + len(por_realizar)
+    st.markdown(
+        f'<div class="seg-total"><b>{total}</b><span>Programados del mes</span></div>',
+        unsafe_allow_html=True,
+    )
+    columna_realizados, columna_pendientes = st.columns(2)
+    with columna_realizados:
+        _columna_seguimiento("REALIZADOS", realizados, True)
+    with columna_pendientes:
+        _columna_seguimiento("POR REALIZAR", por_realizar, False)
+
 
 def render_entrada_datos_admin(jornada: date | None = None) -> None:
     if not isinstance(jornada, date):
@@ -27120,15 +27327,20 @@ def render_entrada_datos_admin(jornada: date | None = None) -> None:
         jornada = date.today()
     mes_clave = clave_mes(jornada.year, jornada.month)
     _estilo_entrada_datos()
+    especialidades = {codigo for codigo, _titulo in _ESPECIALIDADES_VERIFICACION}
     especialidad = st.session_state.get("entrada_verificacion")
-    if especialidad in {codigo for codigo, _titulo in _ESPECIALIDADES_VERIFICACION}:
+    if especialidad in especialidades:
         render_revision_verificacion(mes_clave, jornada.year, jornada.month, especialidad)
+        return
+    seguimiento = st.session_state.get("entrada_seguimiento")
+    if seguimiento in especialidades:
+        render_detalle_seguimiento(mes_clave, jornada.year, jornada.month, seguimiento)
         return
     st.caption(
         f"Mes seleccionado: {etiqueta_mes(mes_clave)}. "
         "Cada programa se guarda por separado. En eléctricos e instrumentos, cada instalación conserva el suyo."
     )
-    arriba = st.columns(2)
+    arriba = st.columns(3)
     abajo = st.columns(2)
     with arriba[0]:
         _tarjeta_programa_por_instalacion(
@@ -27150,7 +27362,7 @@ def render_entrada_datos_admin(jornada: date | None = None) -> None:
             jornada.year,
             jornada.month,
         )
-    with abajo[0]:
+    with arriba[2]:
         with st.container(border=True):
             st.markdown('<p class="entrada-tarjeta-titulo">UBM</p>', unsafe_allow_html=True)
             st.caption("Programas de mantenimiento UBM para motores y unidades de bombeo.")
@@ -27171,11 +27383,14 @@ def render_entrada_datos_admin(jornada: date | None = None) -> None:
                     jornada.year,
                     jornada.month,
                 )
+    cruce, avisos = _cruce_verificacion(mes_clave, jornada.year, jornada.month)
+    with abajo[0]:
+        render_tarjeta_seguimiento(cruce, mes_clave)
     with abajo[1]:
         with st.container(border=True):
             st.markdown('<p class="entrada-tarjeta-titulo">VERIFICACIÓN</p>', unsafe_allow_html=True)
             st.caption("Coincidencias del Historial con la bitácora, por especialidad.")
-            render_tarjeta_verificacion(mes_clave, jornada.year, jornada.month)
+            render_tarjeta_verificacion(mes_clave, jornada.year, jornada.month, cruce, avisos)
 
 
 def render_edicion_captura_admin(jornada: date) -> None:
@@ -28767,6 +28982,7 @@ def render_seccion_completa_admin(vista: str, jornada: date) -> None:
     ):
         st.session_state.admin_vista = None
         st.session_state.entrada_verificacion = None
+        st.session_state.entrada_seguimiento = None
         st.rerun()
     st.markdown(
         f'<h2 class="adm-seccion-titulo">{html.escape(titulos.get(vista, vista))}</h2>',
