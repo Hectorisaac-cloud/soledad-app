@@ -4334,6 +4334,54 @@
       "tipo_insumo": "Consumible",
       "id": "cc4e422344",
       "registrado": "2026-11-20 16:49"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-19",
+      "secuencia": "Act. 3",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PC",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 16.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "26b9f49bd6",
+      "registrado": "2026-11-20 16:59"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-19",
+      "secuencia": "Act. 3",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PC",
+      "insumo_id": "grasa",
+      "insumo": "Grasa",
+      "cantidad": 0.2,
+      "unidad": "Kg",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "bc06b91637",
+      "registrado": "2026-11-20 16:59"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-19",
+      "secuencia": "Act. 3",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PC",
+      "insumo_id": "filtro-de-aceite",
+      "insumo": "Filtro de aceite",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "995651c76a",
+      "registrado": "2026-11-20 16:59"
     }
   ]
 }
