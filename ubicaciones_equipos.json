@@ -4169,11 +4169,11 @@
       "zona_id": "soledad",
       "prefijo": "PS",
       "sector": "PS498",
-      "equipo_mci": "",
-      "equipo_ub": "",
+      "equipo_mci": "MCI tipo Vortec V8",
+      "equipo_ub": "HLU (Unidad Hidráulica)",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "",
+      "actualizado": "2026-11-20 17:11",
       "aliases": []
     },
     "PGA358": {
@@ -4848,6 +4848,19 @@
     "PA1636": {
       "id": "PA1636",
       "nombre": "PA1636",
+      "zona_id": "aragon",
+      "prefijo": "PA",
+      "sector": "Aragon (A)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PA1363": {
+      "id": "PA1363",
+      "nombre": "PA1363",
       "zona_id": "aragon",
       "prefijo": "PA",
       "sector": "Aragon (A)",
