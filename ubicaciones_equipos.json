@@ -4434,11 +4434,11 @@
       "zona_id": "soledad",
       "prefijo": "PS",
       "sector": "Soledad (S)",
-      "equipo_mci": "",
-      "equipo_ub": "",
+      "equipo_mci": "MCI tipo Weichai",
+      "equipo_ub": "HLU (Unidad Hidráulica)",
       "estatus": "Operativo",
       "notas": "",
-      "actualizado": "",
+      "actualizado": "2026-11-20 17:38",
       "aliases": []
     },
     "PSN36": {
