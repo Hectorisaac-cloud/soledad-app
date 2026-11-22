@@ -998,6 +998,9 @@ def _nombre_ubicacion_pdf(clave: str) -> str:
 
 def _ubicacion_tabla_pdf(*valores) -> str:
     """Columna Ubicación: tag corto (PSN77, BSNI, ECSN), salvo Almacén OPS."""
+    codigo = sitios_operativos.codigo_bloque(*valores)
+    if codigo:
+        return codigo
     clave = sitios_operativos.clave_sitio_campos(*valores)
     if clave and not sitios_operativos.es_vacio_sitio(clave):
         return _nombre_ubicacion_pdf(clave)
@@ -1043,7 +1046,7 @@ def _tag_cuadrilla_pdf(valor) -> str:
 def _descripcion_tabla_pdf(descripcion, *ubicaciones) -> str:
     """Agrega la clave del sitio al final. Nunca escribe EN NINGUNO."""
     texto = _sin_ninguno_pdf(descripcion)
-    clave = sitios_operativos.clave_sitio_campos(*ubicaciones)
+    clave = sitios_operativos.codigo_bloque(*ubicaciones) or sitios_operativos.clave_sitio_campos(*ubicaciones)
     if not clave:
         tag = sitios_operativos.clave_o_nombre_sitio(" · ".join(str(u or "") for u in ubicaciones if u))
         tag = _sin_ninguno_pdf(tag)

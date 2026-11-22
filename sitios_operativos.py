@@ -165,7 +165,7 @@ def es_vacio_sitio(texto) -> bool:
 
 
 def _canon_compacto(plano: str) -> str:
-    if not plano:
+    if not plano or "IQSIN" in plano:
         return ""
     directo = SITIOS_OPERATIVOS.get(plano)
     if directo:
@@ -188,9 +188,37 @@ def _canon_compacto(plano: str) -> str:
     return ""
 
 
+_RE_CODIGO_BLOQUE = re.compile(
+    r"\b((?:GDO|CBN|OLD|OLG)-[A-Z0-9]+-IQ-SIN-\d+)\b",
+    re.I,
+)
+_RE_CODIGO_BLOQUE_PLANO = re.compile(r"((?:GDO|CBN|OLD|OLG)[A-Z0-9]*?)IQSIN(\d+)")
+
+
+def codigo_bloque(*textos) -> str:
+    """Código de ducto o bloque (GDO-ECSN-IQ-SIN-07). No es la estación embebida."""
+    for texto in textos:
+        bruto = " ".join(str(texto or "").replace('"', "").replace("'", "").split())
+        if not bruto:
+            continue
+        hallado = _RE_CODIGO_BLOQUE.search(bruto.upper())
+        if hallado:
+            return hallado.group(1).upper()
+        suelto = _RE_CODIGO_BLOQUE_PLANO.search(compactar_sitio(bruto))
+        if not suelto:
+            continue
+        clase_medio, numero = suelto.group(1), suelto.group(2)
+        clase, medio = clase_medio[:3], clase_medio[3:]
+        if clase in {"GDO", "CBN", "OLD", "OLG"} and medio:
+            return f"{clase}-{medio}-IQ-SIN-{numero}"
+    return ""
+
+
 def _clave_en_texto(parte: str) -> str:
     limpio = _RE_VACIO_TOKEN.sub(" ", parte)
     plano = compactar_sitio(limpio)
+    if "IQSIN" in plano:
+        return ""
     hallada = SITIOS_OPERATIVOS.get(plano) or _canon_compacto(plano)
     if hallada:
         return hallada
@@ -217,17 +245,25 @@ def clave_sitio(texto) -> str:
     bruto = " ".join(str(texto or "").replace('"', "").replace("'", "").split())
     if es_vacio_sitio(bruto):
         return ""
+    if codigo_bloque(bruto) and compactar_sitio(codigo_bloque(bruto)) == compactar_sitio(bruto):
+        return ""
     partes = [p.strip() for p in re.split(r"[·|;,/]+", bruto) if p.strip() and not es_vacio_sitio(p)]
     candidatos = partes or [bruto]
     for parte in candidatos:
+        if codigo_bloque(parte):
+            continue
         hallada = _clave_en_texto(parte)
         if hallada:
             return hallada
+    if codigo_bloque(bruto):
+        return ""
     return _clave_en_texto(bruto) or _canon_compacto(compactar_sitio(_RE_VACIO_TOKEN.sub(" ", bruto)))
 
 
 def clave_sitio_campos(*textos) -> str:
     """Busca la clave en todos los textos del registro (ubicación, pozo, descripción)."""
+    if codigo_bloque(*textos):
+        return ""
     vistos: list[str] = []
     for texto in textos:
         bruto = " ".join(str(texto or "").replace('"', "").replace("'", "").split())
@@ -371,7 +407,10 @@ def partes_ubicacion_visibles(*textos) -> list[str]:
 
 
 def texto_ubicacion_final(*textos) -> str:
-    """Batería/estación + TAG capturado. Nunca 'Ninguno'."""
+    """Batería/estación + TAG capturado. Un bloque GDO/CBN/OLD/OLG conserva su código."""
+    codigo = codigo_bloque(*textos)
+    if codigo:
+        return codigo
     partes = partes_ubicacion_visibles(*textos)
     clave = clave_sitio_campos(*partes, *[str(t or "") for t in textos])
     if clave:

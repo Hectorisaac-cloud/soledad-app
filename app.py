@@ -16915,6 +16915,58 @@ def equipo_catalogo_ubicacion(ubicacion: str, datos: dict | None = None) -> str:
     return "No especificado en catálogo"
 
 
+def _equipo_columna_fila(fila) -> str:
+    for col, valor in _iter_campos_fila(fila):
+        if _clave_columna_bitacora(str(col)) == "equipo":
+            return _texto_crudo_campo(valor)
+    return ""
+
+
+def equipo_detalle_ot(fila, datos: dict | None = None) -> str:
+    """Equipo de la ficha: motor del catálogo o la línea del bloque guardado."""
+    try:
+        datos = datos if datos is not None else cargar_ubicaciones()
+    except Exception:
+        datos = {}
+    campos = textos_ubicacion_ot(fila)
+    crudos = [
+        campos.get("ubicacion") or "",
+        campos.get("pozo") or "",
+        campos.get("equipo ubicacion") or "",
+        campos.get("sector") or "",
+    ]
+    codigo = sitios_operativos.codigo_bloque(*crudos)
+    consulta = codigo or next((item for item in crudos if str(item or "").strip()), "")
+    motor = _texto_equipo_catalogo(_equipo_columna_fila(fila))
+    if motor and not sitios_operativos.codigo_bloque(motor):
+        oficial = nombre_equipo_catalogo(motor) or motor
+        es_sitio = bool(sitios_operativos.clave_sitio(oficial)) and not sitios_operativos.es_equipo_explicito(
+            oficial
+        )
+        if oficial and not es_sitio and oficial.casefold() != str(consulta or "").casefold():
+            return oficial
+    catalogo = equipo_catalogo_ubicacion(consulta, datos)
+    if catalogo and catalogo != "No especificado en catálogo":
+        return catalogo
+    if codigo:
+        try:
+            ficha = ficha_por_ubicacion(datos, codigo) if isinstance(datos, dict) else None
+        except Exception:
+            ficha = None
+        notas = _texto_equipo_catalogo((ficha or {}).get("notas"))
+        if notas and notas.casefold() != codigo.casefold():
+            return notas
+        return codigo
+    respaldo = campos.get("equipo ubicacion") or ""
+    if (
+        respaldo
+        and sitios_operativos.es_equipo_explicito(respaldo)
+        and _sin_acentos(respaldo).casefold() != _sin_acentos(str(consulta or "")).casefold()
+    ):
+        return respaldo
+    return ""
+
+
 def render_actividad_cuadrilla_ot(
     dia: date,
     fila,
@@ -16926,17 +16978,7 @@ def render_actividad_cuadrilla_ot(
     ubicacion = etiqueta_ubicacion_fila(fila) or texto_visible(
         fila.get("UBICACIÓN") or fila.get("POZO") or fila.get("SECTOR") or fila.get("EQUIPO/UBICACIÓN")
     )
-    equipo = equipo_catalogo_ubicacion(ubicacion, datos_ubicaciones)
-    if not equipo or equipo == "No especificado en catálogo":
-        respaldo = texto_visible(fila.get("EQUIPO/UBICACIÓN"), "")
-        if (
-            respaldo
-            and sitios_operativos.es_equipo_explicito(respaldo)
-            and _sin_acentos(respaldo).casefold() != _sin_acentos(ubicacion).casefold()
-        ):
-            equipo = respaldo
-        else:
-            equipo = ""
+    equipo = equipo_detalle_ot(fila, datos_ubicaciones)
     personal = texto_visible(fila.get("PERSONAL"), "")
     if not personal:
         personal = texto_par_personal(
