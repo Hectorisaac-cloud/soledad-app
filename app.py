@@ -25937,19 +25937,60 @@ def _ubicaciones_cargadas_entrada(mes_clave: str, especialidad: str, ubicaciones
     return cargadas
 
 
+def _ruta_indice_entrada() -> str:
+    return persistencia.resolver_ruta(ENTRADA_DATOS_INDICE.replace("\\", "/"))
+
+
+def _relativa_entrada(ruta: str) -> str:
+    texto = str(ruta or "").strip()
+    if not texto:
+        return ""
+    absoluta = os.path.abspath(texto)
+    raiz = os.path.abspath(persistencia.RAIZ)
+    try:
+        if os.path.commonpath([raiz, absoluta]) != raiz:
+            return ""
+        return os.path.relpath(absoluta, raiz).replace("\\", "/")
+    except ValueError:
+        return ""
+
+
+def _absoluta_entrada(ruta: str) -> str:
+    """Resuelve un programa guardado dentro de database/entrada_datos."""
+    texto = str(ruta or "").strip()
+    if not texto:
+        return ""
+    if os.path.isabs(texto) or (len(texto) > 1 and texto[1] == ":"):
+        return texto if os.path.isfile(texto) else ""
+    segura = persistencia.ruta_segura(texto.replace("\\", "/"))
+    if not segura or not segura.startswith("database/entrada_datos/"):
+        return ""
+    destino = os.path.join(persistencia.RAIZ, *segura.split("/"))
+    if os.path.isfile(destino):
+        return destino
+    if os.path.isfile(segura):
+        return os.path.abspath(segura)
+    return ""
+
+
 def _leer_indice_entrada() -> dict:
-    datos = leer_json(ENTRADA_DATOS_INDICE, {})
+    datos = leer_json(_ruta_indice_entrada(), {})
     return datos if isinstance(datos, dict) else {}
 
 
 def _guardar_indice_entrada(datos: dict) -> None:
-    os.makedirs(ENTRADA_DATOS_DIR, exist_ok=True)
-    escribir_json(ENTRADA_DATOS_INDICE, datos)
+    destino = _ruta_indice_entrada()
+    os.makedirs(os.path.dirname(destino), exist_ok=True)
+    escribir_json(destino, datos)
+
+
+def _relativa_slot_entrada(mes_clave: str, slot: str) -> str:
+    anio, mes = str(mes_clave).split("-", 1)
+    return f"{ENTRADA_DATOS_DIR.replace(chr(92), '/')}/{anio}/{mes}/{slot}"
 
 
 def _carpeta_slot_entrada(mes_clave: str, slot: str) -> str:
-    anio, mes = str(mes_clave).split("-", 1)
-    return os.path.join(ENTRADA_DATOS_DIR, anio, mes, slot)
+    return persistencia.resolver_ruta(_relativa_slot_entrada(mes_clave, slot))
 
 
 def _nombre_archivo_entrada(nombre: str, extensiones: tuple[str, ...]) -> str:
@@ -25963,20 +26004,62 @@ def _nombre_archivo_entrada(nombre: str, extensiones: tuple[str, ...]) -> str:
     return base
 
 
+def _archivos_disco_slot_entrada(mes_clave: str, slot: str) -> list[dict]:
+    carpeta = _carpeta_slot_entrada(mes_clave, slot)
+    if not os.path.isdir(carpeta):
+        return []
+    hallados = []
+    for nombre in sorted(os.listdir(carpeta)):
+        if not _nombre_archivo_entrada(nombre, _EXTENSIONES_ENTRADA_OTRO):
+            continue
+        ruta = os.path.join(carpeta, nombre)
+        if not os.path.isfile(ruta):
+            continue
+        momento = datetime.fromtimestamp(os.path.getmtime(ruta)).isoformat(timespec="seconds")
+        hallados.append({"nombre": nombre, "ruta": ruta, "actualizado": momento})
+    return hallados
+
+
 def _archivos_slot_entrada(mes_clave: str, slot: str) -> list[dict]:
     bloque = _leer_indice_entrada().get(mes_clave, {})
-    if not isinstance(bloque, dict):
-        return []
-    registro = bloque.get(slot, {})
+    registro = bloque.get(slot, {}) if isinstance(bloque, dict) else {}
     if not isinstance(registro, dict):
-        return []
+        registro = {}
+    carpeta = _carpeta_slot_entrada(mes_clave, slot)
     vigentes = []
+    reparar = False
     for item in registro.get("archivos") or []:
         if not isinstance(item, dict):
             continue
-        ruta = str(item.get("ruta") or "")
-        if ruta and os.path.isfile(ruta):
-            vigentes.append(item)
+        absoluto = _absoluta_entrada(str(item.get("ruta") or ""))
+        if not absoluto:
+            nombre = _nombre_archivo_entrada(str(item.get("nombre") or ""), _EXTENSIONES_ENTRADA_OTRO)
+            if nombre:
+                absoluto = _absoluta_entrada(os.path.join(carpeta, nombre))
+        if not absoluto:
+            continue
+        if _relativa_entrada(absoluto) != str(item.get("ruta") or "").replace("\\", "/"):
+            reparar = True
+        copia = dict(item)
+        copia["ruta"] = absoluto
+        copia["nombre"] = str(item.get("nombre") or os.path.basename(absoluto))
+        vigentes.append(copia)
+    if reparar and vigentes:
+        _registrar_archivos_entrada(
+            mes_clave,
+            slot,
+            vigentes,
+            ubicacion=str(registro.get("ubicacion") or ""),
+        )
+    if not vigentes:
+        vigentes = _archivos_disco_slot_entrada(mes_clave, slot)
+        if vigentes:
+            _registrar_archivos_entrada(
+                mes_clave,
+                slot,
+                [{**item, "ruta": _relativa_entrada(item["ruta"])} for item in vigentes],
+                ubicacion=str(registro.get("ubicacion") or ""),
+            )
     return vigentes
 
 
@@ -25991,7 +26074,19 @@ def _registrar_archivos_entrada(
     bloque = indice.get(mes_clave)
     if not isinstance(bloque, dict):
         bloque = {}
-    registro = {"archivos": archivos}
+    normalizados = []
+    for item in archivos:
+        if not isinstance(item, dict):
+            continue
+        copia = {clave: valor for clave, valor in item.items() if clave not in {"filas", "ruta_local"}}
+        origen = str(item.get("ruta_local") or item.get("ruta") or "")
+        absoluto = _absoluta_entrada(origen)
+        relativa = _relativa_entrada(absoluto) if absoluto else ""
+        if not relativa.startswith("database/entrada_datos/"):
+            continue
+        copia["ruta"] = relativa
+        normalizados.append(copia)
+    registro = {"archivos": normalizados}
     if ubicacion:
         registro["ubicacion"] = ubicacion
         registro["especialidad"] = _base_slot_entrada(slot)
@@ -26259,7 +26354,8 @@ def _cargar_programas_entrada(
         nuevos.append(
             {
                 "nombre": nombre,
-                "ruta": destino,
+                "ruta": _relativa_entrada(destino),
+                "ruta_local": destino,
                 "actualizado": datetime.now().isoformat(timespec="seconds"),
                 "actividades": actividades,
                 "nota": nota,
@@ -26299,6 +26395,10 @@ def _cargar_programas_entrada(
     if errores:
         mensaje = f"{mensaje} {' '.join(errores)}"
     _avisar_entrada(slot, "ok" if not errores else "aviso", mensaje)
+    try:
+        persistencia.respaldar_cambios(f"Programa de entrada de datos {etiqueta_mes(mes_clave)} · {slot}")
+    except Exception:
+        pass
     st.rerun()
 
 

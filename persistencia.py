@@ -33,6 +33,8 @@ ARCHIVO_EVIDENCIAS_NUEVAS = "database/evidencias_pendientes.txt"
 ARCHIVO_EVIDENCIAS_ELIMINADAS = "database/evidencias_eliminadas.txt"
 ARCHIVO_BAJAS_BITACORA = "database/bitacora_bajas.json"
 ARCHIVO_OT_LIBERADAS = "database/ot_liberadas.json"
+CARPETA_ENTRADA_DATOS = "database/entrada_datos"
+_EXTENSIONES_ENTRADA_DATOS = {".xlsx", ".xls", ".xlsm", ".csv", ".pdf", ".json"}
 ARCHIVOS_DATOS = (
     ARCHIVO_BITACORA,
     "database/programa_norte.xlsx",
@@ -619,21 +621,14 @@ def restaurar_desde_github() -> dict:
                 if os.path.exists(temporal):
                     os.remove(temporal)
         recuperados = 0
-        if adopto_remota:
-            for relativa in ARCHIVOS_DATOS:
-                if relativa == ARCHIVO_BITACORA or relativa not in arbol:
-                    continue
-                _escribir_atomico(resolver_ruta(relativa), _descargar_blob(cred, arbol[relativa]))
-                recuperados += 1
-        else:
-            for relativa in ARCHIVOS_DATOS:
-                if relativa == ARCHIVO_BITACORA or relativa not in arbol:
-                    continue
-                destino = resolver_ruta(relativa)
-                if os.path.exists(destino) and os.path.getsize(destino) > 0:
-                    continue
-                _escribir_atomico(destino, _descargar_blob(cred, arbol[relativa]))
-                recuperados += 1
+        for relativa in _rutas_datos_recuperables(arbol):
+            if relativa not in arbol:
+                continue
+            destino = resolver_ruta(relativa)
+            if not adopto_remota and os.path.exists(destino) and os.path.getsize(destino) > 0:
+                continue
+            _escribir_atomico(destino, _descargar_blob(cred, arbol[relativa]))
+            recuperados += 1
         aplicar_evidencias_eliminadas()
         mensaje = (
             f"Bitácora local: {locales} registros. "
@@ -737,13 +732,51 @@ def _pesados_locales() -> list[str]:
     return encontrados
 
 
+def rutas_entrada_datos() -> list[str]:
+    """Programas de Entrada de datos: índice y Excel de cada mes, especialidad y zona."""
+    raiz = os.path.join(RAIZ, *CARPETA_ENTRADA_DATOS.split("/"))
+    if not os.path.isdir(raiz):
+        return []
+    encontradas = []
+    for carpeta, _dirs, archivos in os.walk(raiz):
+        for nombre in archivos:
+            if nombre.startswith("~$"):
+                continue
+            if os.path.splitext(nombre)[1].lower() not in _EXTENSIONES_ENTRADA_DATOS:
+                continue
+            absoluta = os.path.join(carpeta, nombre)
+            try:
+                relativa = os.path.relpath(absoluta, RAIZ).replace("\\", "/")
+            except ValueError:
+                continue
+            if ruta_segura(relativa) and relativa.startswith(CARPETA_ENTRADA_DATOS + "/"):
+                encontradas.append(relativa)
+    return sorted(encontradas)
+
+
+def _rutas_datos_recuperables(arbol: dict[str, str]) -> list[str]:
+    rutas = []
+    vistos = set()
+    for relativa in list(ARCHIVOS_DATOS) + [ruta for ruta in sorted(arbol) if ruta.startswith(CARPETA_ENTRADA_DATOS + "/")]:
+        normal = str(relativa or "").replace("\\", "/")
+        if not normal or normal == ARCHIVO_BITACORA or normal in vistos or es_archivo_pesado(normal):
+            continue
+        vistos.add(normal)
+        rutas.append(normal)
+    return rutas
+
+
 def _archivos_a_respaldar(arbol: dict[str, str] | None = None, *, solo_copia_local: bool = False) -> list[str]:
     """La rama de respaldo solo recibe datos de texto. El ZIP local sí puede llevar fotos y PDF."""
     del arbol
     elegidos = []
-    for relativa in ARCHIVOS_DATOS:
-        if os.path.exists(resolver_ruta(relativa)):
-            elegidos.append(relativa.replace("\\", "/"))
+    vistos = set()
+    for relativa in list(ARCHIVOS_DATOS) + rutas_entrada_datos():
+        normal = relativa.replace("\\", "/")
+        if normal in vistos or not os.path.exists(resolver_ruta(normal)):
+            continue
+        vistos.add(normal)
+        elegidos.append(normal)
     if solo_copia_local:
         for relativa in _pesados_locales():
             if relativa not in elegidos:
@@ -812,6 +845,7 @@ def respaldar_cambios(motivo: str) -> dict:
         bytes_usados = 0
         omitidos = 0
         datos_permanentes = {item.replace("\\", "/") for item in ARCHIVOS_DATOS}
+        datos_permanentes.update(rutas_entrada_datos())
         for relativa in _archivos_a_respaldar(arbol):
             if es_archivo_pesado(relativa):
                 continue
