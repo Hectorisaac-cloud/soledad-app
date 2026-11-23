@@ -4663,6 +4663,24 @@
       "tipo_insumo": "Consumible",
       "id": "a8f020e956",
       "registrado": "2026-11-23 16:56"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-20",
+      "secuencia": "Act. 3",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PS Soledad",
+      "insumo_id": "alternador",
+      "insumo": "Alternador",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Componente Rotativo / Reparable",
+      "condicion_instalada": "Reparado por PJP4",
+      "destino_retirada": "Enviada a Taller de Reparación",
+      "id": "db39bd14ad",
+      "registrado": "2026-11-23 17:07"
     }
   ]
 }
