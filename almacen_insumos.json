@@ -4697,6 +4697,38 @@
       "tipo_insumo": "Consumible",
       "id": "152fac330d",
       "registrado": "2026-11-23 17:10"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-20",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PS Soledad",
+      "insumo_id": "bujias",
+      "insumo": "Bujías",
+      "cantidad": 6.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "033cfef14b",
+      "registrado": "2026-11-23 17:16"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-20",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PS Soledad",
+      "insumo_id": "otros",
+      "insumo": "BOBINAS",
+      "cantidad": 2.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "ec92150022",
+      "registrado": "2026-11-23 17:16"
     }
   ]
 }
