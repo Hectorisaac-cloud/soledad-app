@@ -19,5 +19,26 @@
     "slot": "ubm_sur",
     "nro": "785",
     "confirmado": "2026-11-19T18:27:15"
+  },
+  "0fb6f3ad31a93d78": {
+    "estatus": "Realizado",
+    "firma": "ubm_norte|CY-161 (Motor)|Arrow A54|2026-11-01|Limpiza radiador, patín, diafrag, reemplazo de aceite, filtro aceite, cables y bujia, engrase TF.|Semestral|1056",
+    "bitacora_id": "20261104-58D522CD",
+    "ot": "OT 4",
+    "fecha_ejecucion": "2026-11-04",
+    "codigo": "CY-161 (Motor)",
+    "codigo_homologado": "PC161",
+    "canon": "PC161",
+    "equipo": "Arrow A54",
+    "actividad": "Limpiza radiador, patín, diafrag, reemplazo de aceite, filtro aceite, cables y bujia, engrase TF.",
+    "tipo": "Semestral",
+    "fecha_programada": "2026-11-01",
+    "resumen": "04/11/2026 · OT 4 · PC161 · MTTO SEM MCI · Mecánico 1",
+    "delta_dias": 3,
+    "mes_clave": "2026-11",
+    "especialidad": "ubm",
+    "slot": "ubm_norte",
+    "nro": "1056",
+    "confirmado": "2026-11-23T18:50:06"
   }
 }
