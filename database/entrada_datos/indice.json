@@ -11,6 +11,18 @@
           "ubicacion": ""
         }
       ]
+    },
+    "ubm_sur": {
+      "archivos": [
+        {
+          "nombre": "Programa de Mantto UBM 2026 (S).xlsx",
+          "ruta": "database/entrada_datos/2026/11/ubm_sur/Programa de Mantto UBM 2026 (S).xlsx",
+          "actualizado": "2026-11-23T18:48:53",
+          "actividades": 140,
+          "nota": "140 actividad(es) de Noviembre 2026 listas en esta tarjeta.",
+          "ubicacion": ""
+        }
+      ]
     }
   }
 }
