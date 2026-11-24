@@ -4962,6 +4962,22 @@
       "tipo_insumo": "Consumible",
       "id": "e601f97e3a",
       "registrado": "2026-11-24 16:00"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-23",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PPB",
+      "insumo_id": "bandas-c-270",
+      "insumo": "Bandas C-270",
+      "cantidad": 3.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "7bf4331696",
+      "registrado": "2026-11-24 16:34"
     }
   ]
 }
