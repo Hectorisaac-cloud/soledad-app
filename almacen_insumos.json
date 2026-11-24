@@ -197,6 +197,15 @@
       "tipo": "Consumible",
       "precargado": false,
       "activo": true
+    },
+    {
+      "id": "bandas-c-270",
+      "nombre": "Bandas C-270",
+      "unidad": "Pzas",
+      "columna_excel": "",
+      "tipo": "Consumible",
+      "precargado": false,
+      "activo": true
     }
   ],
   "movimientos": [
