@@ -4909,6 +4909,32 @@
       "notas": "",
       "actualizado": "2026-11-24 17:38",
       "aliases": []
+    },
+    "PSN287": {
+      "id": "PSN287",
+      "nombre": "PSN287",
+      "zona_id": "soledad-norte",
+      "prefijo": "PSN",
+      "sector": "Soledad Norte (SN)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
+    },
+    "PPB109": {
+      "id": "PPB109",
+      "nombre": "PPB109",
+      "zona_id": "palo-blanco",
+      "prefijo": "PPB",
+      "sector": "Palo Blanco (PB)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
     }
   },
   "cambios_equipo": [
