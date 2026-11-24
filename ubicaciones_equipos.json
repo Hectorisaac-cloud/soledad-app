@@ -4896,6 +4896,19 @@
       "notas": "",
       "actualizado": "",
       "aliases": []
+    },
+    "PSN 287": {
+      "id": "PSN 287",
+      "nombre": "PSN 287",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "2026-11-24 17:35",
+      "aliases": []
     }
   },
   "cambios_equipo": [
