@@ -5234,6 +5234,22 @@
       "tipo_insumo": "Consumible",
       "id": "795ad48e76",
       "registrado": "2026-11-24 17:20"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-23",
+      "secuencia": "Act. 4",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "aceite-hidraulico",
+      "insumo": "Aceite Hidraulico",
+      "cantidad": 8.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "f35315230f",
+      "registrado": "2026-11-24 17:23"
     }
   ]
 }
