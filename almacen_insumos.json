@@ -5090,6 +5090,38 @@
       "tipo_insumo": "Consumible",
       "id": "8e95a7e3fc",
       "registrado": "2026-11-24 16:40"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-23",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PS Soledad",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 9.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "b25707fe54",
+      "registrado": "2026-11-24 16:41"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-23",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PS Soledad",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 7.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "10299fd395",
+      "registrado": "2026-11-24 16:41"
     }
   ]
 }
