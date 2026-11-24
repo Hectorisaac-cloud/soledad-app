@@ -4883,6 +4883,19 @@
       "notas": "",
       "actualizado": "",
       "aliases": []
+    },
+    "PS632": {
+      "id": "PS632",
+      "nombre": "PS632",
+      "zona_id": "soledad",
+      "prefijo": "PS",
+      "sector": "Soledad (S)",
+      "equipo_mci": "",
+      "equipo_ub": "",
+      "estatus": "Operativo",
+      "notas": "",
+      "actualizado": "",
+      "aliases": []
     }
   },
   "cambios_equipo": [
