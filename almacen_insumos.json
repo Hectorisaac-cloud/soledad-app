@@ -5668,6 +5668,22 @@
       "destino_retirada": "Enviada a Taller de Reparación",
       "id": "8d3dfd3d0d",
       "registrado": "2026-11-25 17:42"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-23",
+      "secuencia": "Act. 8",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PSN",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 2.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "22cae7f7bf",
+      "registrado": "2026-11-25 17:44"
     }
   ]
 }
