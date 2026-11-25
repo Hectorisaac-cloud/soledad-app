@@ -28517,6 +28517,33 @@ def _destino_hoja_suministros(actividad, programadas: set[str], descripcion: str
     return _destino_por_descripcion(descripcion)
 
 
+_FRASES_ACEITE_RELLENO = (
+    "inspeccion de niveles a mci",
+    "inspeccion y suministro",
+)
+
+
+def _texto_es_aceite_relleno(valor) -> bool:
+    clave = _clave_actividad_oficial(valor)
+    if not clave or clave in {"otra", "nan", "none"}:
+        return False
+    return any(frase in clave for frase in _FRASES_ACEITE_RELLENO)
+
+
+def _es_aceite_relleno_suministros(actividad, descripcion: str = "", corta: str = "") -> bool:
+    """Relleno: las dos actividades de aceite, o OTRA con ese texto escrito.
+
+    La comparación ignora mayúsculas y acentos. Una actividad oficial distinta
+    no se reclasifica aunque la descripción mencione la inspección.
+    """
+    if _texto_es_aceite_relleno(actividad):
+        return True
+    oficial = _clave_actividad_oficial(actividad)
+    if oficial not in {"", "otra", "nan", "none"}:
+        return False
+    return _texto_es_aceite_relleno(corta) or _texto_es_aceite_relleno(descripcion)
+
+
 _PREFIJOS_NOMBRE_LARGO = (
     ("PSN", "SOLEDAD NORTE"),
     ("PGA", "GALLO"),
@@ -29502,9 +29529,9 @@ def _tag_pozo_suministros(fila) -> str:
 def _consumos_oficiales_rango(desde: date, hasta: date) -> tuple[list[dict], dict[tuple[str, str], dict[int, float]]]:
     """Insumos del rango con el nombre largo del pozo y la cantidad capturada.
 
-    El aceite de inspección y suministro va a la matriz de relleno.
-    El resto (aceite de otras actividades, bandas, refrigerante, filtros, bujías, grasa)
-    va a la pestaña de proyecto, cada uno en su rubro.
+    Inspección de niveles a MCI e inspección y suministro van a la matriz de
+    relleno, también si se capturaron como OTRA. El registro no se repite en
+    proyecto. Cualquier otra actividad con insumos va solo a proyecto.
     """
     inicio, fin = min(desde, hasta), max(desde, hasta)
     base = bitacora_con_fechas(cargar_bitacora())
@@ -29513,7 +29540,6 @@ def _consumos_oficiales_rango(desde: date, hasta: date) -> tuple[list[dict], dic
     if base.empty or "_fecha" not in base.columns:
         return registros, relleno
     diccionario = diccionario_equivalencias_pozo()
-    programadas = _actividades_programadas_suministros()
     columnas = _columnas_cantidad_exportacion(base.columns)
     periodo = base.loc[
         base["_fecha"].map(lambda dia: isinstance(dia, date) and inicio <= dia <= fin)
@@ -29525,20 +29551,20 @@ def _consumos_oficiales_rango(desde: date, hasta: date) -> tuple[list[dict], dic
         dia = fila.get("_fecha")
         if not isinstance(dia, date):
             continue
-        destino = _destino_hoja_suministros(
-            fila.get("TIPO DE ACTIVIDAD"),
-            programadas,
-            _descripcion_fila_admin(fila),
-        )
         tag = _tag_pozo_suministros(fila)
         pozo = nombre_largo_excel(tag, diccionario)
         cuadrilla = _cuadrilla_plantilla_suministros(fila.get("CUADRILLA"))
-        if destino == "relleno" and cantidades.get("ACEITE", 0) > 0:
-            litros = cantidades.pop("ACEITE")
-            dias = relleno.setdefault((cuadrilla, pozo), {})
-            dias[dia.day] = dias.get(dia.day, 0) + litros
-        if not cantidades:
+        if _es_aceite_relleno_suministros(
+            fila.get("TIPO DE ACTIVIDAD"),
+            _descripcion_fila_admin(fila),
+            _texto_celda_admin(fila.get("ACTIVIDAD CORTA")),
+        ):
+            litros = float(cantidades.get("ACEITE") or 0)
+            if litros > 0:
+                dias = relleno.setdefault((cuadrilla, pozo), {})
+                dias[dia.day] = dias.get(dia.day, 0) + litros
             continue
+        destino = "proyecto"
         ubm, motor = _ubm_y_motor(_equipo_fila_suministros(fila))
         registros.append(
             {
@@ -29663,12 +29689,13 @@ def _insumos_rango_admin(desde: date, hasta: date) -> pd.DataFrame:
 
 def render_extraccion_evidencia_admin(jornada: date) -> None:
     st.caption(
-        "El Excel usa la Actividad oficial. Si el registro antiguo no la trae, lee la descripción: "
-        "«Inspección y suministro» va a relleno; bimestral, semestral, habilitado, puesta en marcha o preventivo va a programados. "
+        "Aceite de relleno recibe «Inspección de niveles a MCI» e «Inspección y suministro», "
+        "sin importar mayúsculas ni acentos, y también cuando la Actividad oficial es OTRA "
+        "y ese texto se escribió en la actividad o en la descripción. El aceite queda en la columna del día. "
+        "El resto de actividades con insumos va solo a Proyecto refacciones, cada material en su columna. "
+        "Un registro no se repite en las dos hojas. "
         "El nombre corto (PS509, PB109, PSN334) se traduce al nombre largo de la matriz "
         "(SOLEDAD 509, PALO BLANCO 109, SOLEDAD NORTE 334). "
-        "El aceite de relleno entra en la matriz diaria; el aceite de otras actividades, las bandas, "
-        "el refrigerante, los filtros, las bujías y la grasa entran en su columna de la pestaña de proyecto. "
         "La cantidad es la capturada en la bitácora. En la matriz diaria, C es el día 1 y L es el día 10. "
         "Las pestañas de proyecto y relleno toman el mes del rango, por ejemplo NOVIEMBRE 2026."
     )
