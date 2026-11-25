@@ -5634,6 +5634,40 @@
       "tipo_insumo": "Consumible",
       "id": "52a28dc1d3",
       "registrado": "2026-11-25 17:38"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-23",
+      "secuencia": "Act. 7",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PSN",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 8.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "f3715ef0a7",
+      "registrado": "2026-11-25 17:42"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-23",
+      "secuencia": "Act. 7",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PSN",
+      "insumo_id": "marcha-motor-arranque",
+      "insumo": "Marcha / Motor de arranque",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Componente Rotativo / Reparable",
+      "condicion_instalada": "Nuevo",
+      "destino_retirada": "Enviada a Taller de Reparación",
+      "id": "8d3dfd3d0d",
+      "registrado": "2026-11-25 17:42"
     }
   ]
 }
