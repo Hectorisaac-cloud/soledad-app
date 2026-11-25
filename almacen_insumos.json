@@ -5602,6 +5602,38 @@
       "tipo_insumo": "Consumible",
       "id": "ebe53ec3ac",
       "registrado": "2026-11-25 17:31"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-24",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Montaje",
+      "sector": "PS Soledad",
+      "insumo_id": "pasta-de-baquelita-de-72-dientes-para-toma-de-fuerza-modelo-sp111hp3",
+      "insumo": "PASTA DE BAQUELITA DE 72 DIENTES PARA TOMA DE FUERZA MODELO SP111HP3",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "18ba7fb332",
+      "registrado": "2026-11-25 17:38"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-24",
+      "secuencia": "Act. 2",
+      "cuadrilla": "Montaje",
+      "sector": "PS Soledad",
+      "insumo_id": "balero-piloto-para-toma-de-fuerza-modelo-sp111hp3",
+      "insumo": "BALERO PILOTO PARA TOMA DE FUERZA MODELO SP111HP3",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "52a28dc1d3",
+      "registrado": "2026-11-25 17:38"
     }
   ]
 }
