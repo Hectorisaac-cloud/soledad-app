@@ -5490,6 +5490,22 @@
       "tipo_insumo": "Consumible",
       "id": "0dd9ce53fa",
       "registrado": "2026-11-25 17:14"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-23",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PGA Gallo",
+      "insumo_id": "aceite-hidraulico",
+      "insumo": "Aceite Hidraulico",
+      "cantidad": 4.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "6abcf0f956",
+      "registrado": "2026-11-25 17:16"
     }
   ]
 }
