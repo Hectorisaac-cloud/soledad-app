@@ -1506,6 +1506,42 @@ st.markdown(
         }
         .cuadrilla-dia h3 { margin: 0.25rem 0 0; color: #ffffff; font-size: 1.08rem; }
         .cuadrilla-dia p { margin: 0.3rem 0 0; color: #94a3b8; font-size: 0.82rem; }
+        .cuadrilla-dia.compacta {
+            min-height: 0;
+            padding: 0.55rem 0.6rem 0.35rem;
+        }
+        .cuadrilla-dia.compacta h3 {
+            font-size: 0.92rem;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+        }
+        .cuadrilla-dia.compacta .lbl {
+            font-size: 0.62rem;
+            letter-spacing: 0.04em;
+            line-height: 1.25;
+        }
+        .cuadrilla-dia.compacta p {
+            font-size: 0.75rem;
+            line-height: 1.3;
+            overflow-wrap: anywhere;
+        }
+        .cuadrilla-dia.compacta p.sitios {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .cuadrilla-dia.compacta.vacia {
+            opacity: 0.72;
+            border-style: dashed;
+        }
+        [class*="st-key-ot_ver_act_"] button,
+        [class*="st-key-ot_vacia_"] button {
+            white-space: normal;
+            line-height: 1.15;
+            min-height: 2.35rem;
+            padding: 0.3rem 0.4rem;
+        }
         .ot-sheet {
             background: #0f172a;
             border: 1px solid #334155;
@@ -17057,59 +17093,112 @@ def render_desglose_cuadrilla_ot(
         )
 
 
-def render_resumen_cuadrillas_ot_dia(dia: date, df_dia: pd.DataFrame | None = None) -> None:
-    df = df_dia if df_dia is not None else bitacora_del_dia(bitacora_con_fechas(cargar_bitacora()), dia)
-    grupos = resumen_cuadrillas_dia(df) if df is not None and not df.empty else []
-    if not grupos:
-        st.caption("No hay capturas de bitácora para este día. El PDF oficial se muestra a la izquierda.")
-        return
-    dia_iso = dia.isoformat()
+SLOTS_OT_IZQUIERDA = (
+    ("electricos", "Eléctricos"),
+    ("instrumentos", "Instrumentos"),
+    ("mecanico 1", "Mecánico 1"),
+    ("mecanico 2", "Mecánico 2"),
+)
+SLOTS_OT_DERECHA = (
+    ("montaje", "Montaje"),
+    ("soldadura", "Soldadura"),
+    ("mecanico 3", "Mecánico 3"),
+    ("mecanico 4", "Mecánico 4"),
+)
+_CLAVES_SLOTS_OT = {clave for clave, _titulo in (*SLOTS_OT_IZQUIERDA, *SLOTS_OT_DERECHA)}
+
+
+def _indice_cuadrilla_ot_sel() -> int | None:
     try:
         indice_sel = st.session_state.get("ot_cuadrilla_indice")
-        indice_sel = int(indice_sel) if indice_sel is not None and indice_sel != "" else None
+        return int(indice_sel) if indice_sel is not None and indice_sel != "" else None
     except (TypeError, ValueError):
-        indice_sel = None
-    st.caption(
-        f"{len(grupos)} cuadrilla(s) con reporte en bitácora el {dia.strftime('%d/%m/%Y')}. "
-        "Elige una para ver sus actividades."
-    )
-    for indice, grupo in enumerate(grupos):
-        bloque = df.loc[grupo["indices"]] if grupo.get("indices") else df.iloc[0:0]
-        sitios = ubicaciones_secuencia_bloque(bloque)
-        if sitios:
-            detalle = " · ".join(html.escape(sitio) for sitio in sitios)
-        else:
-            detalle = "Sin ubicación registrada"
-        nombre = str(grupo["cuadrilla"])
-        slug = clave_hist_cuadrilla(nombre) or "sin"
-        token = f"{dia_iso}_{indice}_{slug}"
-        activa = (
-            st.session_state.get("ot_cuadrilla_dia") == dia_iso
-            and indice_sel == indice
-            and str(st.session_state.get("ot_cuadrilla_nombre") or "") == nombre
-        )
-        clase = f"{grupo['marca']}{' activa' if activa else ''}"
+        return None
+
+
+def render_tarjeta_cuadrilla_ot(
+    dia: date,
+    df: pd.DataFrame,
+    grupo: dict | None,
+    indice: int | None,
+    *,
+    titulo_vacio: str = "",
+    clave_vacia: str = "",
+) -> None:
+    dia_iso = dia.isoformat()
+    if grupo is None:
         st.markdown(
             f"""
-            <div class="cuadrilla-dia {html.escape(clase)}">
-                <div class="lbl"><span class="semaforo {html.escape(grupo['marca'])}"></span>
-                {html.escape(etiqueta_semaforo(grupo['marca']))}</div>
-                <h3>{html.escape(etiqueta_cuadrilla_historial(nombre))}</h3>
-                <p>{int(grupo['reportes'])} OT</p>
-                <p>{detalle}</p>
+            <div class="cuadrilla-dia compacta vacia">
+                <div class="lbl">Sin reporte</div>
+                <h3>{html.escape(titulo_vacio)}</h3>
+                <p>Sin actividad en esta fecha</p>
             </div>
             """,
             unsafe_allow_html=True,
         )
         st.button(
-            "Ver actividades",
-            key=f"ot_ver_act_{token}",
-            on_click=_seleccionar_cuadrilla_ot,
-            args=(dia_iso, nombre, indice),
+            "Sin actividad",
+            key=f"ot_vacia_{dia_iso}_{clave_vacia}",
+            disabled=True,
             use_container_width=True,
         )
-        if activa:
-            render_desglose_cuadrilla_ot(dia, df, nombre, token)
+        return
+    bloque = df.loc[grupo["indices"]] if grupo.get("indices") else df.iloc[0:0]
+    sitios = ubicaciones_secuencia_bloque(bloque)
+    detalle = " · ".join(html.escape(sitio) for sitio in sitios) if sitios else "Sin ubicación registrada"
+    nombre = str(grupo["cuadrilla"])
+    slug = clave_hist_cuadrilla(nombre) or "sin"
+    token = f"{dia_iso}_{indice}_{slug}"
+    activa = (
+        st.session_state.get("ot_cuadrilla_dia") == dia_iso
+        and _indice_cuadrilla_ot_sel() == indice
+        and str(st.session_state.get("ot_cuadrilla_nombre") or "") == nombre
+    )
+    clase = f"compacta {grupo['marca']}{' activa' if activa else ''}"
+    st.markdown(
+        f"""
+        <div class="cuadrilla-dia {html.escape(clase)}">
+            <div class="lbl"><span class="semaforo {html.escape(grupo['marca'])}"></span>
+            {html.escape(etiqueta_semaforo(grupo['marca']))}</div>
+            <h3>{html.escape(etiqueta_cuadrilla_historial(nombre))}</h3>
+            <p>{int(grupo['reportes'])} OT</p>
+            <p class="sitios">{detalle}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.button(
+        "Ver actividades",
+        key=f"ot_ver_act_{token}",
+        on_click=_seleccionar_cuadrilla_ot,
+        args=(dia_iso, nombre, indice),
+        use_container_width=True,
+    )
+
+
+def render_rejilla_cuadrillas_ot(
+    dia: date,
+    df: pd.DataFrame,
+    por_clave: dict[str, tuple[int, dict]],
+    slots: tuple[tuple[str, str], ...],
+) -> None:
+    izquierda, derecha = st.columns(2, gap="small")
+    for columna, (clave, titulo) in zip((izquierda, derecha, izquierda, derecha), slots):
+        with columna:
+            hallado = por_clave.get(clave)
+            if hallado:
+                indice, grupo = hallado
+                render_tarjeta_cuadrilla_ot(dia, df, grupo, indice)
+            else:
+                render_tarjeta_cuadrilla_ot(
+                    dia,
+                    df,
+                    None,
+                    None,
+                    titulo_vacio=titulo,
+                    clave_vacia=clave,
+                )
 
 
 def _seleccionar_dia_ot(etiqueta: str) -> None:
@@ -17210,12 +17299,51 @@ def render_historial_diario_ot() -> None:
         except Exception as error:
             st.error(f"No se pudo abrir el PDF: {error}")
 
-    cuadrilla_abierta = (
-        st.session_state.get("ot_cuadrilla_dia") == dia.isoformat()
-        and bool(st.session_state.get("ot_cuadrilla_nombre"))
+    dia_iso = dia.isoformat()
+    df_dia = bitacora if bitacora is not None else pd.DataFrame()
+    por_clave: dict[str, tuple[int, dict]] = {}
+    for indice, grupo in enumerate(grupos):
+        por_clave[clave_cuadrilla_oficial(str(grupo["cuadrilla"]))] = (indice, grupo)
+    extras = [
+        (indice, grupo)
+        for indice, grupo in enumerate(grupos)
+        if clave_cuadrilla_oficial(str(grupo["cuadrilla"])) not in _CLAVES_SLOTS_OT
+    ]
+    indice_sel = _indice_cuadrilla_ot_sel()
+    nombre_sel = str(st.session_state.get("ot_cuadrilla_nombre") or "")
+    abierta = None
+    if st.session_state.get("ot_cuadrilla_dia") == dia_iso and nombre_sel:
+        for indice, grupo in enumerate(grupos):
+            if indice == indice_sel and str(grupo["cuadrilla"]) == nombre_sel:
+                abierta = (indice, grupo)
+                break
+
+    st.markdown(
+        """
+        <style>
+        [data-testid="stAppViewContainer"]:has(.ot-tablero) .block-container {
+            max-width: 100%;
+        }
+        </style>
+        <div class="ot-tablero"></div>
+        """,
+        unsafe_allow_html=True,
     )
-    visor, resumen = st.columns([1, 1.45] if cuadrilla_abierta else [1.35, 1], gap="large")
-    with visor:
+    if grupos:
+        st.caption(
+            f"{len(grupos)} cuadrilla(s) con reporte en bitácora el {dia.strftime('%d/%m/%Y')}. "
+            "Elige una para ver sus actividades."
+        )
+    else:
+        st.caption(
+            f"No hay capturas de bitácora para el {dia.strftime('%d/%m/%Y')}. "
+            "El reporte del día permanece al centro."
+        )
+
+    izquierda, centro, derecha = st.columns([1.15, 1.7, 1.15], gap="medium")
+    with izquierda:
+        render_rejilla_cuadrillas_ot(dia, df_dia, por_clave, SLOTS_OT_IZQUIERDA)
+    with centro:
         st.markdown("**Reporte del día**")
         pagina_actual = 1
         if total > 1:
@@ -17285,9 +17413,22 @@ def render_historial_diario_ot() -> None:
                 on_click=_al_descargar_pdf_ot,
                 args=(ruta_pdf, dia.isoformat(), reporte["nombre"]),
             )
-    with resumen:
-        st.markdown("**Cuadrillas de la jornada**")
-        render_resumen_cuadrillas_ot_dia(dia, bitacora)
+    with derecha:
+        render_rejilla_cuadrillas_ot(dia, df_dia, por_clave, SLOTS_OT_DERECHA)
+
+    if extras:
+        st.markdown("**Otras cuadrillas**")
+        for inicio in range(0, len(extras), 4):
+            columnas = st.columns(4, gap="small")
+            for columna, (indice, grupo) in zip(columnas, extras[inicio : inicio + 4]):
+                with columna:
+                    render_tarjeta_cuadrilla_ot(dia, df_dia, grupo, indice)
+
+    if abierta is not None:
+        indice, grupo = abierta
+        nombre = str(grupo["cuadrilla"])
+        slug = clave_hist_cuadrilla(nombre) or "sin"
+        render_desglose_cuadrilla_ot(dia, df_dia, nombre, f"{dia_iso}_{indice}_{slug}")
 
 
 def jpeg_mapa_soledad(ruta: str, mtime: float, escala: float = 1.55) -> str:
