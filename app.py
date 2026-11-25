@@ -24178,11 +24178,18 @@ def _restablecer_filtros_dashboard(inicio_hist: date, fin_hist: date) -> None:
     st.session_state["dash_estatus"] = "Todos"
 
 
-def _restablecer_filtros_vista_previa(inicio_hist: date, fin_hist: date) -> None:
-    st.session_state["adm_prev_version"] = 2
-    st.session_state["adm_m_prev_dia"] = "Todo el historial"
-    st.session_state["adm_m_prev_desde"] = inicio_hist
-    st.session_state["adm_m_prev_hasta"] = fin_hist
+def _rango_mes_en_curso(hoy: date | None = None) -> tuple[date, date]:
+    hoy = hoy or date.today()
+    return date(hoy.year, hoy.month, 1), hoy
+
+
+def _restablecer_filtros_vista_previa(desde: date, hasta: date, jornada: str = "") -> None:
+    st.session_state["adm_prev_version"] = 3
+    st.session_state["adm_m_prev_modo"] = "Rango de fechas"
+    st.session_state["adm_m_prev_desde"] = desde
+    st.session_state["adm_m_prev_hasta"] = hasta
+    if jornada:
+        st.session_state["adm_m_prev_jornada"] = jornada
     st.session_state["adm_m_f_ot"] = ""
     for clave in ("adm_m_f_pozo", "adm_m_f_estatus", "adm_m_f_sector", "adm_m_f_cuadrilla"):
         st.session_state[clave] = "Todos"
@@ -28249,54 +28256,75 @@ def render_vista_previa_admin(jornada: date) -> None:
         fmin_previa, fmax_previa = min(dias_previa), max(dias_previa)
     else:
         fmin_previa = fmax_previa = date.today()
-    opciones_previa = _opciones_fecha_consulta(pares_previa)
-    if st.session_state.get("adm_prev_version") != 2:
-        _restablecer_filtros_vista_previa(fmin_previa, fmax_previa)
-    _asegurar_opcion_consulta("adm_m_prev_dia", opciones_previa, "Todo el historial")
+    mes_ini, mes_fin = _rango_mes_en_curso()
+    opciones_jornada = [
+        _etiqueta_dia_registros(dia, cantidad) for dia, cantidad in pares_previa
+    ]
+    jornada_preferida = next(
+        (
+            _etiqueta_dia_registros(dia, cantidad)
+            for dia, cantidad in pares_previa
+            if dia.year == mes_fin.year and dia.month == mes_fin.month
+        ),
+        opciones_jornada[0] if opciones_jornada else "",
+    )
+    if st.session_state.get("adm_prev_version") != 3:
+        _restablecer_filtros_vista_previa(mes_ini, mes_fin, jornada_preferida)
+    _asegurar_opcion_consulta(
+        "adm_m_prev_modo",
+        ["Rango de fechas", "Un día", "Todo el historial"],
+        "Rango de fechas",
+    )
+    if opciones_jornada:
+        _asegurar_opcion_consulta("adm_m_prev_jornada", opciones_jornada, jornada_preferida)
     with st.container(border=True):
-        consulta_previa = st.selectbox(
-            "Fecha",
-            opciones_previa,
-            key="adm_m_prev_dia",
-            help="Todo el historial muestra las actividades del Excel. Cada día de la lista tiene registros cargados.",
+        consulta_previa = st.radio(
+            "Periodo",
+            ["Rango de fechas", "Un día", "Todo el historial"],
+            horizontal=True,
+            key="adm_m_prev_modo",
         )
-        if consulta_previa == "Rango personalizado":
+        if consulta_previa == "Rango de fechas":
             for clave_fecha, respaldo in (
-                ("adm_m_prev_desde", fmin_previa),
-                ("adm_m_prev_hasta", fmax_previa),
+                ("adm_m_prev_desde", mes_ini),
+                ("adm_m_prev_hasta", mes_fin),
             ):
                 guardado = _fecha_simple(st.session_state.get(clave_fecha))
                 st.session_state[clave_fecha] = guardado or respaldo
             desde_col, hasta_col = st.columns(2)
             with desde_col:
-                desde_kwargs = {"format": "DD/MM/YYYY", "key": "adm_m_prev_desde"}
-                if "adm_m_prev_desde" not in st.session_state:
-                    desde_kwargs["value"] = fmin_previa
-                desde = st.date_input("Desde", **desde_kwargs)
+                desde = st.date_input("Desde", format="DD/MM/YYYY", key="adm_m_prev_desde")
             with hasta_col:
-                hasta_kwargs = {"format": "DD/MM/YYYY", "key": "adm_m_prev_hasta"}
-                if "adm_m_prev_hasta" not in st.session_state:
-                    hasta_kwargs["value"] = fmax_previa
-                hasta = st.date_input("Hasta", **hasta_kwargs)
-        elif consulta_previa == "Todo el historial":
+                hasta = st.date_input("Hasta", format="DD/MM/YYYY", key="adm_m_prev_hasta")
+        elif consulta_previa == "Un día":
+            if not opciones_jornada:
+                desde = hasta = mes_fin
+                st.caption("La bitácora no tiene jornadas con registros.")
+            else:
+                jornada = st.selectbox(
+                    "Día",
+                    opciones_jornada,
+                    key="adm_m_prev_jornada",
+                    help="Cada día de la lista tiene actividades cargadas en la bitácora.",
+                )
+                dia_previo = _dia_desde_etiqueta_registros(jornada) or mes_fin
+                desde, hasta = dia_previo, dia_previo
+        else:
             desde, hasta = fmin_previa, fmax_previa
             if pares_previa:
-                muestra = ", ".join(
-                    _etiqueta_dia_registros(dia, cantidad) for dia, cantidad in pares_previa[:8]
-                )
-                extra = f" y {len(pares_previa) - 8} día(s) más" if len(pares_previa) > 8 else ""
-                st.caption(f"Días con registros: {muestra}{extra}.")
+                muestra = ", ".join(opciones_jornada[:8])
+                extra = f" y {len(opciones_jornada) - 8} día(s) más" if len(opciones_jornada) > 8 else ""
+                st.caption(f"Todo el historial. Días con registros: {muestra}{extra}.")
             else:
                 st.caption("La bitácora no tiene fechas cargadas.")
-        else:
-            dia_previo = _dia_desde_etiqueta_registros(consulta_previa) or fmin_previa
-            desde, hasta = dia_previo, dia_previo
         st.button(
             "Limpiar filtros",
             key="adm_m_limpiar",
             on_click=_restablecer_filtros_vista_previa,
-            args=(fmin_previa, fmax_previa),
+            args=(mes_ini, mes_fin, jornada_preferida),
         )
+    desde = _fecha_simple(desde) or desde
+    hasta = _fecha_simple(hasta) or hasta
     if not isinstance(desde, date) or not isinstance(hasta, date):
         st.warning("Elige un rango de fechas válido.")
         return
@@ -28304,9 +28332,15 @@ def render_vista_previa_admin(jornada: date) -> None:
         st.warning("La fecha Desde tiene que ser anterior o igual a Hasta.")
         return
     periodo = _bitacora_rango_admin(desde, hasta)
-    st.caption(
-        f"{_etiqueta_periodo_admin(desde, hasta)} · {len(periodo)} actividad(es) en el periodo"
-    )
+    if consulta_previa == "Todo el historial":
+        titulo_periodo = f"Todo el historial · {_etiqueta_periodo_admin(desde, hasta)}"
+    elif desde == hasta:
+        titulo_periodo = f"Jornada del {desde.strftime('%d/%m/%Y')}"
+    elif desde == mes_ini and hasta == mes_fin:
+        titulo_periodo = f"Mes en curso · {desde.strftime('%d/%m/%Y')} – {hasta.strftime('%d/%m/%Y')}"
+    else:
+        titulo_periodo = _etiqueta_periodo_admin(desde, hasta)
+    st.caption(f"{titulo_periodo} · {len(periodo)} actividad(es) en el periodo")
     filtros = st.columns(2)
     with filtros[0]:
         ot = st.text_input("OT", key="adm_m_f_ot", placeholder="Secuencia")
