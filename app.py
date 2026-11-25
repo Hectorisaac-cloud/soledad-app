@@ -1588,6 +1588,73 @@ st.markdown(
             font-weight: 700;
         }
         .ot-field .v { color: #e2e8f0; font-size: 0.9rem; margin-top: 0.12rem; }
+        .ot-act-kicker {
+            font-size: 0.72rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #86efac;
+            font-weight: 700;
+            margin-bottom: 0.45rem;
+        }
+        .ot-act-sec {
+            margin: 0.15rem 0 0.4rem;
+            font-size: 0.72rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #93c5fd;
+            font-weight: 700;
+        }
+        .ot-act-bajo {
+            margin-top: 0.7rem;
+            padding-top: 0.55rem;
+            border-top: 1px solid #334155;
+        }
+        .ot-act-mats {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.35rem;
+        }
+        .ot-act-chip {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 0.35rem 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 0.45rem;
+            min-width: 0;
+            color: #e2e8f0;
+            font-size: 0.78rem;
+            line-height: 1.3;
+        }
+        .ot-act-chip span { overflow-wrap: anywhere; min-width: 0; }
+        .ot-act-chip b { color: #86efac; font-weight: 700; white-space: nowrap; }
+        .ot-act-chip.vacio { color: #94a3b8; }
+        .ot-act-nota { margin-top: 0.45rem; min-width: 0; }
+        .ot-act-nota .v { overflow-wrap: anywhere; font-size: 0.82rem; }
+        .ot-act .ot-field .v { overflow-wrap: anywhere; font-size: 0.84rem; }
+        [data-testid="stVerticalBlockBorderWrapper"]:has(.ot-act) {
+            background: #0f172a;
+            border: 1px solid #334155 !important;
+            border-radius: 14px !important;
+            padding: 0.75rem 0.8rem 0.6rem !important;
+            height: 100%;
+        }
+        [data-testid="stHorizontalBlock"]:has(.ot-act) {
+            align-items: stretch;
+        }
+        @media (max-width: 1100px) {
+            [data-testid="stHorizontalBlock"]:has(.ot-act) {
+                flex-wrap: wrap;
+            }
+            [data-testid="stHorizontalBlock"]:has(.ot-act) > [data-testid="stColumn"],
+            [data-testid="stHorizontalBlock"]:has(.ot-act) > [data-testid="column"] {
+                flex: 1 1 100% !important;
+                width: 100% !important;
+                min-width: 100% !important;
+            }
+        }
         .mat-row {
             background: #1e293b;
             border: 1px solid #334155;
@@ -16891,7 +16958,23 @@ def fotos_actividad_ot(fila, dia: date, cuadrilla: str) -> list[str]:
     return [ruta for ruta in rutas_fotos_fila(fila) if ruta and os.path.isfile(ruta)]
 
 
-def render_grid_evidencia_actividad(fotos: list[str]) -> None:
+def render_grid_evidencia_actividad(fotos: list[str], *, compacta: bool = False) -> None:
+    if compacta:
+        st.markdown('<div class="ot-act-sec">Evidencia</div>', unsafe_allow_html=True)
+        if not fotos:
+            st.markdown(
+                '<div class="ot-act-chip vacio"><span>Sin fotografías</span></div>',
+                unsafe_allow_html=True,
+            )
+            return
+        st.caption(f"{len(fotos)} fotografía(s) de esta actividad.")
+        for inicio in range(0, len(fotos), 2):
+            columnas = st.columns(2, gap="small")
+            for col, ruta in zip(columnas, fotos[inicio : inicio + 2]):
+                with col:
+                    st.image(ruta, width="stretch")
+                    st.caption(os.path.basename(ruta))
+        return
     st.markdown("**Evidencia fotográfica**")
     if not fotos:
         st.caption("Sin fotografías para esta secuencia.")
@@ -16903,6 +16986,30 @@ def render_grid_evidencia_actividad(fotos: list[str]) -> None:
             with col:
                 st.image(ruta, width="stretch")
                 st.caption(os.path.basename(ruta))
+
+
+def _html_materiales_actividad(materiales: str) -> str:
+    texto = str(materiales or "").strip()
+    if not texto or texto == "Sin materiales registrados":
+        return '<div class="ot-act-chip vacio"><span>Sin materiales registrados</span></div>'
+    celdas = []
+    for parte in texto.split("·"):
+        pieza = parte.strip()
+        if not pieza:
+            continue
+        if ":" in pieza:
+            nombre, cantidad = pieza.split(":", 1)
+            celdas.append(
+                '<div class="ot-act-chip">'
+                f"<span>{html.escape(nombre.strip())}</span>"
+                f"<b>{html.escape(cantidad.strip())}</b>"
+                "</div>"
+            )
+        else:
+            celdas.append(f'<div class="ot-act-chip"><span>{html.escape(pieza)}</span></div>')
+    if not celdas:
+        return '<div class="ot-act-chip vacio"><span>Sin materiales registrados</span></div>'
+    return "".join(celdas)
 
 
 def _texto_equipo_catalogo(valor: str) -> str:
@@ -17031,35 +17138,43 @@ def render_actividad_cuadrilla_ot(
     )
     materiales = consumibles_de_fila(fila) or "Sin materiales registrados"
     fotos = fotos_actividad_ot(fila, dia, cuadrilla)
+    if comentarios:
+        bloque_comentarios = (
+            '<div class="ot-act-nota"><div class="k">Comentarios</div>'
+            f'<div class="v">{html.escape(comentarios)}</div></div>'
+        )
+    else:
+        bloque_comentarios = '<div class="ot-act-chip vacio"><span>Sin comentarios</span></div>'
     with st.container(border=True):
         st.markdown(
             f"""
-            <div class="ot-sec">Datos de la OT</div>
-            <div class="ot-grid">
-                <div class="ot-field ot-span"><div class="k">Secuencia</div>
-                <div class="v">#{numero:02d}</div></div>
-                <div class="ot-field ot-span"><div class="k">Descripción</div>
-                <div class="v">{html.escape(descripcion)}</div></div>
-                <div class="ot-field"><div class="k">Equipo</div>
-                <div class="v">{html.escape(equipo or "—")}</div></div>
-                <div class="ot-field"><div class="k">Ubicación</div>
-                <div class="v">{html.escape(ubicacion)}</div></div>
-                <div class="ot-field"><div class="k">Tiempo empleado</div>
-                <div class="v">{html.escape(horas_texto(fila.get("HORAS DE EJECUCION")) or "—")}</div></div>
-                <div class="ot-field ot-span"><div class="k">Personal</div>
-                <div class="v">{html.escape(personal)}</div></div>
-            </div>
-            <div class="ot-sec">Comentarios y materiales</div>
-            <div class="ot-grid">
-                <div class="ot-field ot-span"><div class="k">Comentarios de la orden de trabajo</div>
-                <div class="v">{html.escape(comentarios)}</div></div>
-                <div class="ot-field ot-span"><div class="k">Materiales empleados</div>
-                <div class="v">{html.escape(materiales)}</div></div>
+            <div class="ot-act">
+                <div class="ot-act-kicker">ACTV. {numero}</div>
+                <div class="ot-act-sec">Datos de la OT</div>
+                <div class="ot-grid">
+                    <div class="ot-field ot-span"><div class="k">Secuencia</div>
+                    <div class="v">#{numero:02d}</div></div>
+                    <div class="ot-field ot-span"><div class="k">Descripción</div>
+                    <div class="v">{html.escape(descripcion)}</div></div>
+                    <div class="ot-field"><div class="k">Equipo</div>
+                    <div class="v">{html.escape(equipo or "—")}</div></div>
+                    <div class="ot-field"><div class="k">Ubicación</div>
+                    <div class="v">{html.escape(ubicacion)}</div></div>
+                    <div class="ot-field"><div class="k">Tiempo empleado</div>
+                    <div class="v">{html.escape(horas_texto(fila.get("HORAS DE EJECUCION")) or "—")}</div></div>
+                    <div class="ot-field ot-span"><div class="k">Personal</div>
+                    <div class="v">{html.escape(personal or "—")}</div></div>
+                </div>
+                <div class="ot-act-bajo">
+                    <div class="ot-act-sec">Materiales empleados</div>
+                    <div class="ot-act-mats">{_html_materiales_actividad(materiales)}</div>
+                    {bloque_comentarios}
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        render_grid_evidencia_actividad(fotos)
+        render_grid_evidencia_actividad(fotos, compacta=True)
 
 
 def render_desglose_cuadrilla_ot(
@@ -17087,10 +17202,16 @@ def render_desglose_cuadrilla_ot(
         st.info("No hay actividades de esta cuadrilla en la fecha seleccionada.")
         return
     st.caption(f"{len(filas)} actividad(es) en la jornada del {dia.strftime('%d/%m/%Y')}.")
-    for indice, fila in enumerate(filas, start=1):
-        render_actividad_cuadrilla_ot(
-            dia, fila, indice, str(fila.get("CUADRILLA") or nombre), datos_ubicaciones
-        )
+    for inicio in range(0, len(filas), 2):
+        columnas = st.columns(2, gap="medium")
+        for columna, (indice, fila) in zip(
+            columnas,
+            enumerate(filas[inicio : inicio + 2], start=inicio + 1),
+        ):
+            with columna:
+                render_actividad_cuadrilla_ot(
+                    dia, fila, indice, str(fila.get("CUADRILLA") or nombre), datos_ubicaciones
+                )
 
 
 SLOTS_OT_IZQUIERDA = (
