@@ -21,6 +21,7 @@ import persistencia
 import reporte_fotografico
 import historial_pjp4
 import control_costos_mci
+import seguimiento_proyecto
 import sitios_operativos
 import plotly.express as px
 import plotly.graph_objects as go
@@ -24240,6 +24241,12 @@ MODULOS_ADMIN = [
         "descripcion": "Reporte formal para OPS, con la bitácora cruzada por fechas y por criterio.",
     },
     {
+        "id": "seguimiento_proyecto",
+        "icono": "🧭",
+        "titulo": "Seguimiento de Proyecto",
+        "descripcion": "Indicadores de residencia: cronograma cruzado con bitácora, flota, programas y consumos.",
+    },
+    {
         "id": "calendario_asistencia",
         "icono": "📅",
         "titulo": "Calendario de asistencia",
@@ -29779,6 +29786,15 @@ def render_reportes_ejecutivos() -> None:
     import reporte_ejecutivo
 
     st.markdown('<div class="section-title">Reportes ejecutivos</div>', unsafe_allow_html=True)
+    apartado = st.radio(
+        "Apartado",
+        ["Reporte para OPS", "Seguimiento de proyecto"],
+        horizontal=True,
+        key="ejec_vista",
+    )
+    if apartado == "Seguimiento de proyecto":
+        seguimiento_proyecto.render(embebido=True)
+        return
     st.caption("Cruza la bitácora con la plantilla formal para presentarla ante OPS.")
     inicio_mes, fin_mes = _periodo_mes_calendario(date.today())
     col_desde, col_hasta, col_criterio = st.columns([1, 1, 1.45])
@@ -30185,6 +30201,8 @@ def render_panel_administrativo() -> None:
         render_mantenimientos_programados()
     elif modulo_id == "reportes_ejecutivos":
         render_reportes_ejecutivos()
+    elif modulo_id == "seguimiento_proyecto":
+        seguimiento_proyecto.render()
     elif modulo_id == "auditoria":
         render_auditoria_accesos()
     elif modulo_id == "gestionar_actividades":
