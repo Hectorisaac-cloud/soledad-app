@@ -5394,6 +5394,38 @@
       "tipo_insumo": "Consumible",
       "id": "39117d7436",
       "registrado": "2026-11-25 16:54"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-24",
+      "secuencia": "Act. 7",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 4.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "4010bfa85c",
+      "registrado": "2026-11-25 16:58"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-24",
+      "secuencia": "Act. 7",
+      "cuadrilla": "Mecanico 1",
+      "sector": "PSN",
+      "insumo_id": "banda-micro-v",
+      "insumo": "Banda Micro V",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "c4fe914289",
+      "registrado": "2026-11-25 16:58"
     }
   ]
 }
