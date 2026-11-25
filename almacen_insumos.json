@@ -5732,6 +5732,22 @@
       "tipo_insumo": "Consumible",
       "id": "d3face1666",
       "registrado": "2026-11-25 18:04"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-24",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PS Soledad",
+      "insumo_id": "otros",
+      "insumo": "1 ALTRONIC RECUPERADO",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "73c86ced0c",
+      "registrado": "2026-11-25 18:18"
     }
   ]
 }
