@@ -103,5 +103,26 @@
     "slot": "ubm_norte",
     "nro": "1052",
     "confirmado": "2026-11-26T17:37:49"
+  },
+  "1a1f4aebb99494c8": {
+    "estatus": "Realizado",
+    "firma": "ubm_norte|CY-162 (Motor)|Arrow A54|2026-11-02|Limpiza radiador, patín, diafragma, filtro de aire, bujias, reemplazo de aceite, filtro aceite, engrase TF.|Bimestral|1094",
+    "bitacora_id": "20261113-4F0A0776",
+    "ot": "OT 4",
+    "fecha_ejecucion": "2026-11-13",
+    "codigo": "CY-162 (Motor)",
+    "codigo_homologado": "PC162",
+    "canon": "PC162",
+    "equipo": "Arrow A54",
+    "actividad": "Limpiza radiador, patín, diafragma, filtro de aire, bujias, reemplazo de aceite, filtro aceite, engrase TF.",
+    "tipo": "Bimestral",
+    "fecha_programada": "2026-11-02",
+    "resumen": "13/11/2026 · OT 4 · PC162 · MANTENIMIENTO BIMESTRAL A UBM · Mecánico 1",
+    "delta_dias": 11,
+    "mes_clave": "2026-11",
+    "especialidad": "ubm",
+    "slot": "ubm_norte",
+    "nro": "1094",
+    "confirmado": "2026-11-26T17:39:13"
   }
 }
