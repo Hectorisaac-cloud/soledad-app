@@ -607,5 +607,26 @@
     "slot": "ubm_norte",
     "nro": "1104",
     "confirmado": "2026-11-26T18:48:04"
+  },
+  "cab588cae9fc56aa": {
+    "estatus": "Realizado",
+    "firma": "ubm_norte|SN-291 (UBM)|C-456D-305-144|2026-11-14|Lubricación de rodamientos, limpieza de patín, ajuste de bandas, reapriete de anclas|Bimestral|1103",
+    "bitacora_id": "20261125-FF372AAD",
+    "ot": "OT 3",
+    "fecha_ejecucion": "2026-11-25",
+    "codigo": "SN-291 (UBM)",
+    "codigo_homologado": "PSN291",
+    "canon": "PSN291",
+    "equipo": "C-456D-305-144",
+    "actividad": "Lubricación de rodamientos, limpieza de patín, ajuste de bandas, reapriete de anclas",
+    "tipo": "Bimestral",
+    "fecha_programada": "2026-11-14",
+    "resumen": "25/11/2026 · OT 3 · PSN291 · MANTENIMIENTO BIMESTRAL A UBM · Mecánico 1",
+    "delta_dias": 11,
+    "mes_clave": "2026-11",
+    "especialidad": "ubm",
+    "slot": "ubm_norte",
+    "nro": "1103",
+    "confirmado": "2026-11-26T18:48:12"
   }
 }
