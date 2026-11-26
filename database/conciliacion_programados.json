@@ -61,5 +61,26 @@
     "slot": "ubm_sur",
     "nro": "904",
     "confirmado": "2026-11-23T18:51:06"
+  },
+  "6cc827bcf0e806c2": {
+    "estatus": "Realizado",
+    "firma": "ubm_norte|CY-161 (UBM)|C-320D-256-144|2026-11-01|Lubricación de rodamientos, limpieza de patín, ajuste de bandas, reapriete de anclas|Semestral|1055",
+    "bitacora_id": "20261104-C4E7ED44",
+    "ot": "OT 5",
+    "fecha_ejecucion": "2026-11-04",
+    "codigo": "CY-161 (UBM)",
+    "codigo_homologado": "PC161",
+    "canon": "PC161",
+    "equipo": "C-320D-256-144",
+    "actividad": "Lubricación de rodamientos, limpieza de patín, ajuste de bandas, reapriete de anclas",
+    "tipo": "Semestral",
+    "fecha_programada": "2026-11-01",
+    "resumen": "04/11/2026 · OT 5 · PC161 · MTTO SEM UBM · Mecánico 1",
+    "delta_dias": 3,
+    "mes_clave": "2026-11",
+    "especialidad": "ubm",
+    "slot": "ubm_norte",
+    "nro": "1055",
+    "confirmado": "2026-11-26T17:37:00"
   }
 }
