@@ -208,5 +208,26 @@
     "slot": "ubm_norte",
     "nro": "1095",
     "confirmado": "2026-11-26T17:41:04"
+  },
+  "6e75d1c3d28a516c": {
+    "estatus": "Realizado",
+    "firma": "ubm_sur|PB-129 (Motor)|Arrow A54|2026-11-07|Limpiza radiador, patín, diafrag, reemplazo de aceite, filtro aceite, cables y bujia, engrase TF.|Semestral|777",
+    "bitacora_id": "20261105-1DBA8C9D",
+    "ot": "OT 2",
+    "fecha_ejecucion": "2026-11-05",
+    "codigo": "PB-129 (Motor)",
+    "codigo_homologado": "PB129",
+    "canon": "PB129",
+    "equipo": "Arrow A54",
+    "actividad": "Limpiza radiador, patín, diafrag, reemplazo de aceite, filtro aceite, cables y bujia, engrase TF.",
+    "tipo": "Semestral",
+    "fecha_programada": "2026-11-07",
+    "resumen": "05/11/2026 · OT 2 · PPB129 · MTTO SEM UBM · Mecánico 3",
+    "delta_dias": 2,
+    "mes_clave": "2026-11",
+    "especialidad": "ubm",
+    "slot": "ubm_sur",
+    "nro": "777",
+    "confirmado": "2026-11-26T17:43:35"
   }
 }
