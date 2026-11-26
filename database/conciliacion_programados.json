@@ -145,5 +145,26 @@
     "slot": "ubm_norte",
     "nro": "1051",
     "confirmado": "2026-11-26T17:39:39"
+  },
+  "fd4a71372f4a9e83": {
+    "estatus": "Realizado",
+    "firma": "ubm_norte|CY-162 (UBM)|C-456D-305-120|2026-11-02|Lubricación de rodamientos, limpieza de patín, ajuste de bandas, reapriete de anclas|Bimestral|1093",
+    "bitacora_id": "20261113-506ADB43",
+    "ot": "OT 3",
+    "fecha_ejecucion": "2026-11-13",
+    "codigo": "CY-162 (UBM)",
+    "codigo_homologado": "PC162",
+    "canon": "PC162",
+    "equipo": "C-456D-305-120",
+    "actividad": "Lubricación de rodamientos, limpieza de patín, ajuste de bandas, reapriete de anclas",
+    "tipo": "Bimestral",
+    "fecha_programada": "2026-11-02",
+    "resumen": "13/11/2026 · OT 3 · PC162 · MANTENIMIENTO BIMESTRAL A MCI · Mecánico 1",
+    "delta_dias": 11,
+    "mes_clave": "2026-11",
+    "especialidad": "ubm",
+    "slot": "ubm_norte",
+    "nro": "1093",
+    "confirmado": "2026-11-26T17:40:17"
   }
 }
