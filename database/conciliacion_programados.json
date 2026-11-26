@@ -565,5 +565,26 @@
     "slot": "ubm_sur",
     "nro": "902",
     "confirmado": "2026-11-26T18:09:33"
+  },
+  "4c6c3cf875829fb0": {
+    "estatus": "Realizado",
+    "firma": "ubm_sur|S-539 (Motor)|Arrow A54 (Alto consumo)|2026-11-22|Limpiza radiador, patín, diafrag, reemplazo de aceite, filtro aceite y bujia, engrase TF.|Bimestral|905",
+    "bitacora_id": "20261109-7263929E",
+    "ot": "OT 4",
+    "fecha_ejecucion": "2026-11-09",
+    "codigo": "S-539 (Motor)",
+    "codigo_homologado": "PS539",
+    "canon": "PS539",
+    "equipo": "Arrow A54 (Alto consumo)",
+    "actividad": "Limpiza radiador, patín, diafrag, reemplazo de aceite, filtro aceite y bujia, engrase TF.",
+    "tipo": "Bimestral",
+    "fecha_programada": "2026-11-22",
+    "resumen": "09/11/2026 · OT 4 · PS539 · MANTENIMIENTO BIMESTRAL A UBM · Mecánico 3",
+    "delta_dias": 13,
+    "mes_clave": "2026-11",
+    "especialidad": "ubm",
+    "slot": "ubm_sur",
+    "nro": "905",
+    "confirmado": "2026-11-26T18:09:47"
   }
 }
