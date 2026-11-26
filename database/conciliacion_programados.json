@@ -418,5 +418,26 @@
     "slot": "ubm_norte",
     "nro": "1102",
     "confirmado": "2026-11-26T17:54:23"
+  },
+  "5b96cf5dd3282e57": {
+    "estatus": "Realizado",
+    "firma": "ubm_norte|SN-272 (UBM)|C-456D-305-144|2026-11-13|Lubricación de rodamientos, limpieza de patín, ajuste de bandas, reapriete de anclas|Bimestral|1101",
+    "bitacora_id": "20261123-69A6186B",
+    "ot": "OT 6",
+    "fecha_ejecucion": "2026-11-23",
+    "codigo": "SN-272 (UBM)",
+    "codigo_homologado": "PSN272",
+    "canon": "PSN272",
+    "equipo": "C-456D-305-144",
+    "actividad": "Lubricación de rodamientos, limpieza de patín, ajuste de bandas, reapriete de anclas",
+    "tipo": "Bimestral",
+    "fecha_programada": "2026-11-13",
+    "resumen": "23/11/2026 · OT 6 · PSN272 · MANTENIMIENTO BIMESTRAL A UBM · Mecánico 1",
+    "delta_dias": 10,
+    "mes_clave": "2026-11",
+    "especialidad": "ubm",
+    "slot": "ubm_norte",
+    "nro": "1101",
+    "confirmado": "2026-11-26T18:01:48"
   }
 }
