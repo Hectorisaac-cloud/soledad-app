@@ -355,5 +355,26 @@
     "slot": "ubm_norte",
     "nro": "1077",
     "confirmado": "2026-11-26T17:53:44"
+  },
+  "fef227f5470eb848": {
+    "estatus": "Realizado",
+    "firma": "ubm_norte|CY-146 (Motor)|Arrow A54|2026-11-12|Limpiza radiador, patín, diafragma, filtro de aire, bujias, reemplazo de aceite, filtro aceite, engrase TF.|Bimestral|1090",
+    "bitacora_id": "20261119-F0711A27",
+    "ot": "OT 3",
+    "fecha_ejecucion": "2026-11-19",
+    "codigo": "CY-146 (Motor)",
+    "codigo_homologado": "PC146",
+    "canon": "PC146",
+    "equipo": "Arrow A54",
+    "actividad": "Limpiza radiador, patín, diafragma, filtro de aire, bujias, reemplazo de aceite, filtro aceite, engrase TF.",
+    "tipo": "Bimestral",
+    "fecha_programada": "2026-11-12",
+    "resumen": "19/11/2026 · OT 3 · PC146 · MANTENIMIENTO BIMESTRAL A MCI · Mecánico 2",
+    "delta_dias": 7,
+    "mes_clave": "2026-11",
+    "especialidad": "ubm",
+    "slot": "ubm_norte",
+    "nro": "1090",
+    "confirmado": "2026-11-26T17:53:58"
   }
 }
