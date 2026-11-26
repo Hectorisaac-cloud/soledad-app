@@ -5988,6 +5988,22 @@
       "tipo_insumo": "Consumible",
       "id": "3bbc1b36a1",
       "registrado": "2026-11-26 15:45"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-25",
+      "secuencia": "Act. 5",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PS Soledad",
+      "insumo_id": "aceite-hidraulico",
+      "insumo": "Aceite Hidraulico",
+      "cantidad": 5.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "5d325f2628",
+      "registrado": "2026-11-26 15:50"
     }
   ]
 }
