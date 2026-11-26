@@ -6022,6 +6022,22 @@
       "destino_retirada": "Enviada a Taller de Reparación",
       "id": "98e56ae80a",
       "registrado": "2026-11-26 15:56"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-25",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 2",
+      "sector": "PA Aragón",
+      "insumo_id": "refrigerante",
+      "insumo": "Refrigerante",
+      "cantidad": 2.0,
+      "unidad": "L",
+      "origen": "OPS (Proporcionado por el Cliente)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "fd4f10f419",
+      "registrado": "2026-11-26 15:59"
     }
   ]
 }
