@@ -292,5 +292,26 @@
     "slot": "ubm_sur",
     "nro": "779",
     "confirmado": "2026-11-26T17:51:44"
+  },
+  "5b4afd159da41ce1": {
+    "estatus": "Realizado",
+    "firma": "ubm_sur|S-1019 (UBM)|C-456D-305-144|2026-11-08|Lubricación de rodamientos, limpieza de patín, ajuste de bandas, reapriete de anclas|Semestral|778",
+    "bitacora_id": "20261111-F7AE59FD",
+    "ot": "OT 2",
+    "fecha_ejecucion": "2026-11-11",
+    "codigo": "S-1019 (UBM)",
+    "codigo_homologado": "PS1019",
+    "canon": "PS1019",
+    "equipo": "C-456D-305-144",
+    "actividad": "Lubricación de rodamientos, limpieza de patín, ajuste de bandas, reapriete de anclas",
+    "tipo": "Semestral",
+    "fecha_programada": "2026-11-08",
+    "resumen": "11/11/2026 · OT 2 · PS1019 · MANTENIMIENTO SEMESTRAL A UBM · Mecánico 3",
+    "delta_dias": 3,
+    "mes_clave": "2026-11",
+    "especialidad": "ubm",
+    "slot": "ubm_sur",
+    "nro": "778",
+    "confirmado": "2026-11-26T17:52:04"
   }
 }
