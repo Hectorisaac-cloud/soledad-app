@@ -439,5 +439,26 @@
     "slot": "ubm_norte",
     "nro": "1101",
     "confirmado": "2026-11-26T18:01:48"
+  },
+  "b3ff43aa2381f959": {
+    "estatus": "Realizado",
+    "firma": "ubm_norte|SN-293 (Motor)|Arrow A54|2026-11-14|Limpiza radiador, patín, diafragma, filtro de aire, bujias, reemplazo de aceite, filtro aceite, engrase TF.|Bimestral|1106",
+    "bitacora_id": "20261112-36089ED9",
+    "ot": "OT 3",
+    "fecha_ejecucion": "2026-11-12",
+    "codigo": "SN-293 (Motor)",
+    "codigo_homologado": "PSN293",
+    "canon": "PSN293",
+    "equipo": "Arrow A54",
+    "actividad": "Limpiza radiador, patín, diafragma, filtro de aire, bujias, reemplazo de aceite, filtro aceite, engrase TF.",
+    "tipo": "Bimestral",
+    "fecha_programada": "2026-11-14",
+    "resumen": "12/11/2026 · OT 3 · PSN293 · MANTENIMIENTO BIMESTRAL A MCI · Mecánico 1",
+    "delta_dias": 2,
+    "mes_clave": "2026-11",
+    "especialidad": "ubm",
+    "slot": "ubm_norte",
+    "nro": "1106",
+    "confirmado": "2026-11-26T18:07:10"
   }
 }
