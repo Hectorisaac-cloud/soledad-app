@@ -6314,6 +6314,40 @@
       "tipo_insumo": "Consumible",
       "id": "20a5a758ce",
       "registrado": "2026-11-27 16:18"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-26",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PGA Gallo",
+      "insumo_id": "aceite-sae-50",
+      "insumo": "Aceite SAE 50",
+      "cantidad": 4.0,
+      "unidad": "L",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Consumible",
+      "id": "825932cffd",
+      "registrado": "2026-11-27 16:32"
+    },
+    {
+      "tipo": "consumo",
+      "fecha": "2026-11-26",
+      "secuencia": "Act. 1",
+      "cuadrilla": "Mecanico 3",
+      "sector": "PGA Gallo",
+      "insumo_id": "marcha-motor-arranque",
+      "insumo": "Marcha / Motor de arranque",
+      "cantidad": 1.0,
+      "unidad": "Pzas",
+      "origen": "PJP4 (Propio)",
+      "origen_registro": "campo",
+      "tipo_insumo": "Componente Rotativo / Reparable",
+      "condicion_instalada": "Nuevo",
+      "destino_retirada": "Enviada a Taller de Reparación",
+      "id": "b907bbd22c",
+      "registrado": "2026-11-27 16:32"
     }
   ]
 }
