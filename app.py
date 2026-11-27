@@ -12764,6 +12764,44 @@ def _selector_registro_revision(df: pd.DataFrame, filtrado: pd.DataFrame, etique
     return seleccionado
 
 
+def _render_resumen_actividades_edicion(
+    filtrado: pd.DataFrame,
+    filtro_fecha: str,
+    filtro_ubi: str,
+    filtro_cuadrilla: str,
+    filtro_revision: str,
+    filtro_evidencia: str,
+) -> None:
+    """Conteos y tabla de lo que ya está cargado con los filtros de Edición de actividades."""
+    st.markdown("##### Actividades cargadas")
+    partes = []
+    if filtro_fecha != "Todas":
+        partes.append(str(filtro_fecha).split("·")[0].strip())
+    for etiqueta, valor in (
+        ("Ubicación", filtro_ubi),
+        ("Cuadrilla", filtro_cuadrilla),
+        ("Revisión", filtro_revision),
+        ("Evidencia", filtro_evidencia),
+    ):
+        if valor != "Todas":
+            partes.append(f"{etiqueta}: {valor}")
+    if partes:
+        st.caption("Verificación de lo cargado para " + " · ".join(partes) + ".")
+    else:
+        st.caption("Verificación de todas las actividades. Elige una fecha para acotar la lista.")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Registros", len(filtrado))
+    m2.metric("Pendientes", int((filtrado["REVISIÓN"] == "Pendiente").sum()) if "REVISIÓN" in filtrado.columns else 0)
+    m3.metric("Validados", int((filtrado["REVISIÓN"] == "Validado").sum()) if "REVISIÓN" in filtrado.columns else 0)
+    m4.metric(
+        "Con observaciones",
+        int((filtrado["REVISIÓN"] == "Con observaciones").sum()) if "REVISIÓN" in filtrado.columns else 0,
+    )
+    columnas = ["Fecha", "Cuadrilla", "Personal", "Ubicación", "Descripción de Actividad"]
+    tabla = vista_revision_soledad(filtrado)
+    st.dataframe(tabla[columnas], use_container_width=True, hide_index=True)
+
+
 def _render_contexto_registro_bitacora(df: pd.DataFrame, seleccionado) -> None:
     fila = df.loc[seleccionado]
     gente = personal_de_registro(fila)
@@ -12966,13 +13004,19 @@ def render_revision_bitacoras(modo: str = "completo") -> None:
         )
         if categoria == "Edición Masiva por Cuadrilla":
             render_edicion_masiva_cuadrilla(df)
-            return
-        if seleccionado is None:
-            return
-        with st.container(border=True):
-            _render_contexto_registro_bitacora(df, seleccionado)
-            render_edicion_registro_bitacora(df, seleccionado)
-            render_eliminar_registro_bitacora(df, seleccionado)
+        elif seleccionado is not None:
+            with st.container(border=True):
+                _render_contexto_registro_bitacora(df, seleccionado)
+                render_edicion_registro_bitacora(df, seleccionado)
+                render_eliminar_registro_bitacora(df, seleccionado)
+        _render_resumen_actividades_edicion(
+            filtrado,
+            filtro_fecha,
+            filtro_ubi,
+            filtro_cuadrilla,
+            filtro_revision,
+            filtro_evidencia,
+        )
         return
 
     if filtrado.empty:
