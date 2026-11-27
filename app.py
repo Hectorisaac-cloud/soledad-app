@@ -7089,6 +7089,37 @@ def renderizar_galeria(archivos: list) -> None:
                     )
 
 
+def renderizar_galeria_edicion(guardadas: list[str], nuevas: list | None) -> None:
+    """Cuadrícula de 9: primero las fotos ya guardadas y después las que se van a agregar."""
+    ocupadas = list(guardadas[:MAX_FOTOS])
+    pendientes = limitar_fotos(nuevas)[: max(0, MAX_FOTOS - len(ocupadas))]
+    for fila_foto in range(3):
+        columnas = st.columns(3, gap="small")
+        for col_i, col in enumerate(columnas):
+            indice = fila_foto * 3 + col_i
+            with col:
+                if indice < len(ocupadas):
+                    ruta = ocupadas[indice]
+                    nombre = os.path.basename(ruta) or f"Foto {indice + 1}"
+                    if ruta and os.path.exists(ruta):
+                        st.image(ruta, use_container_width=True)
+                        st.caption(f"{indice + 1}. {nombre}")
+                    else:
+                        st.markdown(
+                            f'<div class="foto-vacia">No encontrada<br>{html.escape(nombre)}</div>',
+                            unsafe_allow_html=True,
+                        )
+                elif indice < len(ocupadas) + len(pendientes):
+                    archivo = pendientes[indice - len(ocupadas)]
+                    st.image(archivo, use_container_width=True)
+                    st.caption(f"{indice + 1}. {archivo.name}")
+                else:
+                    st.markdown(
+                        f'<div class="foto-vacia">Foto {indice + 1}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+
 def renderizar_galeria_rutas(rutas: list[str]) -> None:
     fotos = list(rutas) + [""] * MAX_FOTOS
     for fila in range(3):
@@ -9525,13 +9556,11 @@ def eliminar_foto_registro(ruta_foto: str) -> bool:
     return True
 
 
-def anexar_fotos_registro_bitacora(registro, archivos: list) -> list[str]:
-    dia = parsear_fecha_valor(registro.get("FECHA")) or date.today()
-    carpeta = carpeta_fotos_registro_bitacora(registro)
+def _anexar_fotos_en_carpeta(carpeta: str, inicio: int, archivos: list) -> list[str]:
+    """Agrega imágenes al final de una carpeta de evidencia, sin borrar las que ya están."""
     os.makedirs(carpeta, exist_ok=True)
-    inicio = len(fotos_evidencia_octubre_secuencia(str(registro.get("CUADRILLA") or ""), dia, registro.get("SECUENCIA")))
     rutas = []
-    for numero, archivo in enumerate(archivos or [], start=inicio + 1):
+    for numero, archivo in enumerate(archivos or [], start=int(inicio) + 1):
         destino = os.path.join(carpeta, _nombre_foto_bitacora(numero, getattr(archivo, "name", "foto.jpg")))
         raiz, extension = os.path.splitext(destino)
         copia = 2
@@ -9544,6 +9573,13 @@ def anexar_fotos_registro_bitacora(registro, archivos: list) -> list[str]:
         rutas.append(destino.replace("\\", "/"))
     persistencia.marcar_evidencia_nueva(rutas)
     return rutas
+
+
+def anexar_fotos_registro_bitacora(registro, archivos: list) -> list[str]:
+    dia = parsear_fecha_valor(registro.get("FECHA")) or date.today()
+    carpeta = carpeta_fotos_registro_bitacora(registro)
+    inicio = len(fotos_evidencia_octubre_secuencia(str(registro.get("CUADRILLA") or ""), dia, registro.get("SECUENCIA")))
+    return _anexar_fotos_en_carpeta(carpeta, inicio, archivos)
 
 
 _MESES_PROGRAMA = {
@@ -12748,7 +12784,7 @@ def _textos_edicion_equivalentes(fila, textos: dict[str, str]) -> bool:
     return True
 
 
-def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
+def render_edicion_registro_bitacora(df: pd.DataFrame, idx, con_evidencia: bool = False) -> None:
     """Misma captura de actividades, abierta con los datos del registro elegido."""
     fila = df.loc[idx]
     ver = int(st.session_state.get("_rev_ver", 0))
@@ -12850,6 +12886,39 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
     insumos = renderizar_insumos(form_id)
     consumos = list(insumos.get("_consumos") or [])
 
+    fotos_guardadas = rutas_fotos_fila(fila)[:MAX_FOTOS] if con_evidencia else []
+    huecos_foto = max(0, MAX_FOTOS - len(fotos_guardadas))
+    archivos_foto = []
+    if con_evidencia:
+        st.markdown("---")
+        st.markdown('<div class="section-title">📷 Evidencia fotográfica</div>', unsafe_allow_html=True)
+        st.caption("Carga directa de la actividad. Hasta 9 imágenes se guardan en el registro al pulsar Guardar.")
+        if fotos_guardadas:
+            if huecos_foto:
+                st.caption(
+                    f"Este registro ya tiene {len(fotos_guardadas)} fotografía(s). "
+                    f"Se conservan al guardar y quedan {huecos_foto} espacio(s) para fotos nuevas."
+                )
+            else:
+                st.caption(
+                    f"Este registro ya tiene {MAX_FOTOS} fotografías. Se conservan al guardar; "
+                    "no se agregan más hasta liberar un espacio."
+                )
+        archivos_foto = st.file_uploader(
+            "Cargar fotografías",
+            type=["png", "jpg", "jpeg", "webp"],
+            accept_multiple_files=True,
+            key=f"rev_fotos_{form_id}",
+        )
+        if archivos_foto and huecos_foto <= 0:
+            st.warning("Este registro ya tiene 9 fotografías. Las nuevas no reemplazan a las guardadas.")
+        elif archivos_foto and len(archivos_foto) > huecos_foto:
+            st.warning(
+                f"Solo se agregarán las primeras {huecos_foto} imágenes. "
+                f"Las {len(fotos_guardadas)} ya guardadas se conservan."
+            )
+        renderizar_galeria_edicion(fotos_guardadas, limitar_fotos(archivos_foto)[:huecos_foto])
+
     st.markdown("---")
     st.markdown('<div class="section-title">📝 Actividad</div>', unsafe_allow_html=True)
     clave_desc = f"rev_desc_{form_id}"
@@ -12900,6 +12969,7 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
         )
     mapa_cantidades = _mapa_cantidades_edicion(fila, consumos, asignacion)
     textos_insumo = _textos_insumo_edicion(insumos, consumos, asignacion)
+    fotos_nuevas = limitar_fotos(archivos_foto)[:huecos_foto] if con_evidencia else []
     visibles = [
         f"{consumo['nombre']}: {_texto_cantidad_insumo(consumo.get('cantidad'))}"
         + (f" {consumo.get('unidad')}" if consumo.get("unidad") else "")
@@ -12979,6 +13049,7 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
         and corta_igual
         and _cantidades_edicion_equivalentes(fila, mapa_cantidades)
         and _textos_edicion_equivalentes(fila, textos_insumo)
+        and not fotos_nuevas
     )
     if sin_cambios:
         st.info("No hay cambios por guardar.")
@@ -12991,17 +13062,51 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
     except (ValueError, FileNotFoundError) as exc:
         st.error(str(exc))
         return
+    fotos_anexadas: list[str] = []
+    aviso_fotos = ""
+    if fotos_nuevas:
+        try:
+            if resultado.get("aviso"):
+                carpeta_fotos = carpeta_fotos_registro_bitacora(fila)
+                inicio_fotos = len(
+                    fotos_evidencia_octubre_secuencia(
+                        str(fila.get("CUADRILLA") or ""),
+                        dia,
+                        fila.get("SECUENCIA"),
+                    )
+                )
+            else:
+                carpeta_fotos = carpeta_evidencia_octubre_secuencia(
+                    str(nueva_cuadrilla), nueva_fecha, int(nueva_secuencia)
+                )
+                inicio_fotos = len(
+                    fotos_evidencia_octubre_secuencia(
+                        str(nueva_cuadrilla), nueva_fecha, int(nueva_secuencia)
+                    )
+                )
+            fotos_anexadas = _anexar_fotos_en_carpeta(carpeta_fotos, inicio_fotos, fotos_nuevas)
+        except OSError as exc:
+            aviso_fotos = f"No se pudieron guardar las fotografías nuevas: {exc}"
     sync = despues_de_cambio_bitacora("Edición de registro en bitácora")
     texto = f"Registro actualizado en la fila {resultado['fila']} de la bitácora."
     if visibles:
         texto += " Insumos: " + " · ".join(visibles) + "."
     else:
         texto += " El registro quedó sin insumos."
+    if fotos_anexadas:
+        texto += (
+            f" Se agregaron {len(fotos_anexadas)} foto(s); "
+            f"el registro queda con {len(fotos_guardadas) + len(fotos_anexadas)} de {MAX_FOTOS}."
+        )
+    elif fotos_guardadas and con_evidencia:
+        texto += f" Se conservaron las {len(fotos_guardadas)} fotografía(s) ya cargadas."
     if resultado["fotos_movidas"]:
         texto += f" Se movieron {resultado['fotos_movidas']} foto(s) a la carpeta de la nueva fecha, cuadrilla o secuencia."
+    if aviso_fotos:
+        texto += f" {aviso_fotos}"
     texto += _texto_sync_calendario(sync)
-    if resultado.get("aviso"):
-        _avisar_revision("warning", f"{texto} {resultado['aviso']}")
+    if resultado.get("aviso") or aviso_fotos:
+        _avisar_revision("warning", f"{texto} {resultado.get('aviso') or ''}".strip())
     else:
         _avisar_revision("success", texto)
     st.session_state["_rev_seleccion"] = idx
@@ -13570,7 +13675,7 @@ def render_revision_bitacoras(modo: str = "completo") -> None:
         elif seleccionado is not None:
             with st.container(border=True):
                 _render_contexto_registro_bitacora(df, seleccionado)
-                render_edicion_registro_bitacora(df, seleccionado)
+                render_edicion_registro_bitacora(df, seleccionado, con_evidencia=True)
                 render_eliminar_registro_bitacora(df, seleccionado)
         return
 
