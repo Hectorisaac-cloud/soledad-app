@@ -8915,6 +8915,26 @@ def _guardar_libro_bitacora(wb, destino: str) -> None:
         wb.close()
 
 
+def _escribir_texto_flexible_hoja(ws, fila_header: int, fila: int, titulo: str, valor, limpiar: bool = False) -> None:
+    """Escribe o vacía una columna de texto. Si no existe y hay valor, la agrega al encabezado."""
+    texto = str(valor or "").strip()
+    if not texto and not limpiar:
+        return
+    encabezados = [
+        (col, str(ws.cell(fila_header, col).value or "").strip())
+        for col in range(1, int(ws.max_column or 0) + 1)
+        if str(ws.cell(fila_header, col).value or "").strip()
+    ]
+    col = _columna_encabezado(encabezados, titulo)
+    if not col:
+        if not texto:
+            return
+        col = (encabezados[-1][0] if encabezados else 0) + 1
+        ws.cell(fila_header, col).value = titulo
+        _ampliar_tablas_columna(ws, fila_header, col, fila)
+    ws.cell(fila, col).value = texto or None
+
+
 def _escribir_texto_catalogo(ws, fila_header: int, encabezados: list, fila: int, valor, titulo: str) -> None:
     texto = str(valor or "").strip()
     if not texto:
@@ -9274,6 +9294,19 @@ def actualizar_registro_bitacora(idx, registro, cambios: dict, ruta: str | None 
             ws.cell(fila, cols["comentarios"]).value = str(cambios["comentarios"]).strip() or None
         if isinstance(cambios.get("consumibles"), dict):
             _escribir_cantidades_fila(ws, fila_header, fila, cambios["consumibles"])
+        if "equipo" in cambios:
+            _escribir_texto_flexible_hoja(ws, fila_header, fila, "EQUIPO", cambios.get("equipo"), limpiar=True)
+        if "tipo_actividad" in cambios:
+            _escribir_texto_flexible_hoja(
+                ws, fila_header, fila, "TIPO DE ACTIVIDAD", cambios.get("tipo_actividad"), limpiar=True
+            )
+        if "actividad_corta" in cambios:
+            _escribir_texto_flexible_hoja(
+                ws, fila_header, fila, "ACTIVIDAD CORTA", cambios.get("actividad_corta"), limpiar=True
+            )
+        if isinstance(cambios.get("textos_insumo"), dict):
+            for titulo, valor in cambios["textos_insumo"].items():
+                _escribir_texto_flexible_hoja(ws, fila_header, fila, str(titulo), valor, limpiar=True)
         origen_fotos = carpeta_fotos_registro_bitacora(registro)
         _guardar_libro_bitacora(wb, destino)
     except Exception:
@@ -12242,9 +12275,484 @@ def _recordar_widget(clave: str, valor):
         st.session_state[clave] = valor
 
 
+def _opcion_lista_oficial(valor: str, opciones: list[str]) -> str:
+    texto = str(valor or "").strip()
+    if not texto:
+        return ""
+    if texto in opciones:
+        return texto
+    clave = texto.casefold()
+    for opcion in opciones:
+        if opcion.casefold() == clave:
+            return opcion
+    return ""
+
+
+def _origen_constante_insumo(texto) -> str:
+    clave = _clave_columna_bitacora(texto)
+    if re.search(r"\bops\b", clave):
+        return ORIGEN_OPS
+    if "pjp4" in clave:
+        return ORIGEN_PJP4
+    return ""
+
+
+def _origen_formulario_columna(columna: str) -> str:
+    explicito = _origen_constante_insumo(columna)
+    if explicito:
+        return explicito
+    return ORIGEN_OPS if _origen_suministro_material(columna) == "OPS" else ORIGEN_PJP4
+
+
+def _texto_es_ficha_personal(texto: str) -> bool:
+    plano = re.sub(r"[\s·./-]+", "", str(texto or ""))
+    return bool(plano) and plano.isdigit()
+
+
+def _catalogo_insumos_edicion() -> list[dict]:
+    return [item for item in catalogo_insumos_activos() if str(item.get("nombre") or "").strip()]
+
+
+def _puntaje_item_columna(item: dict, columna: str) -> int:
+    """Qué tan bien corresponde una columna guardada a una casilla del catálogo de carga."""
+    col = _clave_columna_bitacora(columna)
+    nom = _clave_columna_bitacora(item.get("nombre") or "")
+    if not col or not nom:
+        return -1
+    if col in {
+        "bandas cantidad",
+        "bandas descripcion",
+        "bandas proporcionado por",
+        "otros insumos",
+        "piezas rotativas",
+        "alternador estado origen",
+        "alternador descripcion",
+    }:
+        return -1
+    puntaje = -1
+    excel = _clave_columna_bitacora(item.get("columna_excel") or "")
+    if excel and excel == col:
+        puntaje = 850
+    regla = ""
+    for token, destino in _REGLAS_COLUMNA_INSUMO:
+        token_clave = _clave_columna_bitacora(token)
+        if token_clave and token_clave in nom:
+            regla = _clave_columna_bitacora(destino)
+            break
+    if not regla:
+        regla = _clave_columna_bitacora(_columna_modelo_banda(nom))
+    if regla and regla == col:
+        puntaje = max(puntaje, 1000)
+    if "filtro" in nom and "aceite" in nom and "aire" not in nom:
+        if "filtro" in col and "aceite" in col and "aire" not in col:
+            puntaje = max(puntaje, 900)
+    if "banda" in nom and "banda" in col:
+        numeros = re.findall(r"\d+", nom)
+        if numeros and all(numero in col for numero in numeros):
+            puntaje = max(puntaje, 950)
+        elif "micro" in nom and "micro" in col:
+            puntaje = max(puntaje, 950)
+    if nom == col:
+        puntaje = max(puntaje, 1000)
+    return puntaje
+
+
+def _item_insumo_por_texto(catalogo: list[dict], texto: str) -> dict | None:
+    mejor = None
+    mejor_puntaje = 199
+    for item in catalogo:
+        puntaje = _puntaje_item_columna(item, texto)
+        if puntaje > mejor_puntaje:
+            mejor = item
+            mejor_puntaje = puntaje
+    return mejor
+
+
+def _leer_piezas_rotativas_fila(fila) -> list[dict]:
+    texto = texto_visible(fila.get("PIEZAS ROTATIVAS"), "")
+    if not texto:
+        return []
+    patron = re.compile(
+        r"^(?P<nombre>.+?)\s+x\s*(?P<cant>\d+(?:[.,]\d+)?)\s*:\s*instalada\s+(?P<cond>.+?)\s*;\s*retirada\s+(?P<dest>.+)$",
+        re.IGNORECASE,
+    )
+    piezas = []
+    for parte in re.split(r"\s*\|\s*", texto):
+        hallado = patron.match(parte.strip())
+        if not hallado:
+            continue
+        try:
+            cantidad = float(hallado.group("cant").replace(",", "."))
+        except ValueError:
+            continue
+        if cantidad <= 0:
+            continue
+        piezas.append(
+            {
+                "nombre": hallado.group("nombre").strip(),
+                "cantidad": cantidad,
+                "condicion": _opcion_lista_oficial(hallado.group("cond"), CONDICION_PIEZA_INSTALADA),
+                "destino": _opcion_lista_oficial(hallado.group("dest"), DESTINO_PIEZA_RETIRADA),
+            }
+        )
+    return piezas
+
+
+def _cantidad_columna_edicion(fila, columna: str) -> float:
+    bruto = fila.get(columna)
+    if _es_grasa(columna):
+        return float(cantidad_grasa_kg(bruto))
+    return float(_numero_insumo(bruto))
+
+
+def _asignar_insumos_edicion(fila) -> dict:
+    """Reparte lo ya guardado en las casillas del formulario de carga, sin tocar columnas ajenas."""
+    catalogo = _catalogo_insumos_edicion()
+    columnas = [str(col) for col in getattr(fila, "index", [])]
+    por_slug: dict[str, dict] = {}
+
+    def _asegurar(item: dict) -> dict:
+        slug = item.get("id") or slug_insumo(item["nombre"])
+        if slug not in por_slug:
+            por_slug[slug] = {
+                "item": item,
+                "slug": slug,
+                "cantidad": 0.0,
+                "origen": "",
+                "condicion": "",
+                "destino": "",
+                "columnas": [],
+            }
+        return por_slug[slug]
+
+    for registrado in _insumos_registrados_fila(fila):
+        columna = registrado["columna"]
+        item = _item_insumo_por_texto(catalogo, columna)
+        if item is None:
+            continue
+        datos = _asegurar(item)
+        if columna not in datos["columnas"]:
+            datos["columnas"].append(columna)
+        cantidad = _cantidad_columna_edicion(fila, columna)
+        if cantidad > float(datos["cantidad"]):
+            datos["cantidad"] = cantidad
+            datos["origen"] = _origen_formulario_columna(columna)
+
+    for espejo, canonico in (
+        ("ACEITE (LTS)", "ACEITE SAE 50 PJP4"),
+        ("GRASA (KG)", "GRASA OPS"),
+        ("REFRIGERANTE (LTS)", "REFRIGERANTE OPS"),
+    ):
+        if espejo not in columnas:
+            continue
+        cantidad_espejo = _cantidad_columna_edicion(fila, espejo)
+        if cantidad_espejo <= 0:
+            continue
+        item = _item_insumo_por_texto(catalogo, canonico) or _item_insumo_por_texto(catalogo, espejo)
+        if item is None:
+            continue
+        datos = _asegurar(item)
+        if espejo not in datos["columnas"]:
+            datos["columnas"].append(espejo)
+        clave_canonica = _clave_columna_bitacora(canonico)
+        for columna in columnas:
+            if _clave_columna_bitacora(columna) == clave_canonica and columna not in datos["columnas"]:
+                datos["columnas"].append(columna)
+        if cantidad_espejo > float(datos["cantidad"]):
+            datos["cantidad"] = cantidad_espejo
+            datos["origen"] = _origen_formulario_columna(canonico)
+
+    origen_bandas = _origen_constante_insumo(fila.get("BANDAS PROPORCIONADO POR"))
+    descripcion_bandas = texto_visible(fila.get("BANDAS DESCRIPCIÓN"), "")
+    if descripcion_bandas:
+        total_bandas = 0.0
+        for columna in columnas:
+            if "banda" not in _clave_columna_bitacora(columna):
+                continue
+            if not _es_columna_cantidad_refaccion(columna):
+                continue
+            total_bandas += _numero_insumo(fila.get(columna))
+        for etiqueta, cantidad in _lineas_bandas_descripcion(total_bandas, descripcion_bandas):
+            item = _item_insumo_por_texto(catalogo, etiqueta)
+            if item is None or float(cantidad or 0) <= 0:
+                continue
+            datos = _asegurar(item)
+            if float(datos["cantidad"]) <= 0:
+                datos["cantidad"] = float(cantidad)
+            if origen_bandas:
+                datos["origen"] = origen_bandas
+            elif not datos["origen"]:
+                datos["origen"] = ORIGEN_PJP4
+
+    if any("banda" in _clave_columna_bitacora(item["item"]["nombre"]) for item in por_slug.values()):
+        for columna in columnas:
+            if _clave_columna_bitacora(columna) == "bandas cantidad":
+                for datos in por_slug.values():
+                    if "banda" in _clave_columna_bitacora(datos["item"]["nombre"]) and columna not in datos["columnas"]:
+                        datos["columnas"].append(columna)
+                        break
+
+    for pieza in _leer_piezas_rotativas_fila(fila):
+        item = _item_insumo_por_texto(catalogo, pieza["nombre"])
+        if item is None:
+            continue
+        datos = _asegurar(item)
+        if float(datos["cantidad"]) <= 0:
+            datos["cantidad"] = float(pieza["cantidad"])
+        if not datos["origen"]:
+            datos["origen"] = _origen_formulario_columna(item["nombre"])
+        if pieza["condicion"]:
+            datos["condicion"] = pieza["condicion"]
+        if pieza["destino"]:
+            datos["destino"] = pieza["destino"]
+
+    alternador = next(
+        (datos for datos in por_slug.values() if "alternador" in _clave_columna_bitacora(datos["item"]["nombre"])),
+        None,
+    )
+    if alternador is not None:
+        if not alternador["condicion"]:
+            for parte in re.split(r"\s*\|\s*", texto_visible(fila.get("ALTERNADOR ESTADO/ORIGEN"), "")):
+                oficial = _opcion_lista_oficial(parte, CONDICION_PIEZA_INSTALADA)
+                if oficial:
+                    alternador["condicion"] = oficial
+                    break
+        if not alternador["destino"]:
+            for parte in re.split(r"\s*\|\s*", texto_visible(fila.get("ALTERNADOR DESCRIPCIÓN"), "")):
+                oficial = _opcion_lista_oficial(parte, DESTINO_PIEZA_RETIRADA)
+                if oficial:
+                    alternador["destino"] = oficial
+                    break
+
+    otros_bruto = texto_visible(fila.get("OTROS INSUMOS"), "")
+    otros_partes = []
+    for parte in re.split(r"[,;\n|/]+", otros_bruto):
+        pieza = parte.strip()
+        if not pieza:
+            continue
+        nombre, _cantidad = _partir_cantidad_consumible(pieza)
+        if _item_insumo_por_texto(catalogo, nombre or pieza) is not None:
+            continue
+        otros_partes.append(pieza)
+    otros = ", ".join(otros_partes)
+    otros_cantidad = 1.0
+    if otros:
+        numeros = re.findall(r"\d+(?:[.,]\d+)?", otros)
+        if len(numeros) == 1:
+            try:
+                otros_cantidad = float(numeros[0].replace(",", "."))
+            except ValueError:
+                otros_cantidad = 1.0
+    return {
+        "items": por_slug,
+        "otros": otros,
+        "otros_cantidad": otros_cantidad if otros_cantidad > 0 else 1.0,
+        "otros_origen": _origen_constante_insumo(otros_bruto),
+        "piezas_propias": any(
+            es_insumo_rotativo(datos["item"]) and float(datos["cantidad"]) > 0 for datos in por_slug.values()
+        )
+        or bool(_leer_piezas_rotativas_fila(fila) and any(
+            _item_insumo_por_texto(catalogo, pieza["nombre"]) for pieza in _leer_piezas_rotativas_fila(fila)
+        )),
+        "bandas_propias": any("banda" in _clave_columna_bitacora(datos["item"]["nombre"]) for datos in por_slug.values()),
+        "alternador_propio": alternador is not None,
+        "otros_propio": bool(otros),
+    }
+
+
+def _sembrar_insumos_edicion(form_id: str, asignacion: dict) -> None:
+    for datos in asignacion["items"].values():
+        if float(datos["cantidad"]) <= 0:
+            continue
+        slug = datos["slug"]
+        item = datos["item"]
+        _recordar_widget(f"usa_cat_{slug}_{form_id}", True)
+        unidad = item.get("unidad") or "Pzas"
+        if unidad_es_entera(unidad):
+            _recordar_widget(f"cant_cat_{slug}_{form_id}", int(round(float(datos["cantidad"]))))
+        else:
+            _recordar_widget(f"cant_cat_{slug}_{form_id}", float(datos["cantidad"]))
+        if datos["origen"] in ORIGENES_INSUMO:
+            _recordar_widget(f"origen_cat_{slug}_{form_id}", datos["origen"])
+        if datos["condicion"] in CONDICION_PIEZA_INSTALADA:
+            _recordar_widget(f"cond_cat_{slug}_{form_id}", datos["condicion"])
+        if datos["destino"] in DESTINO_PIEZA_RETIRADA:
+            _recordar_widget(f"dest_cat_{slug}_{form_id}", datos["destino"])
+    if asignacion["otros"]:
+        _recordar_widget(f"usa_otros_{form_id}", True)
+        _recordar_widget(f"otros_insumos_{form_id}", asignacion["otros"])
+        _recordar_widget(f"otros_cant_{form_id}", float(asignacion["otros_cantidad"]))
+        if asignacion["otros_origen"] in ORIGENES_INSUMO:
+            _recordar_widget(f"otros_origen_{form_id}", asignacion["otros_origen"])
+
+
+def _sembrar_cobertura_edicion(form_id: str, cuadrilla: str, fila) -> None:
+    clave_modo = f"cobertura_modo_{form_id}_{cuadrilla}"
+    if clave_modo in st.session_state:
+        return
+    nombres = [nombre for nombre in _nombres_fila_personal(fila) if nombre and not _texto_es_ficha_personal(nombre)]
+    if not nombres:
+        return
+    item = posicion_personal_cuadrilla(cuadrilla)
+    if not _dotacion_distinta(nombres, item):
+        st.session_state[clave_modo] = "Personal titular"
+        return
+    memoria = {"modo": "Cobertura / sustitución"}
+    for campo, nombre in zip(("mec_real", "ayu_real", "apoyo_real"), nombres):
+        memoria[campo] = nombre
+    valores: dict = {}
+    _volcar_dotacion_memoria(valores, form_id, cuadrilla, memoria)
+    _sembrar_estado_jornada(valores, solo_faltantes=True)
+
+
+def _sembrar_actividad_edicion(clave: str, cuadrilla: str, fila) -> None:
+    if clave in st.session_state:
+        return
+    opciones = nombres_actividad_cuadrilla(cuadrilla)
+    if not opciones:
+        return
+    tipo = texto_visible(fila.get("TIPO DE ACTIVIDAD"), "")
+    if not tipo:
+        return
+    if tipo in opciones:
+        st.session_state[clave] = tipo
+        return
+    if "Otra" not in opciones:
+        return
+    st.session_state[clave] = "Otra"
+    _recordar_widget(f"{clave}_otra", tipo)
+    corta = texto_visible(fila.get("ACTIVIDAD CORTA"), "")
+    if corta:
+        _recordar_widget(f"{clave}_corta", corta)
+
+
+def _sembrar_equipo_edicion(key: str, tag: str, equipo_actual: str) -> None:
+    if not tag or not equipo_actual:
+        return
+    clave = f"{key}_{clave_pozo_plana(tag)}"
+    if clave in st.session_state:
+        return
+    opciones = opciones_equipo_de_ubicacion(tag)
+    objetivo = equipo_actual.casefold()
+    for opcion in opciones:
+        nombre = nombre_equipo_catalogo(opcion) or opcion
+        if opcion.casefold() == objetivo or nombre.casefold() == objetivo:
+            st.session_state[clave] = opcion
+            return
+
+
+def _consumos_para_columnas_edicion(consumos: list[dict]) -> list[dict]:
+    """El filtro usa la columna PJP4 u OPS según el origen elegido. El resto sigue las reglas de carga."""
+    ajustados = []
+    for consumo in consumos:
+        if str(consumo.get("insumo_id") or "") == "otros":
+            continue
+        item = dict(consumo)
+        clave = _clave_columna_bitacora(item.get("nombre"))
+        if "filtro" in clave and "aceite" in clave and "aire" not in clave:
+            item["nombre"] = "Filtro de aceite OPS" if "OPS" in str(item.get("origen") or "") else "Filtro de aceite"
+        ajustados.append(item)
+    return ajustados
+
+
+def _columnas_por_clave(columnas: list[str], *objetivos: str) -> list[str]:
+    buscadas = {_clave_columna_bitacora(objetivo) for objetivo in objetivos if objetivo}
+    return [columna for columna in columnas if _clave_columna_bitacora(columna) in buscadas]
+
+
+def _mapa_cantidades_edicion(fila, consumos: list[dict], asignacion: dict) -> dict[str, float]:
+    columnas = [str(col) for col in getattr(fila, "index", [])]
+    mapa = cantidades_columnas_de_consumos(_consumos_para_columnas_edicion(consumos), columnas)
+    poseidas: list[str] = []
+    for datos in asignacion["items"].values():
+        poseidas.extend(datos["columnas"])
+    bandas_en_juego = bool(asignacion["bandas_propias"]) or any(
+        "banda" in _clave_columna_bitacora(consumo.get("nombre")) for consumo in consumos
+    )
+    if bandas_en_juego:
+        total_bandas = 0.0
+        for consumo in consumos:
+            if "banda" not in _clave_columna_bitacora(consumo.get("nombre")):
+                continue
+            try:
+                total_bandas += float(consumo.get("cantidad") or 0)
+            except (TypeError, ValueError):
+                continue
+        columnas_total = _columnas_por_clave(columnas, "BANDAS CANTIDAD")
+        if columnas_total:
+            for columna in columnas_total:
+                mapa[columna] = total_bandas
+        elif total_bandas > 0:
+            mapa["BANDAS CANTIDAD"] = total_bandas
+    filtro_en_juego = any(
+        "filtro" in _clave_columna_bitacora(datos["item"]["nombre"]) and "aceite" in _clave_columna_bitacora(datos["item"]["nombre"])
+        for datos in asignacion["items"].values()
+    ) or any("filtro" in _clave_columna_bitacora(consumo.get("nombre")) and "aceite" in _clave_columna_bitacora(consumo.get("nombre")) for consumo in consumos)
+    if filtro_en_juego:
+        poseidas.extend(
+            columna
+            for columna in columnas
+            if "filtro" in (clave := _clave_columna_bitacora(columna)) and "aceite" in clave and "aire" not in clave
+        )
+    for datos in asignacion["items"].values():
+        canonico = _columna_destino_insumo(datos["item"]["nombre"], columnas)
+        if _clave_columna_bitacora(canonico) in {_clave_columna_bitacora(col) for col in datos["columnas"]}:
+            for espejo, destino in (
+                ("ACEITE (LTS)", "ACEITE SAE 50 PJP4"),
+                ("GRASA (KG)", "GRASA OPS"),
+                ("REFRIGERANTE (LTS)", "REFRIGERANTE OPS"),
+            ):
+                if _clave_columna_bitacora(canonico) == _clave_columna_bitacora(destino):
+                    poseidas.extend(_columnas_por_clave(columnas, espejo, destino))
+    for columna in poseidas:
+        mapa.setdefault(columna, 0.0)
+    return mapa
+
+
+def _textos_insumo_edicion(insumos: dict, consumos: list[dict], asignacion: dict) -> dict[str, str]:
+    textos: dict[str, str] = {}
+    bandas = bool(asignacion["bandas_propias"]) or any(
+        "banda" in _clave_columna_bitacora(consumo.get("nombre")) for consumo in consumos
+    )
+    if bandas:
+        textos["BANDAS DESCRIPCIÓN"] = str(insumos.get("BANDAS DESCRIPCIÓN") or "")
+        textos["BANDAS PROPORCIONADO POR"] = str(insumos.get("BANDAS PROPORCIONADO POR") or "")
+    rotativos = bool(asignacion["piezas_propias"]) or any(
+        str(consumo.get("tipo") or "") == TIPO_INSUMO_ROTATIVO for consumo in consumos
+    )
+    if rotativos:
+        textos["PIEZAS ROTATIVAS"] = str(insumos.get("PIEZAS ROTATIVAS") or "")
+    if asignacion["alternador_propio"] or any(
+        "alternador" in _clave_columna_bitacora(consumo.get("nombre")) for consumo in consumos
+    ):
+        textos["ALTERNADOR ESTADO/ORIGEN"] = str(insumos.get("ALTERNADOR ESTADO/ORIGEN") or "")
+        textos["ALTERNADOR DESCRIPCIÓN"] = str(insumos.get("ALTERNADOR DESCRIPCIÓN") or "")
+    if asignacion["otros_propio"] or any(str(consumo.get("insumo_id") or "") == "otros" for consumo in consumos):
+        textos["OTROS INSUMOS"] = str(insumos.get("OTROS INSUMOS") or "")
+    return textos
+
+
+def _cantidades_edicion_equivalentes(fila, mapa: dict[str, float]) -> bool:
+    for columna, nueva in mapa.items():
+        anterior = _cantidad_columna_edicion(fila, columna) if columna in getattr(fila, "index", []) else 0.0
+        if abs(float(anterior) - float(nueva or 0)) >= 1e-6:
+            return False
+    return True
+
+
+def _textos_edicion_equivalentes(fila, textos: dict[str, str]) -> bool:
+    for titulo, nuevo in textos.items():
+        anterior = texto_visible(fila.get(titulo), "") if titulo in getattr(fila, "index", []) else ""
+        if _texto_comparable_bitacora(anterior) != _texto_comparable_bitacora(nuevo):
+            return False
+    return True
+
+
 def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
+    """Misma captura de actividades, abierta con los datos del registro elegido."""
     fila = df.loc[idx]
     ver = int(st.session_state.get("_rev_ver", 0))
+    form_id = f"rev{idx}_{ver}"
     dia = parsear_fecha_valor(fila.get("FECHA")) or date.today()
     cuadrilla_actual = str(fila.get("CUADRILLA") or "").strip()
     opciones_cuadrilla = _opciones_cuadrilla_edicion(df, cuadrilla_actual)
@@ -12260,169 +12768,217 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
     )
     comentarios_actual = texto_visible(fila.get("COMENTARIOS"), "")
     personal_actual = texto_visible(fila.get("PERSONAL"), "")
+    equipo_actual = texto_visible(fila.get("EQUIPO"), "")
+    asignacion = _asignar_insumos_edicion(fila)
 
     st.markdown("##### ✏️ Editar datos del registro")
-    c1, c2, c3 = st.columns([1, 1.2, 0.8])
-    with c1:
-        clave_fecha = f"rev_edit_fecha_{idx}_{ver}"
+    st.caption("Los datos de este registro ya están cargados. Corrige lo que haga falta; se guarda en la misma fila.")
+
+    col_u, col_o = st.columns(2, gap="medium")
+    with col_u:
+        st.markdown('<div class="section-title">📍 Ubicación</div>', unsafe_allow_html=True)
+        clave_fecha = f"rev_fecha_{form_id}"
         _recordar_widget(clave_fecha, dia)
-        nueva_fecha = st.date_input("Fecha", format="DD/MM/YYYY", key=clave_fecha)
-    with c2:
-        clave_cuad_edit = f"rev_edit_cuadrilla_{idx}"
-        if clave_cuad_edit in st.session_state and st.session_state[clave_cuad_edit] not in opciones_cuadrilla:
-            st.session_state.pop(clave_cuad_edit, None)
-        if clave_cuad_edit not in st.session_state:
+        nueva_fecha = st.date_input("Fecha", format="DD/MM/YYYY", key=clave_fecha, persist_state="session")
+        nueva_ubic, nuevo_numero, tag_instalacion = render_selector_ubicacion_captura(
+            f"revcap_{form_id}",
+            "Ubicación / Equipo — zona",
+            valor_actual=ubic_actual,
+        )
+    with col_o:
+        st.markdown('<div class="section-title">🔧 Operación</div>', unsafe_allow_html=True)
+        clave_cuad = f"rev_cuad_{form_id}"
+        if clave_cuad in st.session_state and st.session_state[clave_cuad] not in opciones_cuadrilla:
+            st.session_state.pop(clave_cuad, None)
+        if clave_cuad not in st.session_state:
             coincidencia = next(
                 (op for op in opciones_cuadrilla if clave_cuadrilla_oficial(op) == clave_actual),
                 None,
             )
             if coincidencia:
-                st.session_state[clave_cuad_edit] = coincidencia
+                st.session_state[clave_cuad] = coincidencia
         nueva_cuadrilla = st.selectbox(
-            "Cuadrilla",
+            "Cuadrilla / posición oficial",
             opciones_cuadrilla,
-            index=None if clave_cuad_edit in st.session_state else indice_cuadrilla,
+            index=None if clave_cuad in st.session_state else indice_cuadrilla,
             format_func=etiqueta_cuadrilla_historial,
-            key=clave_cuad_edit,
+            key=clave_cuad,
             persist_state="session",
+            help="Etiqueta que audita OPS (Mecánico 1, 2, 3, 4…). No cambia aunque haya cobertura.",
         )
-    with c3:
-        clave_secuencia = f"rev_edit_sec_{idx}_{ver}"
+        clave_secuencia = f"rev_sec_{form_id}"
         _recordar_widget(clave_secuencia, int(secuencia_actual))
-        nueva_secuencia = st.number_input("Secuencia", min_value=1, step=1, key=clave_secuencia)
-    c4, c5 = st.columns([2, 1])
-    with c4:
-        nueva_ubic, nuevo_numero, _tag_edit = render_selector_ubicacion_captura(
-            f"rev_edit_{idx}_{ver}",
-            valor_actual=ubic_actual,
+        nueva_secuencia = st.number_input(
+            "Secuencia del día",
+            min_value=1,
+            step=1,
+            key=clave_secuencia,
         )
-    with c5:
-        clave_personal_edit = f"rev_edit_personal_{idx}"
-        _recordar_widget(clave_personal_edit, personal_actual)
+        if nueva_cuadrilla:
+            st.caption(
+                f"Consecutivo de {etiqueta_cuadrilla_historial(nueva_cuadrilla)} "
+                f"en esta fecha: **{etiqueta_secuencia_consecutiva(int(nueva_secuencia))}**."
+            )
+        _sembrar_cobertura_edicion(form_id, str(nueva_cuadrilla or ""), fila)
+        cobertura = render_bloque_cobertura(form_id, str(nueva_cuadrilla or ""))
+        if tag_instalacion:
+            st.caption(f"Ubicación del registro: **{tag_instalacion}**.")
+        _sembrar_equipo_edicion(f"equipo_rev_{form_id}", tag_instalacion, equipo_actual)
+        equipo_sel = render_selector_equipo_ubicacion(f"equipo_rev_{form_id}", tag_instalacion)
+        clave_act = f"rev_act_{form_id}_{nueva_cuadrilla}"
+        _sembrar_actividad_edicion(clave_act, str(nueva_cuadrilla or ""), fila)
+        tipo_actividad, tipo_otro, corta_otro = render_selector_actividad_cuadrilla(
+            clave_act,
+            str(nueva_cuadrilla or ""),
+        )
+        opciones_act = nombres_actividad_cuadrilla(str(nueva_cuadrilla or ""))
+        clave_personal = f"rev_ficha_{form_id}"
+        _recordar_widget(clave_personal, personal_actual)
         nuevo_personal = st.text_input(
-            "Ficha / Personal",
-            key=clave_personal_edit,
+            "Ficha / Personal a cargo",
+            key=clave_personal,
             persist_state="session",
         )
-    clave_desc = f"rev_edit_desc_{idx}_{ver}"
-    clave_coment = f"rev_edit_coment_{idx}_{ver}"
+
+    st.markdown("")
+    st.markdown('<div class="section-title">🛢️ Insumos utilizados</div>', unsafe_allow_html=True)
+    st.caption(
+        "Activa solo los insumos que aplican. El origen — PJP4 (Propio) u OPS (Cliente) — es obligatorio. "
+        "En un componente rotativo también se registra la condición de la pieza instalada y el destino de la retirada."
+    )
+    _sembrar_insumos_edicion(form_id, asignacion)
+    insumos = renderizar_insumos(form_id)
+    consumos = list(insumos.get("_consumos") or [])
+
+    st.markdown("---")
+    st.markdown('<div class="section-title">📝 Actividad</div>', unsafe_allow_html=True)
+    clave_desc = f"rev_desc_{form_id}"
+    clave_coment = f"rev_coment_{form_id}"
     _recordar_widget(clave_desc, descripcion_actual)
     _recordar_widget(clave_coment, comentarios_actual)
-    nueva_desc = st.text_area("Descripción de la actividad", height=110, key=clave_desc)
+    nueva_desc = st.text_area(
+        "Descripción de la actividad",
+        height=130,
+        placeholder="Describe el trabajo realizado, hallazgos y acciones tomadas…",
+        key=clave_desc,
+    )
     nuevos_coment = st.text_area("Comentarios", height=80, key=clave_coment)
 
-    columnas_fila = [str(col) for col in fila.index]
-    registrados = _insumos_registrados_fila(fila)
-    claves_usadas = {_clave_columna_bitacora(item["columna"]) for item in registrados}
-    cantidades_editadas: dict[str, float] = {}
-    with st.container(border=True):
-        st.markdown("**Insumos ya suministrados**")
-        st.caption(
-            "Cada cantidad se puede corregir. Si un filtro, una bomba o un cable quedó en 1, "
-            "cambia el número aquí. Un 0 lo quita del Excel y del reporte."
+    opciones_eq = opciones_equipo_de_ubicacion(tag_instalacion)
+    coincide_equipo = False
+    if equipo_actual and opciones_eq:
+        objetivo_eq = equipo_actual.casefold()
+        coincide_equipo = any(
+            op.casefold() == objetivo_eq or (nombre_equipo_catalogo(op) or op).casefold() == objetivo_eq
+            for op in opciones_eq
         )
-        if registrados:
-            bloque_cant = st.columns(3)
-            for indice_cant, item in enumerate(registrados):
-                with bloque_cant[indice_cant % 3]:
-                    cantidades_editadas[item["columna"]] = _cantidad_editor_insumo(
-                        item["etiqueta"],
-                        f"rev_cant_{idx}_{ver}_{slug_insumo(item['columna'])}",
-                        item["cantidad"],
-                        item["entera"],
-                        item["paso"],
-                        item["ayuda"],
-                    )
-        else:
-            st.caption("Este registro no tiene insumos capturados.")
-
-        st.markdown("**Agregar insumos que faltaron**")
-        clave_multi = f"rev_agregar_insumos_{idx}_{ver}"
-        opciones_nuevas = _opciones_insumos_nuevos(columnas_fila, claves_usadas)
-        for nombre_previo in list(st.session_state.get(clave_multi) or []):
-            if nombre_previo not in opciones_nuevas:
-                opciones_nuevas.append(nombre_previo)
-        seleccion_nueva = st.multiselect(
-            "Elige uno o varios del catálogo",
-            opciones_nuevas,
-            placeholder="Banda C-115, refrigerante, bujías…",
-            key=clave_multi,
+    mci_default = mci_preseleccionado(opciones_eq) or ""
+    equipo_es_sugerido = bool(tag_instalacion) and (equipo_sel or "") == mci_default and (
+        not equipo_actual or not coincide_equipo
+    )
+    if equipo_es_sugerido:
+        equipo_guardar = equipo_actual
+    else:
+        equipo_guardar = nombre_equipo_catalogo(equipo_sel) or str(equipo_sel or "").strip()
+    tipo_final, corta_final = ("", "")
+    if opciones_act:
+        tipo_final, corta_final = resolver_actividad_catalogo(
+            str(nueva_cuadrilla or ""),
+            tipo_actividad,
+            tipo_otro or "",
+            corta_otro or "",
         )
-        clave_otro = f"rev_otro_insumo_{idx}_{ver}"
-        otro_insumo = st.text_input(
-            "Otro insumo que no está en la lista",
-            placeholder="Escribe el nombre y después indica la cantidad",
-            key=clave_otro,
-        ).strip()
-        nombres_nuevos = list(seleccion_nueva)
-        if otro_insumo and otro_insumo.casefold() not in {nombre.casefold() for nombre in nombres_nuevos}:
-            if _clave_columna_bitacora(_columna_destino_insumo(otro_insumo, columnas_fila)) in claves_usadas:
-                st.caption(f"«{otro_insumo}» ya está en el registro. Corrige su cantidad arriba.")
-            else:
-                nombres_nuevos.append(otro_insumo)
-        agregados: list[tuple[str, float]] = []
-        if nombres_nuevos:
-            bloque_nuevo = st.columns(3)
-            for indice_nuevo, nombre_nuevo in enumerate(nombres_nuevos):
-                destino_nuevo = _columna_destino_insumo(nombre_nuevo, columnas_fila)
-                unidad_nueva = _unidad_editor_insumo(destino_nuevo)
-                entera_nueva = unidad_nueva == "Pzas"
-                with bloque_nuevo[indice_nuevo % 3]:
-                    cantidad_nueva = _cantidad_editor_insumo(
-                        f"{nombre_nuevo} ({unidad_nueva})",
-                        f"rev_nueva_{idx}_{ver}_{slug_insumo(nombre_nuevo)}",
-                        0,
-                        entera_nueva,
-                        _paso_editor_insumo(destino_nuevo, 0),
-                        "Escribe la cantidad real. Si queda en 0, este insumo no se agrega.",
-                    )
-                agregados.append((nombre_nuevo, float(cantidad_nueva)))
-
-    destino_cantidades: dict[str, float] = {
-        item["columna"]: float(cantidades_editadas.get(item["columna"], item["cantidad"]))
-        for item in registrados
-    }
-    for nombre_nuevo, cantidad_nueva in agregados:
-        if cantidad_nueva <= 0:
-            continue
-        columna_nueva = _columna_destino_insumo(nombre_nuevo, list(destino_cantidades) + columnas_fila)
-        destino_cantidades[columna_nueva] = float(destino_cantidades.get(columna_nueva) or 0) + cantidad_nueva
-
+    personal_guardar = str(nuevo_personal or "").strip()
+    if not personal_guardar:
+        personal_guardar = " · ".join(
+            parte.strip()
+            for parte in [
+                str((cobertura or {}).get("mecanico_real") or ""),
+                str((cobertura or {}).get("ayudante_real") or ""),
+            ]
+            if parte.strip()
+        )
+    mapa_cantidades = _mapa_cantidades_edicion(fila, consumos, asignacion)
+    textos_insumo = _textos_insumo_edicion(insumos, consumos, asignacion)
     visibles = [
-        f"{_etiqueta_editor_insumo(nombre)}: {_texto_cantidad_insumo(cantidad)}"
-        for nombre, cantidad in destino_cantidades.items()
-        if float(cantidad) > 0
+        f"{consumo['nombre']}: {_texto_cantidad_insumo(consumo.get('cantidad'))}"
+        + (f" {consumo.get('unidad')}" if consumo.get("unidad") else "")
+        for consumo in consumos
+        if float(consumo.get("cantidad") or 0) > 0
     ]
     st.caption("Se guardará en la bitácora y en el reporte: " + (" · ".join(visibles) if visibles else "sin insumos."))
     guardar = st.button(
         "💾 Guardar Cambios en Bitácora",
         type="primary",
-        key=f"rev_guardar_{idx}_{ver}",
+        key=f"rev_guardar_{form_id}",
     )
     if not guardar:
         return
-    captura = resolver_captura_ubicacion(nueva_ubic, nuevo_numero, _tag_edit)
+    captura = resolver_captura_ubicacion(nueva_ubic, nuevo_numero, tag_instalacion)
     ubicacion_guardada = captura["ubicacion"]
+    if not str(nueva_desc or "").strip():
+        st.warning("Por favor escribe una descripción de la actividad antes de guardar.")
+        return
+    if not ubicacion_guardada:
+        st.warning("Completa la ubicación: elige la zona y el pozo del catálogo, o la instalación especial.")
+        return
+    if not nueva_cuadrilla:
+        st.warning("Selecciona la cuadrilla.")
+        return
+    if opciones_act and tipo_actividad == "Otra" and not tipo_final:
+        st.warning("Por favor escribe el nombre de la actividad.")
+        return
+    if opciones_act and not tipo_final:
+        st.warning("Por favor selecciona una actividad oficial de la cuadrilla.")
+        return
+    if cobertura.get("cobertura") == "Sí" and not cobertura.get("mecanico_real"):
+        st.warning("Captura el nombre real de quien ejecutó el servicio en esta cobertura.")
+        return
+    error_consumo = validar_consumos_campo(consumos)
+    if error_consumo:
+        st.warning(error_consumo)
+        return
     cambios = {
         "fecha": nueva_fecha,
         "cuadrilla": nueva_cuadrilla,
         "secuencia": int(nueva_secuencia),
         "ubicacion": ubicacion_guardada,
-        "personal": nuevo_personal,
+        "personal": personal_guardar,
         "descripcion": nueva_desc,
         "comentarios": nuevos_coment,
-        "consumibles": destino_cantidades,
+        "consumibles": mapa_cantidades,
+        "textos_insumo": textos_insumo,
     }
-    cantidades_previas = {item["columna"]: float(item["cantidad"]) for item in registrados}
+    if tag_instalacion:
+        cambios["equipo"] = equipo_guardar
+    if opciones_act:
+        cambios["tipo_actividad"] = tipo_final
+        cambios["actividad_corta"] = corta_final
+    equipo_igual = True
+    if tag_instalacion:
+        equipo_igual = _texto_comparable_bitacora(equipo_guardar) == _texto_comparable_bitacora(equipo_actual)
+    tipo_igual = True
+    corta_igual = True
+    if opciones_act:
+        tipo_igual = _texto_comparable_bitacora(tipo_final) == _texto_comparable_bitacora(
+            texto_visible(fila.get("TIPO DE ACTIVIDAD"), "")
+        )
+        corta_igual = _texto_comparable_bitacora(corta_final) == _texto_comparable_bitacora(
+            texto_visible(fila.get("ACTIVIDAD CORTA"), "")
+        )
     sin_cambios = (
         nueva_fecha == dia
         and clave_cuadrilla_oficial(str(nueva_cuadrilla or "")) == clave_actual
         and int(nueva_secuencia) == int(secuencia_actual)
         and cambios["ubicacion"] == ubic_actual
-        and str(nuevo_personal or "").strip() == personal_actual
+        and str(personal_guardar or "").strip() == personal_actual
         and str(nueva_desc or "").strip() == descripcion_actual
         and str(nuevos_coment or "").strip() == comentarios_actual
-        and _cantidades_insumo_equivalentes(cantidades_previas, destino_cantidades)
+        and equipo_igual
+        and tipo_igual
+        and corta_igual
+        and _cantidades_edicion_equivalentes(fila, mapa_cantidades)
+        and _textos_edicion_equivalentes(fila, textos_insumo)
     )
     if sin_cambios:
         st.info("No hay cambios por guardar.")
@@ -12450,7 +13006,6 @@ def render_edicion_registro_bitacora(df: pd.DataFrame, idx) -> None:
         _avisar_revision("success", texto)
     st.session_state["_rev_seleccion"] = idx
     st.rerun()
-
 
 def render_fotos_registro_editables(df: pd.DataFrame, idx) -> None:
     fila = df.loc[idx]
