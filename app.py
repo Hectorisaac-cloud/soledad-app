@@ -12740,9 +12740,31 @@ def render_edicion_masiva_cuadrilla(df: pd.DataFrame) -> None:
     st.rerun()
 
 
-def render_revision_bitacoras() -> None:
-    render_captura_bitacora_admin()
-    st.markdown('<div class="section-title">Revisión de bitácoras</div>', unsafe_allow_html=True)
+def render_revision_bitacoras(modo: str = "completo") -> None:
+    """completo conserva la revisión de auditoría.
+    consulta es Historial / Bitácora General.
+    edicion es Historial / Edición de actividades.
+    """
+    if modo not in {"completo", "consulta", "edicion"}:
+        modo = "completo"
+    if modo == "consulta":
+        render_respaldo_base_datos("bitacora")
+    elif modo != "edicion":
+        render_captura_bitacora_admin()
+    if modo == "edicion":
+        st.markdown('<div class="section-title">Edición de actividades</div>', unsafe_allow_html=True)
+        st.caption(
+            "Reasigna cuadrillas o corrige un registro. "
+            "La tabla, el Excel, la evidencia fotográfica y el estatus de revisión están en Bitácora General."
+        )
+    elif modo == "consulta":
+        st.markdown('<div class="section-title">Bitácora General</div>', unsafe_allow_html=True)
+        st.caption(
+            "Consulta y revisión del historial. "
+            "Para corregir datos del registro o insumos abre Edición de actividades."
+        )
+    else:
+        st.markdown('<div class="section-title">Revisión de bitácoras</div>', unsafe_allow_html=True)
     render_aviso_revision()
     marca = datetime.fromtimestamp(_mtime_archivo(EXCEL_FILE)).strftime("%d/%m/%Y %H:%M") if os.path.exists(EXCEL_FILE) else "sin archivo"
     df = bitacora_con_fechas(cargar_bitacora())
@@ -12768,9 +12790,12 @@ def render_revision_bitacoras() -> None:
             st.session_state["masiva_desde"] = min(dias_abiertos)
             st.session_state["masiva_hasta"] = max(dias_abiertos)
 
-    render_edicion_masiva_cuadrilla(df)
+    if modo != "consulta":
+        render_edicion_masiva_cuadrilla(df)
     base = df.copy()
 
+    if modo == "edicion":
+        st.caption("Filtra para localizar el registro. La tabla y el Excel filtrado siguen en Bitácora General.")
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     conteos_dias = dict(_dias_con_registros_bitacora(base))
     fechas = [_etiqueta_dia_registros(dia, cantidad) for dia, cantidad in conteos_dias.items() if cantidad]
@@ -12840,47 +12865,48 @@ def render_revision_bitacoras() -> None:
     if not filtrado.empty:
         filtrado = ordenar_bitacora_exportacion(filtrado)
 
-    firma_export = hashlib.md5(
-        "|".join(
-            [
-                str(filtro_fecha),
-                str(filtro_ubi),
-                str(filtro_cuadrilla),
-                str(filtro_revision),
-                str(filtro_evidencia),
-                str(len(filtrado)),
-            ]
-        ).encode()
-    ).hexdigest()[:8]
-    col_exp, col_exp_info = st.columns([1, 2])
-    with col_exp:
-        st.download_button(
-            "⬇️ Exportar Excel filtrado",
-            data=excel_bitacora_filtrada(filtrado),
-            file_name=nombre_excel_bitacora_filtrada(filtro_fecha, filtrado),
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    if modo != "edicion":
+        firma_export = hashlib.md5(
+            "|".join(
+                [
+                    str(filtro_fecha),
+                    str(filtro_ubi),
+                    str(filtro_cuadrilla),
+                    str(filtro_revision),
+                    str(filtro_evidencia),
+                    str(len(filtrado)),
+                ]
+            ).encode()
+        ).hexdigest()[:8]
+        col_exp, col_exp_info = st.columns([1, 2])
+        with col_exp:
+            st.download_button(
+                "⬇️ Exportar Excel filtrado",
+                data=excel_bitacora_filtrada(filtrado),
+                file_name=nombre_excel_bitacora_filtrada(filtro_fecha, filtrado),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key=f"rev_descargar_excel_{firma_export}",
+                disabled=filtrado.empty,
+            )
+        with col_exp_info:
+            st.caption(
+                f"{len(filtrado)} registro(s) visibles. El Excel resume cada actividad en 10 columnas."
+            )
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Registros", len(filtrado))
+        m2.metric("Pendientes", int((filtrado["REVISIÓN"] == "Pendiente").sum()) if "REVISIÓN" in filtrado.columns else 0)
+        m3.metric("Validados", int((filtrado["REVISIÓN"] == "Validado").sum()) if "REVISIÓN" in filtrado.columns else 0)
+        m4.metric("Con observaciones", int((filtrado["REVISIÓN"] == "Con observaciones").sum()) if "REVISIÓN" in filtrado.columns else 0)
+        pend_ev = int(filtrado.apply(lambda r: estatus_evidencia_fila(r) != EVIDENCIA_COMPLETA, axis=1).sum()) if not filtrado.empty else 0
+        st.caption(f"{pend_ev} registro(s) con evidencia fotográfica pendiente.")
+
+        st.dataframe(
+            vista_revision_soledad(filtrado),
             use_container_width=True,
-            key=f"rev_descargar_excel_{firma_export}",
-            disabled=filtrado.empty,
+            hide_index=True,
         )
-    with col_exp_info:
-        st.caption(
-            f"{len(filtrado)} registro(s) visibles. El Excel resume cada actividad en 10 columnas."
-        )
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Registros", len(filtrado))
-    m2.metric("Pendientes", int((filtrado["REVISIÓN"] == "Pendiente").sum()) if "REVISIÓN" in filtrado.columns else 0)
-    m3.metric("Validados", int((filtrado["REVISIÓN"] == "Validado").sum()) if "REVISIÓN" in filtrado.columns else 0)
-    m4.metric("Con observaciones", int((filtrado["REVISIÓN"] == "Con observaciones").sum()) if "REVISIÓN" in filtrado.columns else 0)
-    pend_ev = int(filtrado.apply(lambda r: estatus_evidencia_fila(r) != EVIDENCIA_COMPLETA, axis=1).sum()) if not filtrado.empty else 0
-    st.caption(f"{pend_ev} registro(s) con evidencia fotográfica pendiente.")
-
-    st.dataframe(
-        vista_revision_soledad(filtrado),
-        use_container_width=True,
-        hide_index=True,
-    )
 
     if filtrado.empty:
         st.caption("No hay registros con esos filtros.")
@@ -12897,8 +12923,11 @@ def render_revision_bitacoras() -> None:
         st.session_state[clave_registro] = pendiente
     elif st.session_state.get(clave_registro) not in indices:
         st.session_state.pop(clave_registro, None)
+    if modo == "consulta":
+        st.markdown("##### Evidencia y revisión")
+        st.caption("Elige el registro para adjuntar fotografías o actualizar el estatus de revisión.")
     seleccionado = st.selectbox(
-        "Registro a auditar",
+        "Registro a revisar" if modo == "consulta" else "Registro a auditar",
         indices,
         format_func=lambda i: etiqueta_registro(df, i),
         key=clave_registro,
@@ -12922,8 +12951,14 @@ def render_revision_bitacoras() -> None:
         dia_revision,
         str(fila.get("PERSONAL") or ""),
     )
-    render_edicion_registro_bitacora(df, seleccionado)
-    render_fotos_registro_editables(df, seleccionado)
+    if modo != "consulta":
+        render_edicion_registro_bitacora(df, seleccionado)
+    if modo != "edicion":
+        render_fotos_registro_editables(df, seleccionado)
+
+    if modo == "edicion":
+        render_eliminar_registro_bitacora(df, seleccionado)
+        return
 
     st.markdown("##### Estatus de revisión")
     col_est, col_obs = st.columns([1, 2])
@@ -12944,7 +12979,8 @@ def render_revision_bitacoras() -> None:
         st.success("Revisión actualizada.")
         st.rerun()
 
-    render_eliminar_registro_bitacora(df, seleccionado)
+    if modo == "completo":
+        render_eliminar_registro_bitacora(df, seleccionado)
 
 
 def render_editor_lista(titulo: str, clave: str, ayuda: str) -> None:
@@ -24477,7 +24513,7 @@ MODULOS_ADMIN = [
         "id": "historial_base",
         "icono": "📚",
         "titulo": "Historial",
-        "descripcion": "Historial de OTs, bitácora general y calendario de asistencia de cuadrillas.",
+        "descripcion": "Historial de OTs, bitácora general, edición de actividades y calendario de actividades.",
     },
     {
         "id": "programados",
@@ -30176,28 +30212,39 @@ def render_reportes_ejecutivos() -> None:
 
 def render_historial_base_admin() -> None:
     st.markdown('<div class="section-title">Historial</div>', unsafe_allow_html=True)
+    opciones = [
+        "Historial de OTs",
+        "Bitácora General",
+        "Edición de actividades",
+        "Calendario de actividades",
+    ]
+    if st.session_state.get("historial_base_seccion") == "Calendario de Asistencia de Cuadrillas":
+        st.session_state["historial_base_seccion"] = "Calendario de actividades"
+    elif (
+        "historial_base_seccion" in st.session_state
+        and st.session_state["historial_base_seccion"] not in opciones
+    ):
+        st.session_state["historial_base_seccion"] = opciones[0]
     seccion = st.radio(
         "Sección",
-        [
-            "Historial de OTs",
-            "Bitácora General",
-            "Calendario de Asistencia de Cuadrillas",
-        ],
+        opciones,
         horizontal=True,
         key="historial_base_seccion",
     )
-    if seccion == "Historial de OTs":
-        if st.session_state.get("_origen_historial_bitacora") == "historial":
-            st.session_state["_origen_historial_bitacora"] = None
-        render_historial_diario_ot()
-    elif seccion == "Bitácora General":
+    if seccion in {"Bitácora General", "Edición de actividades"}:
         if st.session_state.get("_origen_historial_bitacora") != "historial":
             st.session_state["_origen_historial_bitacora"] = "historial"
             st.session_state["_apertura_historial_bitacora"] = True
-        render_revision_bitacoras()
+        if seccion == "Bitácora General":
+            render_revision_bitacoras("consulta")
+        else:
+            render_revision_bitacoras("edicion")
+        return
+    if st.session_state.get("_origen_historial_bitacora") == "historial":
+        st.session_state["_origen_historial_bitacora"] = None
+    if seccion == "Historial de OTs":
+        render_historial_diario_ot()
     else:
-        if st.session_state.get("_origen_historial_bitacora") == "historial":
-            st.session_state["_origen_historial_bitacora"] = None
         render_calendario_asistencia()
 
 
