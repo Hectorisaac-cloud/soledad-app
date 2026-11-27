@@ -12997,6 +12997,14 @@ def render_revision_bitacoras(modo: str = "completo") -> None:
             st.caption("No hay registros con esos filtros.")
         else:
             seleccionado = _selector_registro_revision(df, filtrado, "Registro a auditar")
+        _render_resumen_actividades_edicion(
+            filtrado,
+            filtro_fecha,
+            filtro_ubi,
+            filtro_cuadrilla,
+            filtro_revision,
+            filtro_evidencia,
+        )
         st.markdown("##### Modo de edición")
         categoria = elegir_seccion(
             ["Editar datos del registro", "Edición Masiva por Cuadrilla"],
@@ -13009,14 +13017,6 @@ def render_revision_bitacoras(modo: str = "completo") -> None:
                 _render_contexto_registro_bitacora(df, seleccionado)
                 render_edicion_registro_bitacora(df, seleccionado)
                 render_eliminar_registro_bitacora(df, seleccionado)
-        _render_resumen_actividades_edicion(
-            filtrado,
-            filtro_fecha,
-            filtro_ubi,
-            filtro_cuadrilla,
-            filtro_revision,
-            filtro_evidencia,
-        )
         return
 
     if filtrado.empty:
