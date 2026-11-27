@@ -12740,6 +12740,51 @@ def render_edicion_masiva_cuadrilla(df: pd.DataFrame) -> None:
     st.rerun()
 
 
+def _selector_registro_revision(df: pd.DataFrame, filtrado: pd.DataFrame, etiqueta: str):
+    indices = list(filtrado.index)
+    if not indices:
+        return None
+    # Al editar, borrar o filtrar cambian las opciones; un key nuevo evita que el navegador conserve el texto viejo.
+    firma_opciones = hashlib.md5(",".join(map(str, indices)).encode()).hexdigest()[:8]
+    clave_registro = f"rev_registro_{int(st.session_state.get('_rev_ver', 0))}_{firma_opciones}"
+    pendiente = st.session_state.pop("_rev_seleccion", None)
+    if pendiente not in indices and clave_registro not in st.session_state:
+        pendiente = st.session_state.get("_rev_ultimo")
+    if pendiente in indices:
+        st.session_state[clave_registro] = pendiente
+    elif st.session_state.get(clave_registro) not in indices:
+        st.session_state.pop(clave_registro, None)
+    seleccionado = st.selectbox(
+        etiqueta,
+        indices,
+        format_func=lambda i: etiqueta_registro(df, i),
+        key=clave_registro,
+    )
+    st.session_state["_rev_ultimo"] = seleccionado
+    return seleccionado
+
+
+def _render_contexto_registro_bitacora(df: pd.DataFrame, seleccionado) -> None:
+    fila = df.loc[seleccionado]
+    gente = personal_de_registro(fila)
+    st.caption(
+        f"Posición oficial: **{gente['cuadrilla'] or '—'}** · "
+        f"Titular: **{texto_par_personal(gente['mecanico_titular'], gente['ayudante_titular'])}** · "
+        f"En turno: **{texto_par_personal(gente['mecanico_real'], gente['ayudante_real'])}** · "
+        f"Cobertura: **{gente['cobertura'] or 'No'}**"
+    )
+    dia_revision = fila.get("_fecha")
+    if isinstance(dia_revision, datetime):
+        dia_revision = dia_revision.date()
+    if not isinstance(dia_revision, date):
+        dia_revision = parsear_fecha_valor(fila.get("FECHA"))
+    render_nota_asistencia(
+        gente["cuadrilla"],
+        dia_revision,
+        str(fila.get("PERSONAL") or ""),
+    )
+
+
 def render_revision_bitacoras(modo: str = "completo") -> None:
     """completo conserva la revisión de auditoría.
     consulta es Historial / Bitácora General.
@@ -12754,7 +12799,7 @@ def render_revision_bitacoras(modo: str = "completo") -> None:
     if modo == "edicion":
         st.markdown('<div class="section-title">Edición de actividades</div>', unsafe_allow_html=True)
         st.caption(
-            "Reasigna cuadrillas o corrige un registro. "
+            "Primero localiza el registro. Después elige si corriges esa actividad o varias a la vez. "
             "La tabla, el Excel, la evidencia fotográfica y el estatus de revisión están en Bitácora General."
         )
     elif modo == "consulta":
@@ -12790,12 +12835,12 @@ def render_revision_bitacoras(modo: str = "completo") -> None:
             st.session_state["masiva_desde"] = min(dias_abiertos)
             st.session_state["masiva_hasta"] = max(dias_abiertos)
 
-    if modo != "consulta":
+    if modo == "completo":
         render_edicion_masiva_cuadrilla(df)
     base = df.copy()
 
     if modo == "edicion":
-        st.caption("Filtra para localizar el registro. La tabla y el Excel filtrado siguen en Bitácora General.")
+        st.caption("Estos filtros y el registro a auditar quedan arriba. Abajo se abre un solo modo de edición.")
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     conteos_dias = dict(_dias_con_registros_bitacora(base))
     fechas = [_etiqueta_dia_registros(dia, cantidad) for dia, cantidad in conteos_dias.items() if cantidad]
@@ -12908,57 +12953,45 @@ def render_revision_bitacoras(modo: str = "completo") -> None:
             hide_index=True,
         )
 
+    if modo == "edicion":
+        seleccionado = None
+        if filtrado.empty:
+            st.caption("No hay registros con esos filtros.")
+        else:
+            seleccionado = _selector_registro_revision(df, filtrado, "Registro a auditar")
+        st.markdown("##### Modo de edición")
+        categoria = elegir_seccion(
+            ["Editar datos del registro", "Edición Masiva por Cuadrilla"],
+            "rev_modo_edicion_actividad",
+        )
+        if categoria == "Edición Masiva por Cuadrilla":
+            render_edicion_masiva_cuadrilla(df)
+            return
+        if seleccionado is None:
+            return
+        with st.container(border=True):
+            _render_contexto_registro_bitacora(df, seleccionado)
+            render_edicion_registro_bitacora(df, seleccionado)
+            render_eliminar_registro_bitacora(df, seleccionado)
+        return
+
     if filtrado.empty:
         st.caption("No hay registros con esos filtros.")
         return
 
-    indices = list(filtrado.index)
-    # Al editar, borrar o filtrar cambian las opciones; un key nuevo evita que el navegador conserve el texto viejo.
-    firma_opciones = hashlib.md5(",".join(map(str, indices)).encode()).hexdigest()[:8]
-    clave_registro = f"rev_registro_{int(st.session_state.get('_rev_ver', 0))}_{firma_opciones}"
-    pendiente = st.session_state.pop("_rev_seleccion", None)
-    if pendiente not in indices and clave_registro not in st.session_state:
-        pendiente = st.session_state.get("_rev_ultimo")
-    if pendiente in indices:
-        st.session_state[clave_registro] = pendiente
-    elif st.session_state.get(clave_registro) not in indices:
-        st.session_state.pop(clave_registro, None)
     if modo == "consulta":
         st.markdown("##### Evidencia y revisión")
         st.caption("Elige el registro para adjuntar fotografías o actualizar el estatus de revisión.")
-    seleccionado = st.selectbox(
+    seleccionado = _selector_registro_revision(
+        df,
+        filtrado,
         "Registro a revisar" if modo == "consulta" else "Registro a auditar",
-        indices,
-        format_func=lambda i: etiqueta_registro(df, i),
-        key=clave_registro,
     )
-    st.session_state["_rev_ultimo"] = seleccionado
+    _render_contexto_registro_bitacora(df, seleccionado)
     fila = df.loc[seleccionado]
-    gente = personal_de_registro(fila)
-    st.caption(
-        f"Posición oficial: **{gente['cuadrilla'] or '—'}** · "
-        f"Titular: **{texto_par_personal(gente['mecanico_titular'], gente['ayudante_titular'])}** · "
-        f"En turno: **{texto_par_personal(gente['mecanico_real'], gente['ayudante_real'])}** · "
-        f"Cobertura: **{gente['cobertura'] or 'No'}**"
-    )
-    dia_revision = fila.get("_fecha")
-    if isinstance(dia_revision, datetime):
-        dia_revision = dia_revision.date()
-    if not isinstance(dia_revision, date):
-        dia_revision = parsear_fecha_valor(fila.get("FECHA"))
-    render_nota_asistencia(
-        gente["cuadrilla"],
-        dia_revision,
-        str(fila.get("PERSONAL") or ""),
-    )
     if modo != "consulta":
         render_edicion_registro_bitacora(df, seleccionado)
-    if modo != "edicion":
-        render_fotos_registro_editables(df, seleccionado)
-
-    if modo == "edicion":
-        render_eliminar_registro_bitacora(df, seleccionado)
-        return
+    render_fotos_registro_editables(df, seleccionado)
 
     st.markdown("##### Estatus de revisión")
     col_est, col_obs = st.columns([1, 2])
